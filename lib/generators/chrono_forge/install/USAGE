@@ -1,0 +1,8 @@
+Description:
+    Installs ChronoForge
+
+Example:
+    bin/rails g chrono_form:install
+
+    This will create a new migration e.g:
+        20241221181505_install_chrono_forge.rb
