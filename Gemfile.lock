@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    chrono_forge (0.0.2)
+    chrono_forge (0.1.0)
       activejob
       activerecord
       zeitwerk

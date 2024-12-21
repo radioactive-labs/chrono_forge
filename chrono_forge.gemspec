@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors = ["Stefan Froelich"]
   spec.email = ["sfroelich01@gmail.com"]
 
-  spec.summary = "Base fields for the Phlexi libraries"
-  spec.description = "Base fields for the Phlexi libraries"
+  spec.summary = "A durable workflow engine for Ruby on Rails built on ActiveJob"
+  spec.description = "ChronoForge provides a robust framework for building durable, distributed workflows in Ruby on Rails applications. It offers reliable state management, error recovery, and workflow orchestration through features like durable execution, wait states, and comprehensive error tracking."
   spec.homepage = "https://github.com/radioactive-labs/chrono_forge"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.2"

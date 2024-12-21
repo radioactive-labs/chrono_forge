@@ -42,7 +42,7 @@ end
 
 # Example usage (uncomment and modify as needed):
 directory = "/Users/stefan/Documents/plutonium/chrono_forge"
-exceptions = ["/.github/", "/.vscode/", "gemfiles", "pkg", "test", "node_modules"]
+exceptions = ["/.github/", "/.vscode/", "gemfiles", "pkg", "node_modules"]
 extensions = ["rb", "md", "yml", "yaml", "gemspec"]
 output_file = "export.json"
 export_files_to_json(directory, extensions, output_file, exceptions)
