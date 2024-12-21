@@ -2,7 +2,8 @@ PATH
   remote: ..
   specs:
     chrono_forge (0.0.1)
-      rails
+      activejob
+      activerecord
       zeitwerk
 
 GEM
