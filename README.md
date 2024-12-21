@@ -186,7 +186,7 @@ require 'chaotic_job'
 Example test:
 
 ```ruby
-class WorkflowTest < Minitest::Test
+class WorkflowTest < ActiveJob::TestCase
   include ChaoticJob::Helpers
 
   def test_workflow_completion
@@ -210,7 +210,6 @@ end
 ChaoticJob provides several helpful methods for testing workflows:
 
 - `perform_all_jobs`: Processes all enqueued jobs, including those enqueued during job execution
-- `enqueued_jobs`: Returns the current number of jobs in the queue
 
 For testing with specific job processing libraries like Sidekiq or Delayed Job, you can still use their respective testing modes, but ChaoticJob is recommended for testing ChronoForge workflows as it better handles the complexities of nested job scheduling and wait states.
 
