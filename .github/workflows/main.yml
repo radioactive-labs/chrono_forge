@@ -24,4 +24,4 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - name: Appraise
-        run: bin/appraise
+        run: bundle exec appraisal install && bin/appraise
