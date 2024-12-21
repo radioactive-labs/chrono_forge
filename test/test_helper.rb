@@ -7,3 +7,5 @@ Minitest::Reporters.use!
 require "combustion"
 Combustion.path = "test/internal"
 Combustion.initialize! :active_record, :active_job
+
+require "chaotic_job"

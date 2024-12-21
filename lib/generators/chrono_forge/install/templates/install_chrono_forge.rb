@@ -8,13 +8,16 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
 
       if t.respond_to?(:jsonb)
         t.jsonb :kwargs, null: false, default: {}
+        t.jsonb :options, null: false, default: {}
         t.jsonb :context, null: false, default: {}
       else
         t.json :kwargs, null: false, default: {}
+        t.json :options, null: false, default: {}
         t.json :context, null: false, default: {}
       end
 
       t.integer :state, null: false, default: 0
+      t.string :locked_by
       t.datetime :locked_at
 
       t.datetime :started_at
