@@ -47,13 +47,13 @@ module ChronoForge
         nil
       rescue => e
         Rails.logger.error { "An error occurred during execution of #{key}" }
-        self.class::ExecutionTracker.track_error(workflow, e)
+        error_log = self.class::ExecutionTracker.track_error(workflow, e)
 
         # Retry if applicable
         if should_retry?(e, attempt)
           self.class::RetryStrategy.schedule_retry(workflow, attempt: attempt)
         else
-          fail_workflow! e
+          fail_workflow! error_log
         end
       ensure
         context.save!
@@ -71,9 +71,6 @@ module ChronoForge
         step_name: "$workflow_completion$"
       ) do |log|
         log.started_at = Time.current
-        log.metadata = {
-          workflow_id: workflow.id
-        }
       end
 
       begin
@@ -104,7 +101,7 @@ module ChronoForge
       end
     end
 
-    def fail_workflow!(error)
+    def fail_workflow!(error_log)
       # Create an execution log for workflow failure
       execution_log = ExecutionLog.create_or_find_by!(
         workflow: workflow,
@@ -112,9 +109,7 @@ module ChronoForge
       ) do |log|
         log.started_at = Time.current
         log.metadata = {
-          workflow_id: workflow.id,
-          error_class: error.class.to_s,
-          error_message: error.message
+          error_log_id: error_log.id
         }
       end
 
