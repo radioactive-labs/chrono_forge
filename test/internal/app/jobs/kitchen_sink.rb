@@ -1,7 +1,7 @@
 class KitchenSink < WorkflowJob
   prepend ChronoForge::Executor
 
-  def perform(kwarg: nil, succeed: true)
+  def perform(kwarg: nil, permanently_fail: false)
     # Context can be used to pass and store data between executions
     context[:order_id] ||= SecureRandom.hex
 
@@ -16,7 +16,7 @@ class KitchenSink < WorkflowJob
     # Durably execute order processing
     durably_execute :process_order
 
-    raise "Permanent Failure" unless succeed
+    raise "Permanent Failure" if permanently_fail
 
     # Final steps
     durably_execute :complete_order

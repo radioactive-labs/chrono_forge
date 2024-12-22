@@ -53,7 +53,7 @@ module ChronoForge
         if should_retry?(e, attempt)
           self.class::RetryStrategy.schedule_retry(workflow, attempt: attempt)
         else
-          workflow.failed!
+          fail_workflow! e
         end
       ensure
         context.save!
@@ -84,6 +84,47 @@ module ChronoForge
 
         workflow.completed_at = Time.current
         workflow.completed!
+
+        # Mark execution log as completed
+        execution_log.update!(
+          state: :completed,
+          completed_at: Time.current
+        )
+
+        # Return the execution log for tracking
+        execution_log
+      rescue => e
+        # Log any completion errors
+        execution_log.update!(
+          state: :failed,
+          error_message: e.message,
+          error_class: e.class.name
+        )
+        raise
+      end
+    end
+
+    def fail_workflow!(error)
+      # Create an execution log for workflow failure
+      execution_log = ExecutionLog.create_or_find_by!(
+        workflow: workflow,
+        step_name: "$workflow_failure$"
+      ) do |log|
+        log.started_at = Time.current
+        log.metadata = {
+          workflow_id: workflow.id,
+          error_class: error.class.to_s,
+          error_message: error.message
+        }
+      end
+
+      begin
+        execution_log.update!(
+          attempts: execution_log.attempts + 1,
+          last_executed_at: Time.current
+        )
+
+        workflow.failed!
 
         # Mark execution log as completed
         execution_log.update!(
