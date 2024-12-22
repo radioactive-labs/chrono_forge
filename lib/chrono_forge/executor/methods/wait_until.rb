@@ -6,8 +6,8 @@ module ChronoForge
       module WaitUntil
         def wait_until(condition, **options)
           # Default timeout and check interval
-          timeout = options[:timeout] || 10.seconds
-          check_interval = options[:check_interval] || 1.second
+          timeout = options[:timeout] || 1.hour
+          check_interval = options[:check_interval] || 15.minutes
 
           # Find or create execution log
           step_name = "wait_until$#{condition}"
@@ -89,8 +89,8 @@ module ChronoForge
               state: :failed,
               metadata: metadata.merge("result" => nil)
             )
-            Rails.logger.warn { "Timeout reached for condition #{condition}. Condition not met within the timeout period." }
-            raise WaitConditionNotMet, "Condition not met within timeout period"
+            Rails.logger.warn { "Timeout reached for condition '#{condition}'." }
+            raise WaitConditionNotMet, "Condition '#{condition}' not met within timeout period"
           end
 
           # Reschedule with delay
