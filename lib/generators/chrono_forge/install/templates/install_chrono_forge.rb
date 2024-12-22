@@ -3,8 +3,8 @@
 class InstallChronoForge < ActiveRecord::Migration[7.1]
   def change
     create_table :chrono_forge_workflows do |t|
-      t.string :key, null: false, index: {unique: true}
-      t.string :job_klass, null: false
+      t.string :key, null: false, index: true
+      t.string :job_class, null: false
 
       if t.respond_to?(:jsonb)
         t.jsonb :kwargs, null: false, default: {}
@@ -24,6 +24,7 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
       t.datetime :completed_at
 
       t.timestamps
+      t.index %i[job_class key], unique: true
     end
 
     create_table :chrono_forge_execution_logs do |t|

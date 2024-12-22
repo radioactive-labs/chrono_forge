@@ -7,9 +7,10 @@
 #  id           :integer          not null, primary key
 #  completed_at :datetime
 #  context      :json             not null
-#  job_klass    :string           not null
+#  job_class    :string           not null
 #  key          :string           not null
 #  kwargs       :json             not null
+#  options      :json             not null
 #  locked_at    :datetime
 #  started_at   :datetime
 #  state        :integer          default("idle"), not null
@@ -40,6 +41,10 @@ module ChronoForge
 
     def executable?
       idle? || running?
+    end
+
+    def job_klass
+      job_class.constantize
     end
   end
 end

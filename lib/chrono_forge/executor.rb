@@ -110,7 +110,7 @@ module ChronoForge
     end
 
     def find_workflow(key, kwargs)
-      Workflow.create_or_find_by!(key: key) do |workflow|
+      Workflow.create_or_find_by!(job_class: self.class.to_s, key: key) do |workflow|
         workflow.job_klass = self.class.to_s
         workflow.kwargs = kwargs
         workflow.started_at = Time.current

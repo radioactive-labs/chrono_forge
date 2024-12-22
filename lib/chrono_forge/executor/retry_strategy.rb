@@ -13,7 +13,7 @@ module ChronoForge
         wait_duration = BACKOFF_STRATEGY[attempt] || BACKOFF_STRATEGY.last
 
         # Schedule with exponential backoff
-        workflow.job_klass.constantize
+        workflow.job_klass
           .set(wait: wait_duration)
           .perform_later(
             workflow.key,
