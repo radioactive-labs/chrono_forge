@@ -38,10 +38,5 @@ module ChronoForge
       completed
       failed
     ]
-
-    # Cleanup method
-    def self.cleanup_old_logs(retention_period: 30.days)
-      where("created_at < ?", retention_period.ago).delete_all
-    end
   end
 end

@@ -151,17 +151,6 @@ class MyWorkflow < ApplicationJob
 end
 ```
 
-### Cleanup
-
-ChronoForge includes built-in cleanup methods for managing old workflow data:
-
-```ruby
-# Clean up old workflows and logs
-ChronoForge::Workflow.cleanup_old_logs(retention_period: 30.days)
-ChronoForge::ExecutionLog.cleanup_old_logs(retention_period: 30.days)
-ChronoForge::ErrorLog.cleanup_old_logs(retention_period: 30.days)
-```
-
 ## Testing
 
 ChronoForge is designed to be easily testable using [ChaoticJob](https://github.com/fractaledmind/chaotic_job), a testing framework that makes it simple to test complex job workflows. Here's how to set up your test environment:

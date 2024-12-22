@@ -27,10 +27,5 @@ module ChronoForge
     self.table_name = "chrono_forge_error_logs"
 
     belongs_to :workflow
-
-    # Cleanup method
-    def self.cleanup_old_logs(retention_period: 30.days)
-      where("created_at < ?", retention_period.ago).delete_all
-    end
   end
 end

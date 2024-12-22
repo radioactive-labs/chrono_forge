@@ -35,11 +35,6 @@ module ChronoForge
       stalled
     ]
 
-    # Cleanup method
-    def self.cleanup_old_logs(retention_period: 30.days)
-      where("created_at < ?", retention_period.ago).delete_all
-    end
-
     # Serialization for metadata
     serialize :metadata, coder: JSON
 
