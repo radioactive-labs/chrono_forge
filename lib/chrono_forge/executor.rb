@@ -10,7 +10,7 @@ module ChronoForge
 
     include Methods
 
-    def perform(key, attempt: 0, **kwargs)
+    def perform(key, attempt: 0, options: {}, **kwargs)
       # Prevent excessive retries
       if attempt >= self.class::RetryStrategy.max_attempts
         Rails.logger.error { "Max attempts reached for job #{key}" }
@@ -18,7 +18,7 @@ module ChronoForge
       end
 
       # Find or create job with comprehensive tracking
-      setup_workflow(key, kwargs)
+      setup_workflow(key, options, kwargs)
 
       begin
         # Skip if workflow cannot be executed
@@ -104,14 +104,14 @@ module ChronoForge
       end
     end
 
-    def setup_workflow(key, kwargs)
-      @workflow = find_workflow(key, kwargs)
+    def setup_workflow(key, options, kwargs)
+      @workflow = find_workflow(key, options, kwargs)
       @context = Context.new(@workflow)
     end
 
-    def find_workflow(key, kwargs)
+    def find_workflow(key, options, kwargs)
       Workflow.create_or_find_by!(job_class: self.class.to_s, key: key) do |workflow|
-        workflow.job_klass = self.class.to_s
+        workflow.options = options
         workflow.kwargs = kwargs
         workflow.started_at = Time.current
       end
