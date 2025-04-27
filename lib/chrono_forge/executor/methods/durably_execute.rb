@@ -13,7 +13,7 @@ module ChronoForge
           end
 
           # Return if already completed
-          return execution_log.metadata["result"] if execution_log.completed?
+          return if execution_log.completed?
 
           # Execute with error handling
           begin
@@ -24,7 +24,7 @@ module ChronoForge
             )
 
             # Execute the method
-            result = if method.is_a?(Symbol)
+            if method.is_a?(Symbol)
               send(method)
             else
               method.call(@context)
@@ -33,8 +33,7 @@ module ChronoForge
             # Complete the execution
             execution_log.update!(
               state: :completed,
-              completed_at: Time.current,
-              metadata: {result: result}
+              completed_at: Time.current
             )
             result
           rescue HaltExecutionFlow

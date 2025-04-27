@@ -18,7 +18,7 @@ module ChronoForge
     private
 
     def install_migrations
-      migration_template "install_chrono_forge.rb", "install_chrono_forge.rb"
+      migration_template "install_chrono_forge.rb", "db/migrate/install_chrono_forge.rb"
     end
   end
 end
