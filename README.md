@@ -47,17 +47,45 @@ $ rails db:migrate
 
 ## 📋 Usage
 
+### Creating and Executing Workflows
+
+ChronoForge workflows are ActiveJob classes that prepend the `ChronoForge::Executor` module. Each workflow can **only** accept keyword arguments:
+
+```ruby
+# Define your workflow class
+class OrderProcessingWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+  
+  def perform(order_id:, customer_id:)
+    # Workflow steps...
+  end
+end
+```
+
+All workflows require a unique identifier when executed. This identifier is used to track and manage the workflow:
+
+```ruby
+# Execute the workflow
+OrderProcessingWorkflow.perform_later(
+  "order-123",                 # Unique workflow key
+  order_id: "order-134",       # Custom kwargs
+  customer_id: "customer-456"  # More custom kwargs
+)
+```
+
 ### Basic Workflow Example
 
 Here's a complete example of a durable order processing workflow:
 
 ```ruby
 class OrderProcessingWorkflow < ApplicationJob
-  include ChronoForge::Executor
+  prepend ChronoForge::Executor
 
-  def perform
+  def perform(order_id:)
+    @order_id = order_id
+
     # Context can be used to pass and store data between executions
-    context.set_once "order_id", SecureRandom.hex
+    context.set_once "execution_id", SecureRandom.hex
 
     # Wait until payment is confirmed
     wait_until :payment_confirmed?
@@ -75,22 +103,44 @@ class OrderProcessingWorkflow < ApplicationJob
   private
 
   def payment_confirmed?
-    PaymentService.confirmed?(context["order_id"])
+    PaymentService.confirmed?(@order_id, context["execution_id"])
   end
 
   def process_order
-    OrderProcessor.process(context["order_id"])
+    OrderProcessor.process(@order_id, context["execution_id"])
     context["processed_at"] = Time.current.iso8601
   end
 
   def complete_order
-    OrderCompletionService.complete(context["order_id"])
+    OrderCompletionService.complete(@order_id, context["execution_id"])
     context["completed_at"] = Time.current.iso8601
   end
 end
 ```
 
 ### Core Workflow Features
+
+#### 🚀 Executing Workflows
+
+ChronoForge workflows are executed through ActiveJob's standard interface with a specific parameter structure:
+
+```ruby
+# Perform the workflow immediately
+OrderProcessingWorkflow.perform_now(
+  "order-123",                     # Unique workflow key
+  order_id: "O-123",               # Custom parameter
+  customer_id: "C-456"             # Another custom parameter
+)
+
+# Or queue it for background processing
+OrderProcessingWorkflow.perform_later(
+  "order-123-async",               # Unique workflow key
+  order_id: "O-124",
+  customer_id: "C-457"
+)
+```
+
+**Important:** Workflows must use keyword arguments only, not positional arguments.
 
 #### ⚡ Durable Execution
 
@@ -147,13 +197,15 @@ if context.key?(:user_id)
 end
 ```
 
+The context supports serializable Ruby objects (Hash, Array, String, Integer, Float, Boolean, and nil) and validates types automatically.
+
 ### 🛡️ Error Handling
 
 ChronoForge automatically tracks errors and provides configurable retry capabilities:
 
 ```ruby
 class MyWorkflow < ApplicationJob
-  include ChronoForge::Executor
+  prepend ChronoForge::Executor
 
   private
 
@@ -198,14 +250,18 @@ class WorkflowTest < ActiveJob::TestCase
   include ChaoticJob::Helpers
 
   def test_workflow_completion
-    # Enqueue the job
-    OrderProcessingWorkflow.perform_later("order_123")
+    # Enqueue the job with a unique key and custom parameters
+    OrderProcessingWorkflow.perform_later(
+      "order-test-123",
+      order_id: "O-123",
+      customer_id: "C-456"
+    )
     
     # Perform all enqueued jobs
     perform_all_jobs
     
     # Assert workflow completed successfully
-    workflow = ChronoForge::Workflow.last
+    workflow = ChronoForge::Workflow.find_by(key: "order-test-123")
     assert workflow.completed?
     
     # Check workflow context
