@@ -25,8 +25,8 @@ module ChronoForge
   class Workflow < ActiveRecord::Base
     self.table_name = "chrono_forge_workflows"
 
-    has_many :execution_logs, -> { order(id: :asc) }
-    has_many :error_logs, -> { order(id: :asc) }
+    has_many :execution_logs, -> { order(id: :asc) }, dependent: :destroy
+    has_many :error_logs, -> { order(id: :asc) }, dependent: :destroy
 
     enum :state, %i[
       idle
