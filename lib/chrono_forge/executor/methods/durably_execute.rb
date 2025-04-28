@@ -35,7 +35,9 @@ module ChronoForge
               state: :completed,
               completed_at: Time.current
             )
-            result
+            
+            # return nil
+            nil
           rescue HaltExecutionFlow
             raise
           rescue => e

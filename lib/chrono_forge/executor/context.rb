@@ -21,7 +21,48 @@ module ChronoForge
       end
 
       def []=(key, value)
-        # Type and size validation
+        set_value(key, value)
+      end
+
+      def [](key)
+        get_value(key)
+      end
+
+      # Fetches a value from the context
+      # Returns the value if the key exists, otherwise returns the default value
+      def fetch(key, default = nil)
+        key?(key) ? get_value(key) : default
+      end
+
+      # Sets a value in the context
+      # Alias for the []= method
+      def set(key, value)
+        set_value(key, value)
+      end
+
+      # Sets a value in the context only if the key doesn't already exist
+      # Returns true if the value was set, false otherwise
+      def set_once(key, value)
+        return false if key?(key)
+
+        set_value(key, value)
+        true
+      end
+
+      def key?(key)
+        @context.key?(key.to_s)
+      end
+
+      def save!
+        return unless @dirty
+
+        @workflow.update_column(:context, @context)
+        @dirty = false
+      end
+
+      private
+
+      def set_value(key, value)
         validate_value!(value)
 
         @context[key.to_s] =
@@ -34,18 +75,9 @@ module ChronoForge
         @dirty = true
       end
 
-      def [](key)
+      def get_value(key)
         @context[key.to_s]
       end
-
-      def save!
-        return unless @dirty
-
-        @workflow.update_column(:context, @context)
-        @dirty = false
-      end
-
-      private
 
       def validate_value!(value)
         unless ALLOWED_TYPES.any? { |type| value.is_a?(type) }

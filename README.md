@@ -1,21 +1,26 @@
 # ChronoForge
 
-ChronoForge is a Ruby gem that provides a robust framework for building durable, distributed workflows in Ruby on Rails applications. It offers a reliable way to handle long-running processes, state management, and error recovery.
+![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+> A robust framework for building durable, distributed workflows in Ruby on Rails applications
+
+ChronoForge provides a powerful solution for handling long-running processes, managing state, and recovering from failures in your Rails applications. Built on top of ActiveJob, it ensures your critical business processes remain resilient and traceable.
+
+## 🌟 Features
 
 - **Durable Execution**: Automatically tracks and recovers from failures during workflow execution
-- **State Management**: Built-in workflow state tracking with support for custom contexts
-- **Concurrency Control**: Advanced locking mechanisms to prevent concurrent execution of the same workflow
-- **Error Handling**: Comprehensive error tracking and retry strategies
-- **Execution Logging**: Detailed logging of workflow execution steps and errors
+- **State Management**: Built-in workflow state tracking with persistent context storage
+- **Concurrency Control**: Advanced locking mechanisms to prevent parallel execution of the same workflow
+- **Error Handling**: Comprehensive error tracking with configurable retry strategies
+- **Execution Logging**: Detailed logging of workflow steps and errors for visibility
 - **Wait States**: Support for time-based waits and condition-based waiting
-- **Database-Backed**: All workflow state is persisted to the database for durability
-- **ActiveJob Integration**: Seamlessly works with any ActiveJob backend
+- **Database-Backed**: All workflow state is persisted to ensure durability
+- **ActiveJob Integration**: Compatible with all ActiveJob backends, though database-backed processors (like Solid Queue) provide the most reliable experience for long-running workflows
 
-## Installation
+## 📦 Installation
 
-Add this line to your application's Gemfile:
+Add to your application's Gemfile:
 
 ```ruby
 gem 'chrono_forge'
@@ -27,7 +32,7 @@ Then execute:
 $ bundle install
 ```
 
-Or install it directly:
+Or install directly:
 
 ```bash
 $ gem install chrono_forge
@@ -40,7 +45,7 @@ $ rails generate chrono_forge:install
 $ rails db:migrate
 ```
 
-## Usage
+## 📋 Usage
 
 ### Basic Workflow Example
 
@@ -52,7 +57,7 @@ class OrderProcessingWorkflow < ApplicationJob
 
   def perform
     # Context can be used to pass and store data between executions
-    context["order_id"] = SecureRandom.hex
+    context.set_once "order_id", SecureRandom.hex
 
     # Wait until payment is confirmed
     wait_until :payment_confirmed?
@@ -74,22 +79,22 @@ class OrderProcessingWorkflow < ApplicationJob
   end
 
   def process_order
-    context["processed_at"] = Time.current.iso8601
     OrderProcessor.process(context["order_id"])
+    context["processed_at"] = Time.current.iso8601
   end
 
   def complete_order
-    context["completed_at"] = Time.current.iso8601
     OrderCompletionService.complete(context["order_id"])
+    context["completed_at"] = Time.current.iso8601
   end
 end
 ```
 
-### Workflow Features
+### Core Workflow Features
 
-#### Durable Execution
+#### ⚡ Durable Execution
 
-The `durably_execute` method ensures operations are executed exactly once:
+The `durably_execute` method ensures operations are executed exactly once, even if the job fails and is retried:
 
 ```ruby
 # Execute a method
@@ -101,7 +106,7 @@ durably_execute -> (ctx) {
 }
 ```
 
-#### Wait States
+#### ⏱️ Wait States
 
 ChronoForge supports both time-based and condition-based waits:
 
@@ -115,9 +120,9 @@ wait_until :payment_processed,
   check_interval: 5.minutes
 ```
 
-#### Workflow Context
+#### 🔄 Workflow Context
 
-ChronoForge provides a persistent context that survives job restarts:
+ChronoForge provides a persistent context that survives job restarts. The context behaves like a Hash but with additional capabilities:
 
 ```ruby
 # Set context values
@@ -126,11 +131,25 @@ context[:status] = "processing"
 
 # Read context values
 user_name = context[:user_name]
+
+# Using the fetch method (returns default if key doesn't exist)
+status = context.fetch(:status, "pending")
+
+# Set a value with the set method (alias for []=)
+context.set(:total_amount, 99.99)
+
+# Set a value only if the key doesn't already exist
+context.set_once(:created_at, Time.current.iso8601)
+
+# Check if a key exists
+if context.key?(:user_id)
+  # Do something with the user ID
+end
 ```
 
-### Error Handling
+### 🛡️ Error Handling
 
-ChronoForge automatically tracks errors and provides retry capabilities:
+ChronoForge automatically tracks errors and provides configurable retry capabilities:
 
 ```ruby
 class MyWorkflow < ApplicationJob
@@ -141,19 +160,19 @@ class MyWorkflow < ApplicationJob
   def should_retry?(error, attempt_count)
     case error
     when NetworkError
-      attempt_count < 5
+      attempt_count < 5  # Retry network errors up to 5 times
     when ValidationError
       false  # Don't retry validation errors
     else
-      attempt_count < 3
+      attempt_count < 3  # Default retry policy
     end
   end
 end
 ```
 
-## Testing
+## 🧪 Testing
 
-ChronoForge is designed to be easily testable using [ChaoticJob](https://github.com/fractaledmind/chaotic_job), a testing framework that makes it simple to test complex job workflows. Here's how to set up your test environment:
+ChronoForge is designed to be easily testable using [ChaoticJob](https://github.com/fractaledmind/chaotic_job), a testing framework that makes it simple to test complex job workflows:
 
 1. Add ChaoticJob to your Gemfile's test group:
 
@@ -196,22 +215,24 @@ class WorkflowTest < ActiveJob::TestCase
 end
 ```
 
-ChaoticJob provides several helpful methods for testing workflows:
-
-- `perform_all_jobs`: Processes all enqueued jobs, including those enqueued during job execution
-
-For testing with specific job processing libraries like Sidekiq or Delayed Job, you can still use their respective testing modes, but ChaoticJob is recommended for testing ChronoForge workflows as it better handles the complexities of nested job scheduling and wait states.
-
-
-## Database Schema
+## 🗄️ Database Schema
 
 ChronoForge creates three main tables:
 
-1. `chrono_forge_workflows`: Stores workflow state and context
-2. `chrono_forge_execution_logs`: Tracks individual execution steps
-3. `chrono_forge_error_logs`: Records detailed error information
+1. **chrono_forge_workflows**: Stores workflow state and context
+2. **chrono_forge_execution_logs**: Tracks individual execution steps
+3. **chrono_forge_error_logs**: Records detailed error information
 
-## Development
+## 🔍 When to Use ChronoForge
+
+ChronoForge is ideal for:
+
+- **Long-running business processes** - Order processing, account registration flows
+- **Processes requiring durability** - Financial transactions, data migrations
+- **Multi-step workflows** - Onboarding flows, approval processes, multi-stage jobs
+- **State machines with time-based transitions** - Document approval, subscription lifecycle
+
+## 🚀 Development
 
 After checking out the repo, run:
 
@@ -227,7 +248,7 @@ The test suite uses SQLite by default and includes:
 - Integration tests with ActiveJob
 - Example workflow implementations
 
-## Contributing
+## 👥 Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/my-new-feature`)
@@ -237,6 +258,6 @@ The test suite uses SQLite by default and includes:
 
 Please include tests for any new features or bug fixes.
 
-## License
+## 📜 License
 
 This gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).

@@ -15,7 +15,7 @@ def export_files_to_json(directory, extensions, output_file, exceptions = [])
     next if exceptions.any? { |exception| path.include?(exception) }
 
     # Check if file extension matches any in our list
-    ext = File.extname(path).downcase[1..-1] # Remove the leading dot
+    ext = File.extname(path).downcase[1..] # Remove the leading dot
     next unless extensions.include?(ext)
 
     puts path
