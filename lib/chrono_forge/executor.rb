@@ -8,24 +8,32 @@ module ChronoForge
 
     class HaltExecutionFlow < ExecutionFlowControl; end
 
+    class NotExecutableError < Error; end
+
     include Methods
 
     def perform(key, attempt: 0, options: {}, **kwargs)
       # Prevent excessive retries
       if attempt >= self.class::RetryStrategy.max_attempts
-        Rails.logger.error { "Max attempts reached for job #{key}" }
+        Rails.logger.error { "ChronoForge:#{self.class} max attempts reached for job workflow(#{key})" }
         return
       end
 
       # Find or create job with comprehensive tracking
       setup_workflow(key, options, kwargs)
 
+      # Track if we acquired the lock
+      lock_acquired = false
+
       begin
-        # Skip if workflow cannot be executed
-        return unless workflow.executable?
+        # Raise error if workflow cannot be executed
+        unless workflow.executable?
+          raise NotExecutableError, "#{self.class}(#{key}) is not in an executable state"
+        end
 
         # Acquire lock with advanced concurrency protection
         self.class::LockStrategy.acquire_lock(job_id, workflow, max_duration: max_duration)
+        lock_acquired = true
 
         # Execute core job logic
         super(**workflow.kwargs.symbolize_keys)
@@ -33,20 +41,22 @@ module ChronoForge
         # Mark as complete
         complete_workflow!
       rescue ExecutionFailedError => e
-        Rails.logger.error { "Execution step failed for #{key}" }
+        Rails.logger.error { "ChronoForge:#{self.class} execution step failed for workflow(#{key})" }
         self.class::ExecutionTracker.track_error(workflow, e)
         workflow.stalled!
         nil
       rescue HaltExecutionFlow
         # Halt execution
-        Rails.logger.debug { "Execution halted for #{key}" }
+        Rails.logger.debug { "ChronoForge:#{self.class} execution halted for workflow(#{key})" }
         nil
       rescue ConcurrentExecutionError
         # Graceful handling of concurrent execution
-        Rails.logger.warn { "Concurrent execution detected for job #{key}" }
+        Rails.logger.warn { "ChronoForge:#{self.class} concurrent execution detected for job #{key}" }
         nil
+      rescue NotExecutableError
+        raise
       rescue => e
-        Rails.logger.error { "An error occurred during execution of #{key}" }
+        Rails.logger.error { "ChronoForge:#{self.class} an error occurred during execution of workflow(#{key})" }
         error_log = self.class::ExecutionTracker.track_error(workflow, e)
 
         # Retry if applicable
@@ -56,9 +66,11 @@ module ChronoForge
           fail_workflow! error_log
         end
       ensure
-        context.save!
-        # Always release the lock
-        self.class::LockStrategy.release_lock(job_id, workflow)
+        # Only release lock if we acquired it
+        if lock_acquired
+          context.save!
+          self.class::LockStrategy.release_lock(job_id, workflow)
+        end
       end
     end
 
