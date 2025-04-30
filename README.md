@@ -288,6 +288,100 @@ ChronoForge is ideal for:
 - **Multi-step workflows** - Onboarding flows, approval processes, multi-stage jobs
 - **State machines with time-based transitions** - Document approval, subscription lifecycle
 
+## 🧠 Advanced State Management
+
+ChronoForge workflows follow a sophisticated state machine model to ensure durability and fault tolerance. Understanding these states and transitions is essential for troubleshooting and recovery.
+
+### Workflow State Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> created: Workflow Created
+    created --> idle: Initial State
+    idle --> running: Job Started
+    running --> idle: Waiting
+    running --> completed: All Steps Completed
+    running --> failed: Max Retries Exhausted
+    running --> stalled: Unrecoverable Error
+    idle --> running: Resumed
+    stalled --> [*]: Requires Manual Intervention
+    failed --> [*]: Requires Manual Intervention
+    completed --> [*]: Workflow Succeeded
+```
+
+### State Descriptions
+
+#### Created
+- **Description**: Initial state when a workflow record is first created
+- **Behavior**: Transitions immediately to idle state
+- **Duration**: Momentary
+
+#### Idle
+- **Description**: The workflow is waiting to be processed or between processing steps
+- **Behavior**: Not locked, available to be picked up by job processor
+- **Duration**: Can be minutes to days, depending on wait conditions
+
+#### Running
+- **Description**: The workflow is actively being processed
+- **Identifiers**: Has locked_at and locked_by values set
+- **Behavior**: Protected against concurrent execution
+- **Duration**: Should be brief unless performing long operations
+
+#### Completed
+- **Description**: The workflow has successfully executed all steps
+- **Identifiers**: Has completed_at timestamp, state = "completed"
+- **Behavior**: Final state, no further processing
+- **Typical Exit Points**: All processing completed successfully
+
+#### Failed
+- **Description**: The workflow has failed after exhausting retry attempts
+- **Identifiers**: Has failure-related data in error_logs, state = "failed"
+- **Behavior**: No automatic recovery, requires manual intervention
+- **Typical Exit Points**: Max retries exhausted, explicit failure, non-retryable error
+
+#### Stalled
+- **Description**: The workflow encountered an unrecoverable error but wasn't explicitly failed
+- **Identifiers**: Not completed, not running, has errors in error_logs
+- **Behavior**: Requires manual investigation and intervention
+- **Typical Exit Points**: ExecutionFailedError, unexpected exceptions, system failures
+
+### Handling Different Workflow States
+
+#### Recovering Stalled/Failed Workflows
+
+```ruby
+workflow = ChronoForge::Workflow.find_by(key: "order-123")
+
+if workflow.stalled? || workflow.failed?
+  job_class = workflow.job_class.constantize
+  
+  # Retry immediately
+  job_class.retry_now(workflow.key)
+  
+  # Or retry asynchronously
+  job_class.retry_later(workflow.key)
+end
+```
+
+#### Monitoring Running Workflows
+
+Long-running workflows might indicate issues:
+
+```ruby
+# Find workflows running for too long
+long_running = ChronoForge::Workflow.where(state: :running)
+                                   .where('locked_at < ?', 30.minutes.ago)
+
+long_running.each do |workflow|
+  # Log potential issues for investigation
+  Rails.logger.warn "Workflow #{workflow.key} has been running for >30 minutes"
+  
+  # Optionally force unlock if you suspect deadlock
+  # CAUTION: Only do this if you're certain the job is stuck
+  # workflow.update!(locked_at: nil, locked_by: nil, state: :idle)
+end
+```
+
 ## 🚀 Development
 
 After checking out the repo, run:

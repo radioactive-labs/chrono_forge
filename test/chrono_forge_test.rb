@@ -108,8 +108,8 @@ class ChronoForgeTest < ActiveJob::TestCase
       "wait_until$payment_confirmed?",
       "wait$fraud_check_delay",
       "durably_execute$process_order",
-      "$workflow_failure$"
-    ], workflow.execution_logs.pluck(:step_name)
+    ], workflow.execution_logs.pluck(:step_name).take(3)
+    assert workflow.execution_logs.pluck(:step_name).last.starts_with?("$workflow_failure$")
 
     assert_equal 4, workflow.error_logs.size, "workflow should have failed after 4 runs. 1 + 3 retries."
     assert_equal ["Permanent Failure"], workflow.error_logs.pluck(:error_message).uniq
@@ -408,5 +408,141 @@ class ChronoForgeTest < ActiveJob::TestCase
     # Verify that workflow is now unlocked
     assert_nil workflow.locked_by, "workflow should be unlocked after execution"
     assert_nil workflow.locked_at, "workflow locked_at should be nil after execution"
+  end
+
+  def test_workflow_retry_after_failure
+    unique_key = "retry_after_failure_#{Time.now.to_i}"
+    ChronoForge::Workflow.where(key: unique_key).destroy_all
+
+    # Create a test class that will fail on first run but succeed on retry
+    test_class_name = "RetryWorkflow#{Time.now.to_i}"
+    Object.const_set(test_class_name, Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+
+      define_method(:perform) do
+        if !context.key?(:already_failed)
+          raise "Failed"
+        else
+          context[:completed_successfully] = true
+        end
+      end
+    end)
+
+    # Get the class and execute it - this should fail
+    test_class = Object.const_get(test_class_name)
+    test_class.perform_later(unique_key)
+    perform_all_jobs
+
+    # Get the workflow and verify it's in failed state
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+    assert workflow, "workflow should exist"
+    assert_equal "failed", workflow.state.to_s, "workflow should be in failed state"
+    refute workflow.context["completed_successfully"], "success marker should not be set"
+
+    # Now retry the workflow
+    workflow.context[:already_failed] = true
+    workflow.save!
+
+    # test_class.new.perform(unique_key, retry_workflow: true)
+
+    test_class.retry_later(unique_key)
+    perform_all_jobs
+
+    # Reload the workflow and check state
+    workflow.reload
+    assert_equal "completed", workflow.state.to_s, "workflow should be completed after retry"
+    assert_equal true, workflow.context["already_failed"], "failure flag should still be set"
+    assert_equal true, workflow.context["completed_successfully"], "success marker should be set"
+
+    # Check execution logs for retry event
+    retry_log = workflow.execution_logs.where("step_name LIKE ?", "$workflow_retry$%").first
+    assert retry_log, "should have a retry execution log"
+    assert_equal "completed", retry_log.state, "retry operation should be completed"
+  end
+
+  def test_workflow_retry_after_stalled
+    unique_key = "retry_after_stalled_#{Time.now.to_i}"
+    ChronoForge::Workflow.where(key: unique_key).destroy_all
+
+    # Create a test class that stalls on first run
+    test_class_name = "StalledRetryWorkflow#{Time.now.to_i}"
+    Object.const_set(test_class_name, Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+
+      define_method(:perform) do
+        # On first run, set a flag and stall
+        if !context.key?(:already_stalled)
+          # Stall the workflow
+          raise ChronoForge::Executor::ExecutionFailedError, "Stalling execution"
+        else
+          # On retry, succeed and set completion marker
+          context[:recovered_from_stall] = true
+        end
+      end
+    end)
+
+    # Get the class and execute it - this should stall
+    test_class = Object.const_get(test_class_name)
+    test_class.perform_later(unique_key)
+    perform_all_jobs
+
+    # Get the workflow and verify it's in stalled state
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+    assert workflow, "workflow should exist"
+    assert_equal "stalled", workflow.state.to_s, "workflow should be in stalled state"
+    refute workflow.context["recovered_from_stall"], "recovery marker should not be set"
+
+    # Modify context directly to simulate first step completion
+    workflow.context[:already_stalled] = true
+    workflow.save!
+
+    # Now retry the workflow
+    test_class.retry_now(unique_key)
+    perform_all_jobs
+
+    # Reload the workflow and check state
+    workflow.reload
+    assert_equal "completed", workflow.state.to_s, "workflow should be completed after retry"
+    assert_equal true, workflow.context["already_stalled"], "stall flag should be set"
+    assert_equal true, workflow.context["recovered_from_stall"], "recovery marker should be set"
+
+    # Check execution logs for retry event
+    retry_log = workflow.execution_logs.where("step_name LIKE ?", "$workflow_retry$%").first
+    assert retry_log, "should have a retry execution log"
+    assert_equal "completed", retry_log.state, "retry operation should be completed"
+  end
+
+  def test_workflow_retry_not_possible
+    unique_key = "retry_not_possible_#{Time.now.to_i}"
+    ChronoForge::Workflow.where(key: unique_key).destroy_all
+
+    # Create a test class for a normal workflow
+    test_class_name = "NonRetryableWorkflow#{Time.now.to_i}"
+    Object.const_set(test_class_name, Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+
+      define_method(:perform) do
+        context[:executed] = true
+      end
+    end)
+
+    # Get the class and execute it - this should complete normally
+    test_class = Object.const_get(test_class_name)
+    test_class.perform_later(unique_key)
+    perform_all_jobs
+
+    # Get the workflow and verify it's completed
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+    assert workflow, "workflow should exist"
+    assert_equal "completed", workflow.state.to_s, "workflow should be completed"
+
+    # Try to retry the completed workflow - this should raise an error
+    assert_raises(ChronoForge::Executor::WorkflowNotRetryableError) do
+      test_class.retry_now(unique_key)
+    end
+
+    # Check there's no retry log
+    retry_log = workflow.execution_logs.where("step_name LIKE ?", "$workflow_retry$%").first
+    assert_nil retry_log, "should not have a retry execution log for non-retryable workflow"
   end
 end

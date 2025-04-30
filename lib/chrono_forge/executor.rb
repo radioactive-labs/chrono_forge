@@ -10,9 +10,42 @@ module ChronoForge
 
     class NotExecutableError < Error; end
 
+    class WorkflowNotRetryableError < NotExecutableError; end
+
     include Methods
 
-    def perform(key, attempt: 0, options: {}, **kwargs)
+    # Add class methods
+    def self.prepended(base)
+      class << base
+        # Enforce expected signature for perform_now with key as first arg and keywords after
+        def perform_now(key, **kwargs)
+          if !key.is_a?(String)
+            raise ArgumentError, "Workflow key must be a string as the first argument"
+          end
+          super(key, **kwargs)
+        end
+        
+        # Enforce expected signature for perform_later with key as first arg and keywords after
+        def perform_later(key, **kwargs)
+          if !key.is_a?(String)
+            raise ArgumentError, "Workflow key must be a string as the first argument"
+          end
+          super(key, **kwargs)
+        end
+        
+        # Add retry_now class method that calls perform_now with retry_workflow: true
+        def retry_now(key, **kwargs)
+          perform_now(key, retry_workflow: true, **kwargs)
+        end
+        
+        # Add retry_later class method that calls perform_later with retry_workflow: true
+        def retry_later(key, **kwargs)
+          perform_later(key, retry_workflow: true, **kwargs)
+        end
+      end
+    end
+
+    def perform(key, attempt: 0, retry_workflow: false, options: {}, **kwargs)
       # Prevent excessive retries
       if attempt >= self.class::RetryStrategy.max_attempts
         Rails.logger.error { "ChronoForge:#{self.class} max attempts reached for job workflow(#{key})" }
@@ -21,6 +54,9 @@ module ChronoForge
 
       # Find or create job with comprehensive tracking
       setup_workflow(key, options, kwargs)
+
+      # Handle retry parameter - unlock and continue execution
+      retry_workflow! if retry_workflow
 
       # Track if we acquired the lock
       lock_acquired = false
@@ -32,7 +68,7 @@ module ChronoForge
         end
 
         # Acquire lock with advanced concurrency protection
-        self.class::LockStrategy.acquire_lock(job_id, workflow, max_duration: max_duration)
+        @workflow = self.class::LockStrategy.acquire_lock(job_id, workflow, max_duration: max_duration)
         lock_acquired = true
 
         # Execute core job logic
@@ -75,82 +111,6 @@ module ChronoForge
     end
 
     private
-
-    def complete_workflow!
-      # Create an execution log for workflow completion
-      execution_log = ExecutionLog.create_or_find_by!(
-        workflow: workflow,
-        step_name: "$workflow_completion$"
-      ) do |log|
-        log.started_at = Time.current
-      end
-
-      begin
-        execution_log.update!(
-          attempts: execution_log.attempts + 1,
-          last_executed_at: Time.current
-        )
-
-        workflow.completed_at = Time.current
-        workflow.completed!
-
-        # Mark execution log as completed
-        execution_log.update!(
-          state: :completed,
-          completed_at: Time.current
-        )
-
-        # Return the execution log for tracking
-        execution_log
-      rescue => e
-        # Log any completion errors
-        execution_log.update!(
-          state: :failed,
-          error_message: e.message,
-          error_class: e.class.name
-        )
-        raise
-      end
-    end
-
-    def fail_workflow!(error_log)
-      # Create an execution log for workflow failure
-      execution_log = ExecutionLog.create_or_find_by!(
-        workflow: workflow,
-        step_name: "$workflow_failure$"
-      ) do |log|
-        log.started_at = Time.current
-        log.metadata = {
-          error_log_id: error_log.id
-        }
-      end
-
-      begin
-        execution_log.update!(
-          attempts: execution_log.attempts + 1,
-          last_executed_at: Time.current
-        )
-
-        workflow.failed!
-
-        # Mark execution log as completed
-        execution_log.update!(
-          state: :completed,
-          completed_at: Time.current
-        )
-
-        # Return the execution log for tracking
-        execution_log
-      rescue => e
-        # Log any completion errors
-        execution_log.update!(
-          state: :failed,
-          error_message: e.message,
-          error_class: e.class.name
-        )
-        raise
-      end
-    end
 
     def setup_workflow(key, options, kwargs)
       @workflow = find_workflow(key, options, kwargs)
