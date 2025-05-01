@@ -22,7 +22,7 @@
 #  index_chrono_forge_workflows_on_key  (key) UNIQUE
 #
 module ChronoForge
-  class Workflow < ActiveRecord::Base
+  class Workflow < ApplicationRecord()
     self.table_name = "chrono_forge_workflows"
 
     has_many :execution_logs, -> { order(id: :asc) }, dependent: :destroy

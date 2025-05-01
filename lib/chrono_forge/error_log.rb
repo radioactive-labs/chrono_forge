@@ -23,7 +23,7 @@
 #
 
 module ChronoForge
-  class ErrorLog < ActiveRecord::Base
+  class ErrorLog < ApplicationRecord()
     self.table_name = "chrono_forge_error_logs"
 
     belongs_to :workflow

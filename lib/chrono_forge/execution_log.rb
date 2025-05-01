@@ -28,7 +28,7 @@
 #  workflow_id  (workflow_id => chrono_forge_workflows.id)
 #
 module ChronoForge
-  class ExecutionLog < ActiveRecord::Base
+  class ExecutionLog < ApplicationRecord()
     self.table_name = "chrono_forge_execution_logs"
 
     belongs_to :workflow

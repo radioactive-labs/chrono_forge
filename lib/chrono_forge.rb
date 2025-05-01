@@ -11,4 +11,6 @@ module ChronoForge
   end
 
   class Error < StandardError; end
+  
+  def self.ApplicationRecord() = defined?(::ApplicationRecord) ? ::ApplicationRecord : ActiveRecord::Base
 end
