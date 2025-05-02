@@ -107,7 +107,7 @@ class ChronoForgeTest < ActiveJob::TestCase
     assert_equal [
       "wait_until$payment_confirmed?",
       "wait$fraud_check_delay",
-      "durably_execute$process_order",
+      "durably_execute$process_order"
     ], workflow.execution_logs.pluck(:step_name).take(3)
     assert workflow.execution_logs.pluck(:step_name).last.starts_with?("$workflow_failure$")
 

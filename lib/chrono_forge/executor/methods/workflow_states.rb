@@ -3,7 +3,7 @@ module ChronoForge
     module Methods
       module WorkflowStates
         private
-        
+
         def complete_workflow!
           # Create an execution log for workflow completion
           execution_log = ExecutionLog.create_or_find_by!(

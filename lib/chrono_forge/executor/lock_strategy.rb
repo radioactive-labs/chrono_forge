@@ -12,7 +12,9 @@ module ChronoForge
 
           # Check for active execution
           if workflow.locked_at && workflow.locked_at > max_duration.ago
-            raise ConcurrentExecutionError, "Job currently in progress"
+            raise ConcurrentExecutionError,
+              "ChronoForge:#{self.class}(#{key}) job(#{job_id}) failed to acquire lock. " \
+              "Currently being executed by job(#{workflow.locked_by})"
           end
 
           # Atomic update of lock status
@@ -22,7 +24,7 @@ module ChronoForge
             state: :running
           )
 
-          Rails.logger.debug { "ChronoForge:#{self.class} job(#{job_id}) acquired lock for workflow(#{workflow.key})" }
+          Rails.logger.debug { "ChronoForge:#{self.class}(#{workflow.key}) job(#{job_id}) acquired lock." }
 
           workflow
         end
@@ -32,13 +34,12 @@ module ChronoForge
         workflow = workflow.reload
         if !force && workflow.locked_by != job_id
           raise LongRunningConcurrentExecutionError,
-            "ChronoForge:#{self.class} job(#{job_id}) executed longer than specified max_duration, " \
-            "allowed another instance job(#{workflow.locked_by}) to acquire the lock."
+            "ChronoForge:#{self.class}(#{workflow.key}) job(#{job_id}) executed longer than specified max_duration, " \
+            "allowed job(#{workflow.locked_by}) to acquire the lock."
         end
 
         columns = {locked_at: nil, locked_by: nil}
         columns[:state] = :idle if force || workflow.running?
-
 
         workflow.update_columns(columns)
       end
