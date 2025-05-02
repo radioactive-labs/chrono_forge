@@ -52,8 +52,8 @@ module ChronoForge
         return
       end
 
-      # Find or create job with comprehensive tracking
-      setup_workflow(key, options, kwargs)
+      # Find or create workflow instance
+      setup_workflow!(key, options, kwargs)
 
       # Handle retry parameter - unlock and continue execution
       retry_workflow! if retry_workflow
@@ -62,14 +62,12 @@ module ChronoForge
       lock_acquired = false
 
       begin
-        # Raise error if workflow cannot be executed
-        unless workflow.executable?
-          raise NotExecutableError, "ChronoForge:#{self.class}(#{key}) is not in an executable state"
-        end
-
         # Acquire lock with advanced concurrency protection
         @workflow = self.class::LockStrategy.acquire_lock(job_id, workflow, max_duration: max_duration)
         lock_acquired = true
+
+        # Setup context
+        setup_context!
 
         # Execute core job logic
         super(**workflow.kwargs.symbolize_keys)
@@ -102,8 +100,7 @@ module ChronoForge
           fail_workflow! error_log
         end
       ensure
-        # Only release lock if we acquired it
-        if lock_acquired
+        if lock_acquired # Only release lock if we acquired it
           context.save!
           self.class::LockStrategy.release_lock(job_id, workflow)
         end
@@ -112,17 +109,16 @@ module ChronoForge
 
     private
 
-    def setup_workflow(key, options, kwargs)
-      @workflow = find_workflow(key, options, kwargs)
-      @context = Context.new(@workflow)
-    end
-
-    def find_workflow(key, options, kwargs)
-      Workflow.create_or_find_by!(job_class: self.class.to_s, key: key) do |workflow|
+    def setup_workflow!(key, options, kwargs)
+      @workflow = Workflow.create_or_find_by!(job_class: self.class.to_s, key: key) do |workflow|
         workflow.options = options
         workflow.kwargs = kwargs
         workflow.started_at = Time.current
       end
+    end
+
+    def setup_context!
+      @context = Context.new(workflow)
     end
 
     def should_retry?(error, attempt_count)
