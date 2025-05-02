@@ -1,6 +1,6 @@
 # ChronoForge
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > A robust framework for building durable, distributed workflows in Ruby on Rails applications
