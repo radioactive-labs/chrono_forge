@@ -1,7 +1,7 @@
 # ChronoForge
 
-![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)
-[![Ruby](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg)](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml)
+[![Gem Version](https://badge.fury.io/rb/chrono_forge.svg)](https://badge.fury.io/rb/chrono_forge)
+[![CI](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg)](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 
