@@ -38,7 +38,7 @@ class ChronoForgeTest < ActiveJob::TestCase
       "durably_execute$process_order",
       "durably_execute$complete_order",
       "$workflow_completion$"
-    ], workflow.execution_logs.pluck(:step_name)
+    ], workflow.execution_logs.order(:id).pluck(:step_name)
 
     assert_equal 0, workflow.error_logs.size, "no errors should have occurred"
   end
@@ -73,7 +73,7 @@ class ChronoForgeTest < ActiveJob::TestCase
       "durably_execute$process_order",
       "durably_execute$complete_order",
       "$workflow_completion$"
-    ], workflow.execution_logs.pluck(:step_name)
+    ], workflow.execution_logs.order(:id).pluck(:step_name)
 
     assert_equal 1, workflow.error_logs.size, "a single glitch should have occurred"
     assert_equal ["ChaoticJob::RetryableError"], workflow.error_logs.pluck(:error_class).uniq
@@ -108,8 +108,8 @@ class ChronoForgeTest < ActiveJob::TestCase
       "wait_until$payment_confirmed?",
       "wait$fraud_check_delay",
       "durably_execute$process_order"
-    ], workflow.execution_logs.pluck(:step_name).take(3)
-    assert workflow.execution_logs.pluck(:step_name).last.starts_with?("$workflow_failure$")
+    ], workflow.execution_logs.order(:id).pluck(:step_name).take(3)
+    assert workflow.execution_logs.order(:id).pluck(:step_name).last.starts_with?("$workflow_failure$")
 
     assert_equal 4, workflow.error_logs.size, "workflow should have failed after 4 runs. 1 + 3 retries."
     assert_equal ["Permanent Failure"], workflow.error_logs.pluck(:error_message).uniq
