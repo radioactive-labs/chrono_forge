@@ -25,8 +25,8 @@ module ChronoForge
   class Workflow < ApplicationRecord()
     self.table_name = "chrono_forge_workflows"
 
-    has_many :execution_logs, -> { order(id: :asc) }, dependent: :destroy
-    has_many :error_logs, -> { order(id: :asc) }, dependent: :destroy
+    has_many :execution_logs, dependent: :destroy
+    has_many :error_logs, dependent: :destroy
 
     enum :state, %i[
       idle
