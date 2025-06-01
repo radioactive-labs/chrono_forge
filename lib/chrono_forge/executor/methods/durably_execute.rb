@@ -2,9 +2,9 @@ module ChronoForge
   module Executor
     module Methods
       module DurablyExecute
-        def durably_execute(method, **options)
-          # Create execution log
-          step_name = "durably_execute$#{method}"
+        def durably_execute(method, max_attempts: 3, name: nil)
+          step_name = "durably_execute$#{name || method}"
+          # Find or create execution log
           execution_log = ExecutionLog.create_or_find_by!(
             workflow: @workflow,
             step_name: step_name
@@ -24,11 +24,7 @@ module ChronoForge
             )
 
             # Execute the method
-            if method.is_a?(Symbol)
-              send(method)
-            else
-              method.call(@context)
-            end
+            send(method)
 
             # Complete the execution
             execution_log.update!(
@@ -46,9 +42,9 @@ module ChronoForge
             self.class::ExecutionTracker.track_error(workflow, e)
 
             # Optional retry logic
-            if execution_log.attempts < (options[:max_attempts] || 3)
+            if execution_log.attempts < max_attempts
               # Reschedule with exponential backoff
-              backoff = (2**[execution_log.attempts || 1, 5].min).seconds
+              backoff = (2**[execution_log.attempts, 5].min).seconds
 
               self.class
                 .set(wait: backoff)

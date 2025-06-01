@@ -172,6 +172,98 @@ wait_until :payment_processed,
   check_interval: 5.minutes
 ```
 
+#### 🔄 Periodic Tasks
+
+The `durably_repeat` method enables robust periodic task execution within workflows. Tasks are scheduled at regular intervals until a specified condition is met, with automatic catch-up for missed executions and configurable error handling.
+
+```ruby
+class NotificationWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(user_id:)
+    @user_id = user_id
+    
+    # Send reminders every 3 days until user completes onboarding
+    durably_repeat :send_reminder_email, 
+      every: 3.days, 
+      till: :user_onboarded?
+    
+    # Critical payment processing every hour - fail workflow if it fails
+    durably_repeat :process_pending_payments,
+      every: 1.hour,
+      till: :all_payments_processed?,
+      on_error: :fail_workflow
+  end
+
+  private
+
+  def send_reminder_email(scheduled_time = nil)
+    # Optional parameter receives the scheduled execution time
+    if scheduled_time
+      lateness = Time.current - scheduled_time
+      Rails.logger.info "Reminder scheduled for #{scheduled_time}, running #{lateness.to_i}s late"
+    end
+    
+    UserMailer.onboarding_reminder(@user_id).deliver_now
+  end
+
+  def user_onboarded?
+    User.find(@user_id).onboarded?
+  end
+
+  def process_pending_payments
+    PaymentProcessor.process_pending_for_user(@user_id)
+  end
+
+  def all_payments_processed?
+    Payment.where(user_id: @user_id, status: :pending).empty?
+  end
+end
+```
+
+**Key Features:**
+
+- **Idempotent Execution**: Each repetition gets a unique execution log, preventing duplicates during replays
+- **Automatic Catch-up**: Missed executions due to downtime are automatically skipped using timeout-based fast-forwarding
+- **Flexible Timing**: Support for custom start times and precise interval scheduling
+- **Error Resilience**: Individual execution failures don't break the periodic schedule
+- **Configurable Error Handling**: Choose between continuing despite failures or failing the entire workflow
+
+**Advanced Options:**
+
+```ruby
+durably_repeat :generate_daily_report,
+  every: 1.day,                          # Execution interval
+  till: :reports_complete?,              # Stop condition
+  start_at: Date.tomorrow.beginning_of_day, # Custom start time (optional)
+  max_attempts: 5,                       # Retries per execution (default: 3)
+  timeout: 2.hours,                      # Catch-up timeout (default: 1.hour)
+  on_error: :fail_workflow,              # Error handling (:continue or :fail_workflow)
+  name: "daily_reports"                  # Custom task name (optional)
+```
+
+**Method Parameters:**
+
+Your periodic methods can optionally receive the scheduled execution time as their first argument:
+
+```ruby
+# Without scheduled time parameter
+def cleanup_files
+  FileCleanupService.perform
+end
+
+# With scheduled time parameter
+def cleanup_files(scheduled_time)
+  # Use scheduled time for business logic
+  cleanup_date = scheduled_time.to_date
+  FileCleanupService.perform(date: cleanup_date)
+  
+  # Log timing information
+  delay = Time.current - scheduled_time
+  Rails.logger.info "Cleanup was #{delay.to_i} seconds late"
+end
+```
+
 #### 🔄 Workflow Context
 
 ChronoForge provides a persistent context that survives job restarts. The context behaves like a Hash but with additional capabilities:

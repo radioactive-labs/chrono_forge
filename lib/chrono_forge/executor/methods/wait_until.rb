@@ -4,13 +4,9 @@ module ChronoForge
 
     module Methods
       module WaitUntil
-        def wait_until(condition, **options)
-          # Default timeout and check interval
-          timeout = options[:timeout] || 1.hour
-          check_interval = options[:check_interval] || 15.minutes
-
-          # Find or create execution log
+        def wait_until(condition, timeout: 1.hour, check_interval: 15.minutes, retry_on: [])
           step_name = "wait_until$#{condition}"
+          # Find or create execution log
           execution_log = ExecutionLog.create_or_find_by!(
             workflow: @workflow,
             step_name: step_name
@@ -18,8 +14,7 @@ module ChronoForge
             log.started_at = Time.current
             log.metadata = {
               timeout_at: timeout.from_now,
-              check_interval: check_interval,
-              condition: condition.to_s
+              check_interval: check_interval
             }
           end
 
@@ -35,13 +30,7 @@ module ChronoForge
               last_executed_at: Time.current
             )
 
-            condition_met = if condition.is_a?(Proc)
-              condition.call(@context)
-            elsif condition.is_a?(Symbol)
-              send(condition)
-            else
-              raise ArgumentError, "Unsupported condition type"
-            end
+            condition_met = send(condition)
           rescue HaltExecutionFlow
             raise
           rescue => e
@@ -50,9 +39,9 @@ module ChronoForge
             self.class::ExecutionTracker.track_error(workflow, e)
 
             # Optional retry logic
-            if (options[:retry_on] || []).include?(e.class)
+            if retry_on.include?(e.class)
               # Reschedule with exponential backoff
-              backoff = (2**[execution_log.attempts || 1, 5].min).seconds
+              backoff = (2**[execution_log.attempts, 5].min).seconds
 
               self.class
                 .set(wait: backoff)
@@ -77,6 +66,8 @@ module ChronoForge
             execution_log.update!(
               state: :completed,
               completed_at: Time.current,
+              error_message: "Execution timed out",
+              error_class: "TimeoutError",
               metadata: execution_log.metadata.merge("result" => true)
             )
             return true
@@ -87,7 +78,7 @@ module ChronoForge
           if Time.current > metadata["timeout_at"]
             execution_log.update!(
               state: :failed,
-              metadata: metadata.merge("result" => nil)
+              metadata: metadata.merge("result" => :timed_out)
             )
             Rails.logger.warn { "Timeout reached for condition '#{condition}'." }
             raise WaitConditionNotMet, "Condition '#{condition}' not met within timeout period"

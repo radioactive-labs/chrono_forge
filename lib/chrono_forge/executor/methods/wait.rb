@@ -2,11 +2,12 @@ module ChronoForge
   module Executor
     module Methods
       module Wait
-        def wait(duration, name, **options)
-          # Create execution log
+        def wait(duration, name)
+          step_name = "wait$#{name}"
+          # Find or create execution log
           execution_log = ExecutionLog.create_or_find_by!(
             workflow: @workflow,
-            step_name: "wait$#{name}"
+            step_name: step_name
           ) do |log|
             log.started_at = Time.current
             log.metadata = {
