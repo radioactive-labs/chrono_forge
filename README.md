@@ -99,7 +99,7 @@ class OrderProcessingWorkflow < ApplicationJob
     durably_execute :process_order
 
     # Final steps
-    complete_order
+    durably_execute :complete_order
   end
 
   private
@@ -207,13 +207,13 @@ wait 1.day, "daily_batch_interval"
 
 # Complex workflow with multiple waits
 def user_onboarding_flow
-  send_welcome_email
+  durably_execute :send_welcome_email
   wait 1.hour, "welcome_delay"
   
-  send_tutorial_email
+  durably_execute :send_tutorial_email
   wait 2.days, "tutorial_followup"
   
-  send_feedback_request
+  durably_execute :send_feedback_request
 end
 ```
 
@@ -237,8 +237,6 @@ wait_until :database_migration_complete?,
 def third_party_service_ready?
   response = HTTParty.get("https://api.example.com/health")
   response.code == 200 && response.body.include?("healthy")
-rescue Net::TimeoutError, Net::HTTPClientException
-  false # Will be retried at next check interval
 end
 
 wait_until :third_party_service_ready?,

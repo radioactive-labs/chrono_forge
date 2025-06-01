@@ -37,8 +37,6 @@ module ChronoForge
         #   def third_party_service_ready?
         #     response = HTTParty.get("https://api.example.com/health")
         #     response.code == 200 && response.body.include?("healthy")
-        #   rescue Net::TimeoutError
-        #     false # Will be retried at next check interval
         #   end
         #
         #   wait_until :third_party_service_ready?,
