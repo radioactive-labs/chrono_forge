@@ -194,21 +194,12 @@ end
 
 #### ⏱️ Wait States
 
-ChronoForge supports both time-based and condition-based waits:
+ChronoForge supports three types of wait states, each optimized for different use cases:
 
-```ruby
-# Wait for a specific duration
-wait 1.hour, :cooling_period
+**1. Time-based Waits (`wait`)**
 
-# Wait until a condition is met
-wait_until :payment_processed, 
-  timeout: 1.hour,
-  check_interval: 5.minutes
-```
+For simple delays and scheduled pauses:
 
-#### ⏱️ Advanced Wait States
-
-**Time-based Waits:**
 ```ruby
 # Simple delays
 wait 30.minutes, "cooling_period"
@@ -226,7 +217,10 @@ def user_onboarding_flow
 end
 ```
 
-**Condition-based Waits:**
+**2. Automated Condition Waits (`wait_until`)**
+
+For conditions that can be automatically polled at regular intervals:
+
 ```ruby
 # Wait for external API
 wait_until :external_api_ready?, 
@@ -253,11 +247,70 @@ wait_until :third_party_service_ready?,
   retry_on: [Net::TimeoutError, Net::HTTPClientException]
 ```
 
-**Key Features:**
-- **Persistent**: Wait states survive workflow restarts and system interruptions
-- **Resumable**: Workflows automatically resume when wait conditions are met
-- **Configurable**: Customize timeouts, intervals, and error handling
-- **Traceable**: All wait operations are logged for monitoring and debugging
+**3. Event-driven Waits (`continue_if`)**
+
+For conditions that depend on external events like webhooks, requiring manual workflow continuation:
+
+```ruby
+# Basic usage - wait for webhook-driven state change
+continue_if :payment_confirmed?
+
+# With custom name for better tracking
+continue_if :payment_confirmed?, name: "stripe_webhook"
+
+# Wait for manual approval
+continue_if :document_approved?
+
+# Wait for external file processing
+continue_if :processing_complete?
+
+# Multiple waits with same condition but different contexts
+continue_if :external_system_ready?, name: "payment_gateway"
+# ... other steps ...
+continue_if :external_system_ready?, name: "inventory_system"
+
+# Complete workflow example
+class PaymentWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(order_id:)
+    @order_id = order_id
+    
+    # Initialize payment
+    durably_execute :create_payment_request
+    
+    # Wait for external payment confirmation (webhook-driven)
+    continue_if :payment_confirmed?, name: "stripe_confirmation"
+    
+    # Complete order after payment
+    durably_execute :fulfill_order
+  end
+
+  private
+
+  def payment_confirmed?
+    PaymentService.confirmed?(@order_id)
+  end
+end
+
+# Later, when webhook arrives:
+PaymentService.mark_confirmed(order_id)
+PaymentWorkflow.perform_later("order-#{order_id}", order_id: order_id)
+```
+
+**When to Use Each Wait Type:**
+
+| Wait Type | Use Case | Polling | Resource Usage | Response Time |
+|-----------|----------|---------|----------------|---------------|
+| `wait` | Fixed delays, rate limiting | None | Minimal | Exact timing |
+| `wait_until` | API readiness, data processing | Automatic | Medium | Check interval |
+| `continue_if` | Webhooks, user actions, file uploads | Manual only | Minimal | Immediate |
+
+**Key Differences:**
+
+- **`wait`**: Time-based, no condition checking, resumes automatically
+- **`wait_until`**: Condition-based with automatic polling, resumes when condition becomes true or timeout
+- **`continue_if`**: Condition-based without polling, requires manual workflow retry when condition might have changed
 
 #### 🔄 Periodic Tasks
 
@@ -602,6 +655,7 @@ This gem is available as open source under the terms of the [MIT License](https:
 | `durably_execute` | Execute method with retry logic | `method`, `max_attempts: 3`, `name: nil` |
 | `wait` | Time-based pause | `duration`, `name` |
 | `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_on: []` |
+| `continue_if` | Manual continuation wait | `condition`, `name: nil` |
 | `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `max_attempts: 3`, `timeout: 1.hour`, `on_error: :continue` |
 
 ### Context Methods
