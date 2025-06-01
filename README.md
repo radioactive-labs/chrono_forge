@@ -146,17 +146,51 @@ OrderProcessingWorkflow.perform_later(
 
 #### ⚡ Durable Execution
 
-The `durably_execute` method ensures operations are executed exactly once, even if the job fails and is retried:
+The `durably_execute` method ensures operations are executed exactly once with automatic retry logic and fault tolerance:
 
 ```ruby
-# Execute a method
-durably_execute(:process_payment, max_attempts: 3)
+# Basic execution
+durably_execute :send_welcome_email
 
-# Or with a block
-durably_execute -> (ctx) {
-  Payment.process(ctx[:payment_id])
-}
+# With custom retry attempts
+durably_execute :critical_payment_processing, max_attempts: 5
+
+# With custom name for tracking multiple calls to same method
+durably_execute :upload_file, name: "profile_image_upload"
+
+# Complex example with error-prone operation
+class FileProcessingWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(file_id:)
+    @file_id = file_id
+    
+    # This might fail due to network issues, rate limits, etc.
+    durably_execute :upload_to_s3, max_attempts: 5
+    
+    # Process file after successful upload
+    durably_execute :generate_thumbnails, max_attempts: 3
+  end
+
+  private
+
+  def upload_to_s3
+    file = File.find(@file_id)
+    S3Client.upload(file.path, bucket: 'my-bucket')
+    Rails.logger.info "Successfully uploaded file #{@file_id} to S3"
+  end
+
+  def generate_thumbnails
+    ThumbnailService.generate(@file_id)
+  end
+end
 ```
+
+**Key Features:**
+- **Idempotent**: Same operation won't be executed twice during replays
+- **Automatic Retries**: Failed executions retry with exponential backoff (2^attempt seconds, capped at 32s)
+- **Error Tracking**: All failures are logged with detailed error information
+- **Configurable**: Customize retry attempts and step naming
 
 #### ⏱️ Wait States
 
@@ -171,6 +205,59 @@ wait_until :payment_processed,
   timeout: 1.hour,
   check_interval: 5.minutes
 ```
+
+#### ⏱️ Advanced Wait States
+
+**Time-based Waits:**
+```ruby
+# Simple delays
+wait 30.minutes, "cooling_period"
+wait 1.day, "daily_batch_interval"
+
+# Complex workflow with multiple waits
+def user_onboarding_flow
+  send_welcome_email
+  wait 1.hour, "welcome_delay"
+  
+  send_tutorial_email
+  wait 2.days, "tutorial_followup"
+  
+  send_feedback_request
+end
+```
+
+**Condition-based Waits:**
+```ruby
+# Wait for external API
+wait_until :external_api_ready?, 
+  timeout: 30.minutes, 
+  check_interval: 1.minute
+
+# Wait with retry on specific errors
+wait_until :database_migration_complete?,
+  timeout: 2.hours,
+  check_interval: 30.seconds,
+  retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError]
+
+# Complex condition example
+def third_party_service_ready?
+  response = HTTParty.get("https://api.example.com/health")
+  response.code == 200 && response.body.include?("healthy")
+rescue Net::TimeoutError, Net::HTTPClientException
+  false # Will be retried at next check interval
+end
+
+wait_until :third_party_service_ready?,
+  timeout: 1.hour,
+  check_interval: 2.minutes,
+  retry_on: [Net::TimeoutError, Net::HTTPClientException]
+```
+
+**Key Features:**
+- **Persistent**: Wait states survive workflow restarts and system interruptions
+- **Resumable**: Workflows automatically resume when wait conditions are met
+- **Configurable**: Customize timeouts, intervals, and error handling
+- **Traceable**: All wait operations are logged for monitoring and debugging
 
 #### 🔄 Periodic Tasks
 
@@ -505,3 +592,26 @@ Please include tests for any new features or bug fixes.
 ## 📜 License
 
 This gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+
+## 📚 API Reference
+
+### Core Workflow Methods
+
+| Method | Purpose | Key Parameters |
+|--------|---------|----------------|
+| `durably_execute` | Execute method with retry logic | `method`, `max_attempts: 3`, `name: nil` |
+| `wait` | Time-based pause | `duration`, `name` |
+| `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_on: []` |
+| `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `max_attempts: 3`, `timeout: 1.hour`, `on_error: :continue` |
+
+### Context Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `context[:key] = value` | Set context value | `context[:user_id] = 123` |
+| `context[:key]` | Get context value | `user_id = context[:user_id]` |
+| `context.set(key, value)` | Set context value (alias) | `context.set(:status, "active")` |
+| `context.set_once(key, value)` | Set only if key doesn't exist | `context.set_once(:created_at, Time.current)` |
+| `context.fetch(key, default)` | Get with default value | `context.fetch(:count, 0)` |
+| `context.key?(key)` | Check if key exists | `context.key?(:user_id)` |
+
