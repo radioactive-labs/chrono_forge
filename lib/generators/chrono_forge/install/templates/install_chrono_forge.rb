@@ -30,7 +30,7 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
     create_table :chrono_forge_execution_logs, id: primary_key_type do |t|
       t.references :workflow, null: false,
         foreign_key: {to_table: :chrono_forge_workflows},
-        type: reference_type
+        type: primary_key_type
 
       t.string :step_name, null: false
       t.integer :attempts, null: false, default: 0
@@ -55,7 +55,7 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
     create_table :chrono_forge_error_logs, id: primary_key_type do |t|
       t.references :workflow, null: false,
         foreign_key: {to_table: :chrono_forge_workflows},
-        type: reference_type
+        type: primary_key_type
 
       t.string :error_class
       t.text :error_message
@@ -96,9 +96,5 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
 
     # Default to traditional integer keys
     :bigint
-  end
-
-  def reference_type
-    (primary_key_type == :uuid) ? :uuid : nil
   end
 end
