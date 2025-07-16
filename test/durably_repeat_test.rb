@@ -342,6 +342,91 @@ class DurablyRepeatTest < ActiveJob::TestCase
     assert_operator workflow.context["execution_count"], :<=, 5, "should not execute too many times"
   end
 
+  def test_durably_repeat_coordination_log_updated_on_timeout
+    unique_key = "timeout_coord_#{Time.now.to_i}_#{rand(1000)}"
+
+    TimeoutCoordinationJob.perform_later(unique_key)
+
+    # Execute setup
+    perform_all_jobs_before(1.second)
+
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+
+    # Get coordination log
+    coordination_log = workflow.execution_logs.find { |log| log.step_name == "durably_repeat$timeout_coord_task" }
+    assert coordination_log, "should have coordination log"
+
+    # Store initial state
+    initial_last_executed_at = coordination_log.last_executed_at
+    initial_metadata = coordination_log.metadata.dup
+
+    # Execute timeout attempts
+    perform_all_jobs_before(3.seconds)
+
+    workflow.reload
+    coordination_log.reload
+
+    # Find timeout logs
+    timeout_logs = workflow.execution_logs.select { |log|
+      log.failed? && log.error_message == "Execution timed out"
+    }
+    assert_operator timeout_logs.size, :>, 0, "should have timeout failures"
+
+    # Verify coordination log was updated despite timeout
+    assert_not_equal initial_last_executed_at, coordination_log.last_executed_at,
+      "coordination log last_executed_at should be updated even on timeout"
+
+    assert coordination_log.metadata["last_execution_at"],
+      "coordination log should have last_execution_at in metadata"
+
+    assert_not_equal initial_metadata["last_execution_at"], coordination_log.metadata["last_execution_at"],
+      "coordination log last_execution_at should be updated after timeout"
+  end
+
+  def test_durably_repeat_coordination_log_updated_on_success
+    unique_key = "success_coord_#{Time.now.to_i}_#{rand(1000)}"
+
+    SuccessCoordinationJob.perform_later(unique_key)
+
+    # Execute setup
+    perform_all_jobs_before(1.second)
+
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+
+    # Get coordination log
+    coordination_log = workflow.execution_logs.find { |log| log.step_name == "durably_repeat$success_coord_task" }
+    assert coordination_log, "should have coordination log"
+
+    # Store initial state
+    initial_last_executed_at = coordination_log.last_executed_at
+    initial_metadata = coordination_log.metadata.dup
+
+    # Execute successful execution
+    perform_all_jobs_before(3.seconds)
+
+    workflow.reload
+    coordination_log.reload
+
+    # Verify successful execution
+    assert_operator workflow.context["execution_count"], :>=, 1, "should have executed successfully"
+
+    # Find successful repetition logs
+    success_logs = workflow.execution_logs.select { |log|
+      log.step_name.include?("durably_repeat$success_coord_task$") && log.completed?
+    }
+    assert_operator success_logs.size, :>, 0, "should have successful executions"
+
+    # Verify coordination log was updated after successful execution
+    assert_not_equal initial_last_executed_at, coordination_log.last_executed_at,
+      "coordination log last_executed_at should be updated on success"
+
+    assert coordination_log.metadata["last_execution_at"],
+      "coordination log should have last_execution_at in metadata"
+
+    assert_not_equal initial_metadata["last_execution_at"], coordination_log.metadata["last_execution_at"],
+      "coordination log last_execution_at should be updated after success"
+  end
+
   private
 
   def perform_jobs_until_completion(workflow, max_cycles: 10)
@@ -645,5 +730,44 @@ class DurationTestJob < WorkflowJob
 
   def done?
     context.fetch(:execution_count, 0) >= 5
+  end
+end
+
+class TimeoutCoordinationJob < WorkflowJob
+  prepend ChronoForge::Executor
+
+  def perform
+    context.set_once(:attempts, 0)
+    # Use negative timeout to force immediate timeout
+    durably_repeat :timeout_coord_task, every: 1.second, till: :done?, timeout: -1.second
+  end
+
+  private
+
+  def timeout_coord_task
+    context[:attempts] = context.fetch(:attempts, 0) + 1
+  end
+
+  def done?
+    context.fetch(:attempts, 0) >= 3
+  end
+end
+
+class SuccessCoordinationJob < WorkflowJob
+  prepend ChronoForge::Executor
+
+  def perform
+    context.set_once(:execution_count, 0)
+    durably_repeat :success_coord_task, every: 1.second, till: :done?
+  end
+
+  private
+
+  def success_coord_task
+    context[:execution_count] = context.fetch(:execution_count, 0) + 1
+  end
+
+  def done?
+    context.fetch(:execution_count, 0) >= 2
   end
 end

@@ -219,7 +219,6 @@ module ChronoForge
             completed_at: Time.current
           )
 
-
           schedule_next_execution_after_completion(coordination_log, execution_time, every)
         rescue HaltExecutionFlow
           raise
