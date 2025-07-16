@@ -219,13 +219,6 @@ module ChronoForge
             completed_at: Time.current
           )
 
-          # Update coordination log with successful execution and schedule next
-          coordination_log.update!(
-            metadata: coordination_log.metadata.merge(
-              "last_execution_at" => execution_time.iso8601
-            ),
-            last_executed_at: Time.current
-          )
 
           schedule_next_execution_after_completion(coordination_log, execution_time, every)
         rescue HaltExecutionFlow
@@ -278,6 +271,14 @@ module ChronoForge
         end
 
         def schedule_next_execution_after_completion(coordination_log, current_execution_time, every)
+          # Update coordination log and schedule next
+          coordination_log.update!(
+            metadata: coordination_log.metadata.merge(
+              "last_execution_at" => current_execution_time.iso8601
+            ),
+            last_executed_at: Time.current
+          )
+
           # Calculate next execution time
           next_execution_time = current_execution_time + every
 
