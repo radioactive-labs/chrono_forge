@@ -34,11 +34,17 @@ module ChronoForge
         end
 
         def release_lock(job_id, workflow, force: false)
-          workflow = workflow.reload
-          if !force && workflow.locked_by != job_id
+          # Read only the lock owner from the DB rather than reloading the whole
+          # row (which would drag the heavy context/kwargs/options JSON into memory
+          # on every resume) just to verify ownership. The in-memory state is
+          # already accurate here: acquire_lock set it to :running, and a
+          # completed/failed workflow had its state updated on this same instance.
+          current_locked_by = workflow.class.where(id: workflow.id).pick(:locked_by)
+
+          if !force && current_locked_by != job_id
             raise LongRunningConcurrentExecutionError,
               "ChronoForge:#{self.class}(#{workflow.key}) job(#{job_id}) executed longer than specified max_duration, " \
-              "allowed job(#{workflow.locked_by}) to acquire the lock."
+              "allowed job(#{current_locked_by}) to acquire the lock."
           end
 
           columns = {locked_at: nil, locked_by: nil}
