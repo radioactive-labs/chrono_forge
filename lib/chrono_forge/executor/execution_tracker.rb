@@ -14,13 +14,20 @@ module ChronoForge
       # Placeholder stored in place of a value that didn't fit the budget.
       OMITTED_VALUE = "<<omitted>>"
 
-      def self.track_error(workflow, error)
-        # Create a detailed error log
+      # @param execution_log [ExecutionLog, nil] the step the error occurred in,
+      #   if any. Its step_name and attempt count are recorded on the error log
+      #   so errors can be attributed to a step and ordered within the workflow.
+      # @param attempt [Integer, nil] explicit attempt number for errors not tied
+      #   to a step (e.g. a workflow-level failure). Falls back to the execution
+      #   log's attempt count.
+      def self.track_error(workflow, error, execution_log: nil, attempt: nil)
         ErrorLog.create!(
           workflow: workflow,
+          step_name: execution_log&.step_name,
+          attempt: attempt || execution_log&.attempts,
           error_class: error.class.name,
           error_message: error.message,
-          backtrace: error.backtrace.join("\n"),
+          backtrace: error.backtrace&.join("\n"),
           context: error_context(workflow.context)
         )
       end

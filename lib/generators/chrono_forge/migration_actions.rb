@@ -17,6 +17,7 @@ module ChronoForge
       MIGRATIONS = %w[
         install_chrono_forge
         add_chrono_forge_workflow_state_index
+        add_chrono_forge_error_log_step_context
       ].freeze
 
       def copy_chrono_forge_migrations

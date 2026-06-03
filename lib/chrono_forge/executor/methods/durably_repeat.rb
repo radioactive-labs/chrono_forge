@@ -220,7 +220,7 @@ module ChronoForge
         rescue => e
           # Log the error
           Rails.logger.error { "Error in periodic task #{method}: #{e.message}" }
-          self.class::ExecutionTracker.track_error(@workflow, e)
+          self.class::ExecutionTracker.track_error(@workflow, e, execution_log: repetition_log)
 
           # Handle retry logic for this specific repetition
           if repetition_log.attempts < max_attempts

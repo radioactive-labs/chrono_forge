@@ -5,10 +5,12 @@
 # Table name: chrono_forge_error_logs
 #
 #  id            :integer          not null, primary key
+#  attempt       :integer
 #  backtrace     :text
 #  context       :json
 #  error_class   :string
 #  error_message :text
+#  step_name     :string
 #  created_at    :datetime         not null
 #  updated_at    :datetime         not null
 #  workflow_id   :integer          not null

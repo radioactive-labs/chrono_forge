@@ -29,7 +29,11 @@ class GeneratorsTest < ActiveJob::TestCase
       run_generator(ChronoForge::InstallGenerator, dir)
 
       assert_equal(
-        ["add_chrono_forge_workflow_state_index.rb", "install_chrono_forge.rb"],
+        [
+          "add_chrono_forge_error_log_step_context.rb",
+          "add_chrono_forge_workflow_state_index.rb",
+          "install_chrono_forge.rb"
+        ],
         migrations_in(dir),
         "install should copy every migration"
       )
@@ -42,7 +46,7 @@ class GeneratorsTest < ActiveJob::TestCase
       run_generator(ChronoForge::InstallGenerator, dir)
 
       # Re-running must not duplicate migrations.
-      assert_equal 2, Dir.glob(File.join(dir, "db", "migrate", "*.rb")).size,
+      assert_equal 3, Dir.glob(File.join(dir, "db", "migrate", "*.rb")).size,
         "re-running install must not create duplicate migrations"
     end
   end

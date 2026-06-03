@@ -115,7 +115,7 @@ module ChronoForge
           rescue => e
             # Log the error
             Rails.logger.error { "Error evaluating condition #{condition}: #{e.message}" }
-            self.class::ExecutionTracker.track_error(workflow, e)
+            self.class::ExecutionTracker.track_error(workflow, e, execution_log: execution_log)
 
             # Optional retry logic
             if retry_on.include?(e.class)
@@ -160,7 +160,11 @@ module ChronoForge
               metadata: metadata.merge("result" => :timed_out)
             )
             Rails.logger.warn { "Timeout reached for condition '#{condition}'." }
-            raise WaitConditionNotMet, "Condition '#{condition}' not met within timeout period"
+            # Log here (with step context) rather than relying on the workflow-level
+            # rescue, which no longer logs ExecutionFailedError.
+            error = WaitConditionNotMet.new("Condition '#{condition}' not met within timeout period")
+            self.class::ExecutionTracker.track_error(workflow, error, execution_log: execution_log)
+            raise error
           end
 
           # Reschedule with delay
