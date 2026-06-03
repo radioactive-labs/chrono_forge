@@ -234,10 +234,9 @@ module ChronoForge
         # - Original exception is re-raised after logging
         #
         def retry_workflow!
-          # Check if the workflow is stalled or failed
-          unless workflow.stalled? || workflow.failed?
-            raise WorkflowNotRetryableError, "Cannot retry workflow(#{workflow.key}) in #{workflow.state} state. Only stalled or failed workflows can be retried."
-          end
+          # Authoritative check at execution time (the record-level retry methods
+          # also check up front, but state may have changed since enqueue).
+          workflow.ensure_retryable!
 
           # Create an execution log for workflow retry
           execution_log = ExecutionLog.create!(
