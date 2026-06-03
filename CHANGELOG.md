@@ -9,6 +9,7 @@
 - Composite `[state, completed_at]` index on `chrono_forge_workflows` (separate, strong_migrations-safe migration: built `CONCURRENTLY` on PostgreSQL, `if_not_exists`) to keep monitoring and cleanup scans efficient.
 - Validation of user-supplied step names: a name/method/condition containing the reserved `$` separator now raises `ChronoForge::Executor::InvalidStepName`.
 - `step_name` and `attempt` columns on `chrono_forge_error_logs` (additive migration), populated by error tracking so each error is attributable to the step and attempt it came from and can be ordered/correlated when tailing a workflow.
+- Record-level re-execution: `ChronoForge::Workflow#retry_now` / `#retry_later` (plus `#retryable?`), so a failed/stalled workflow can be re-run straight from its record (e.g. `ChronoForge::Workflow.failed.find_each(&:retry_later)`) without constantizing the job class or re-passing the key. `retry_later` validates retryability up front and raises `WorkflowNotRetryableError` immediately instead of enqueuing a job that would fail in the worker.
 
 ### Changed
 

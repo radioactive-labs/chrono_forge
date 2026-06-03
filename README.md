@@ -609,19 +609,31 @@ stateDiagram-v2
 
 #### Recovering Stalled/Failed Workflows
 
+Re-execute a failed or stalled workflow directly from its record — no need to
+constantize the job class or re-pass the key. Execution resumes via replay, so
+completed steps are skipped and it picks up at the step that failed:
+
 ```ruby
 workflow = ChronoForge::Workflow.find_by(key: "order-123")
 
-if workflow.stalled? || workflow.failed?
-  job_class = workflow.job_class.constantize
-  
-  # Retry immediately
-  job_class.retry_now(workflow.key)
-  
-  # Or retry asynchronously
-  job_class.retry_later(workflow.key)
-end
+workflow.retry_later   # re-run asynchronously (the common case)
+workflow.retry_now     # re-run inline (console/debugging)
 ```
+
+Only `stalled` or `failed` workflows are retryable. `retryable?` lets you check
+first, and both methods **validate up front** — calling `retry_later`
+on a non-retryable workflow raises `ChronoForge::Executor::WorkflowNotRetryableError`
+immediately rather than enqueuing a job that would fail in the worker:
+
+```ruby
+workflow.retryable?   # => true/false
+
+# Bulk re-run everything that failed:
+ChronoForge::Workflow.failed.find_each(&:retry_later)
+```
+
+The class-level form (`MyWorkflow.retry_now(key)` / `retry_later(key)`) still
+works if you have the class and key rather than the record.
 
 #### Monitoring Running Workflows
 
