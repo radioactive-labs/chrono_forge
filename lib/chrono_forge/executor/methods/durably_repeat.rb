@@ -101,13 +101,11 @@ module ChronoForge
         # - Repetition logs: `durably_repeat$#{name}$#{timestamp}` - tracks individual executions
         #
         def durably_repeat(method, every:, till:, start_at: nil, max_attempts: 3, timeout: 1.hour, on_error: :continue, name: nil)
+          validate_step_name_segment!(name || method)
           step_name = "durably_repeat$#{name || method}"
 
           # Get or create the main coordination log for this periodic task
-          coordination_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          coordination_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
             log.metadata = {last_execution_at: nil}
           end
@@ -157,10 +155,7 @@ module ChronoForge
           step_name = "#{coordination_log.step_name}$#{next_execution_at.to_i}"
 
           # Create execution log for this specific repetition
-          repetition_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          repetition_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
             log.metadata = {
               scheduled_for: next_execution_at,

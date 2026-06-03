@@ -86,12 +86,10 @@ module ChronoForge
         # - Records final result (true for success, :timed_out for timeout)
         #
         def wait_until(condition, timeout: 1.hour, check_interval: 15.minutes, retry_on: [])
+          validate_step_name_segment!(condition)
           step_name = "wait_until$#{condition}"
           # Find or create execution log
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          execution_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
             log.metadata = {
               timeout_at: timeout.from_now,

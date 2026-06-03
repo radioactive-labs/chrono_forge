@@ -96,13 +96,11 @@ module ChronoForge
         # - User actions or form submissions
         #
         def continue_if(condition, name: nil)
+          validate_step_name_segment!(name || condition)
           step_name = "continue_if$#{name || condition}"
 
           # Find or create execution log
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          execution_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
             log.metadata = {
               condition: condition.to_s,
