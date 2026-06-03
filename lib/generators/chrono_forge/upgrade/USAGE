@@ -1,0 +1,13 @@
+Description:
+    Upgrades an existing ChronoForge installation to the current schema.
+
+    New applications use `chrono_forge:install`. Applications that installed an
+    earlier version run this to add additive schema changes (currently the
+    chrono_forge_workflows [state, completed_at] index). The generated migration
+    is idempotent and safe to run even if the index already exists.
+
+Example:
+    bin/rails g chrono_forge:upgrade
+
+    This will create a new migration e.g:
+        20250603181505_add_chrono_forge_workflow_state_index.rb

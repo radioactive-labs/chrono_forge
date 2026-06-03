@@ -1,8 +1,10 @@
 Description:
-    Installs ChronoForge
+    Installs ChronoForge by copying all of its migrations into your app.
+    Idempotent: migrations that already exist are skipped.
 
 Example:
-    bin/rails g chrono_form:install
+    bin/rails g chrono_forge:install
 
-    This will create a new migration e.g:
+    This will create migrations e.g:
         20241221181505_install_chrono_forge.rb
+        20241221181506_add_chrono_forge_workflow_state_index.rb
