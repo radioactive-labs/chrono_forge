@@ -19,6 +19,7 @@ ChronoForge provides a powerful solution for handling long-running processes, ma
 - **Wait States**: Support for time-based waits and condition-based waiting
 - **Database-Backed**: All workflow state is persisted to ensure durability
 - **ActiveJob Integration**: Compatible with all ActiveJob backends, though database-backed processors (like Solid Queue) provide the most reliable experience for long-running workflows
+- **Retention & Cleanup**: A schedulable job to prune finished workflows and the unbounded logs that periodic tasks accumulate (see [Cleanup & Retention](#-cleanup--retention))
 
 ## 📦 Installation
 
@@ -46,6 +47,21 @@ After installation, run the generator to create the necessary database migration
 $ rails generate chrono_forge:install
 $ rails db:migrate
 ```
+
+### Upgrading
+
+When upgrading ChronoForge in an application that was installed with an earlier
+version, run the upgrade generator to pick up any additive schema changes, then
+migrate:
+
+```bash
+$ rails generate chrono_forge:upgrade
+$ rails db:migrate
+```
+
+The upgrade migration is idempotent (`if_not_exists`), so it is safe to run even
+if your schema already has the index. Fresh installs get the index from the
+install migration and do **not** need to run the upgrade.
 
 ## 📋 Usage
 
@@ -431,6 +447,18 @@ end
 
 The context supports serializable Ruby objects (Hash, Array, String, Integer, Float, Boolean, and nil) and validates types automatically.
 
+Hash and Array values are stored as JSON, which has no symbols — so **symbol keys inside a stored hash come back as strings**:
+
+```ruby
+context[:totals] = { paid: 5, pending: 2 }
+context[:totals]          # => { "paid" => 5, "pending" => 2 }
+context[:totals]["paid"]  # => 5   (not context[:totals][:paid])
+```
+
+(The top-level context key itself is interchangeable — `context[:totals]` and `context["totals"]` refer to the same entry.)
+
+Context is meant for **small working state** — ids, flags, timestamps, and small structures used to coordinate steps. Each value is capped at **16 KB** (a `ChronoForge::Executor::Context::ValidationError` is raised above that). Store large payloads (documents, uploads, API responses) in their own storage and keep just a reference (an id or key) in the context.
+
 ### 🛡️ Error Handling
 
 ChronoForge automatically tracks errors and provides configurable retry capabilities:
@@ -612,6 +640,78 @@ long_running.each do |workflow|
   # CAUTION: Only do this if you're certain the job is stuck
   # workflow.update!(locked_at: nil, locked_by: nil, state: :idle)
 end
+```
+
+## 🧹 Cleanup & Retention
+
+ChronoForge keeps every workflow and execution-log row indefinitely so that
+replays remain idempotent. Over time two things grow without bound:
+
+1. **Terminal workflows** (`completed` / `failed`) that are no longer needed.
+2. **`durably_repeat` repetition logs** — one row per scheduled execution. A
+   long-lived periodic workflow never reaches a terminal state, so its
+   repetition logs accumulate indefinitely. Past repetitions (those behind the
+   task's current frontier) are never read again, since each resume recomputes
+   the next execution from the coordination log — so they are safe to prune (see
+   the safety note below).
+
+`ChronoForge::Cleanup` reclaims both. It is **not** run automatically — schedule
+it from your own scheduler so you stay in control of retention:
+
+```ruby
+ChronoForge::Cleanup.run(
+  older_than: 90.days,                       # default retention for terminal workflows (+ cascades their logs)
+  completed_older_than: 30.days,             # optional: retention for completed workflows (defaults to older_than)
+  failed_older_than: 180.days,               # optional: keep failures longer for debugging (defaults to older_than)
+  prune_repetition_logs_older_than: 30.days, # opt-in: prune old durably_repeat logs from still-active workflows
+  batch_size: 1_000                          # rows deleted per batch
+)
+# => { workflows: 12, execution_logs: 84, error_logs: 3, repetition_logs: 240 }
+```
+
+Notes:
+
+- `running`, `idle`, and `stalled` workflows are **never** deleted.
+- `completed_older_than` / `failed_older_than` let you keep failed workflows
+  around longer than completed ones; both default to `older_than`.
+- `prune_repetition_logs_older_than` is opt-in (defaults to `nil`); when unset,
+  repetition logs are only removed as part of deleting their parent workflow.
+  Pruning is deliberately conservative: it only removes terminal repetition logs
+  that are both older than the window **and** scheduled strictly before the
+  periodic task's current frontier (the coordination log's `last_execution_at`).
+  Anything at or after the frontier is kept so `durably_repeat`'s catch-up
+  mechanism is never disrupted — so the window is purely a retention preference
+  and is safe even for yearly schedules.
+- Workflow retention is measured from when a workflow became terminal, not when
+  it was created — a long-running workflow that only just finished is kept for
+  the full window. Completed workflows use `completed_at` (immutable); failed
+  workflows use `updated_at` (they have no `completed_at`).
+- The composite `[state, completed_at]` index added in this version keeps these
+  scans efficient — run `chrono_forge:upgrade` if you installed an earlier
+  version.
+
+A ready-made job is bundled so you can schedule it with any recurring-job
+mechanism (Solid Queue recurring tasks, sidekiq-cron, GoodJob cron, the
+`whenever` gem, ...):
+
+```ruby
+ChronoForge::CleanupJob.perform_later(
+  older_than_days: 90,
+  failed_older_than_days: 180,
+  prune_repetition_logs_older_than_days: 30
+)
+```
+
+The job takes plain day counts (not `Duration` objects) so it can be driven from
+a config file. For example, with Solid Queue's recurring tasks
+(`config/recurring.yml`):
+
+```yaml
+production:
+  chrono_forge_cleanup:
+    class: ChronoForge::CleanupJob
+    args: { older_than_days: 90, prune_repetition_logs_older_than_days: 30 }
+    schedule: every day at 3am
 ```
 
 ## 🚀 Development
