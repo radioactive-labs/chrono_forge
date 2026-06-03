@@ -111,7 +111,7 @@ class ChronoForgeTest < ActiveJob::TestCase
     ], workflow.execution_logs.order(:id).pluck(:step_name).take(3)
     assert workflow.execution_logs.order(:id).pluck(:step_name).last.starts_with?("$workflow_failure$")
 
-    assert_equal 4, workflow.error_logs.size, "workflow should have failed after 4 runs. 1 + 3 retries."
+    assert_equal 10, workflow.error_logs.size, "workflow should have failed after 10 runs. 1 + 9 retries (workflow-level default)."
     assert_equal ["Permanent Failure"], workflow.error_logs.pluck(:error_message).uniq
   end
 

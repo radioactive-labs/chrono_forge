@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+### Added
+
+- `ChronoForge::Executor::RetryPolicy` — a single, unified retry abstraction (attempt cap + exponential-with-jitter backoff + error-class predicate) used by every retry site: workflow-level uncaught errors, `durably_execute`, `durably_repeat`, and `wait_until` condition errors. Replaces the three previously-independent retry systems and two backoff algorithms.
+- Class-level `retry_policy` DSL to set a workflow's default retry policy, plus a per-call `retry_policy:` keyword on `durably_execute`, `durably_repeat`, and `wait_until`. Resolution is per-call → class default → per-site built-in. `wait_until` deliberately does not inherit the class default (so a class-wide "retry everything" can't silently retry condition-evaluation bugs).
+
+### Changed
+
+- **BREAKING:** `durably_execute` and `durably_repeat` no longer accept `max_attempts:`; `wait_until` no longer accepts `retry_on:`. All three now take `retry_policy:` (a `RetryPolicy`). Migrate `max_attempts: N` → `retry_policy: RetryPolicy.new(max_attempts: N)` and `retry_on: [...]` → `retry_policy: RetryPolicy.new(retry_on: [...])`.
+- **BREAKING:** backoff is now exponential with jitter everywhere (previously the workflow level used a fixed array declared as `[1s,5s,30s,2m,10m]` — though the `should_retry? < 3` bug meant only its first three entries `[1s,5s,30s]` were ever reached — and steps used `2**n` capped at 32s). Workflow-level retries default to 10 attempts with a ~8.5 min tolerant window (cap 600s) — wide enough to ride out a transient infra blip (DB failover, deploy restart) on an uncaught `perform` error, since each such retry replays the whole workflow. A *permanently* failing workflow is now retried 10 times before reaching `failed` (vs the previous effective 4). Note this path covers only uncaught errors in `perform`; a step exhausting its own retries stalls the workflow instead.
+
+### Fixed
+
+- Workflow-level retry no longer has a contradictory cap (`should_retry?` stopped at 3 while `RetryStrategy.max_attempts` was 5, making the array's `2m`/`10m` entries unreachable). The single `RetryPolicy` is now the sole decider.
+- Removed the dead `retry_method:` argument that `durably_execute` passed on reschedule but `perform` never bound.
+
 ## [0.9.0] - 2026-06-03
 
 ### Added

@@ -14,7 +14,11 @@ module ChronoForge
         #   The method should return a truthy value when the condition is met.
         # @param timeout [ActiveSupport::Duration] Maximum time to wait for condition (default: 1.hour)
         # @param check_interval [ActiveSupport::Duration] Time between condition checks (default: 15.minutes)
-        # @param retry_on [Array<Class>] Exception classes that should trigger retries instead of failures
+        # @param retry_policy [RetryPolicy, nil] Policy governing errors raised *while
+        #   evaluating the condition* (not the poll cadence). When nil, uses
+        #   RetryPolicy.wait_default, which retries nothing — a raised condition fails
+        #   fast. Pass a policy with `retry_on:` to opt specific errors into retrying.
+        #   Note: unlike steps, wait_until does NOT inherit the class-level default.
         #
         # @return [true] When the condition is met
         #
@@ -31,7 +35,7 @@ module ChronoForge
         #   wait_until :database_migration_complete?,
         #     timeout: 2.hours,
         #     check_interval: 30.seconds,
-        #     retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError]
+        #     retry_policy: RetryPolicy.new(retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError])
         #
         # @example Waiting for external system
         #   def third_party_service_ready?
@@ -42,7 +46,7 @@ module ChronoForge
         #   wait_until :third_party_service_ready?,
         #     timeout: 1.hour,
         #     check_interval: 2.minutes,
-        #     retry_on: [Net::TimeoutError, Net::HTTPClientException]
+        #     retry_policy: RetryPolicy.new(retry_on: [Net::TimeoutError, Net::HTTPClientException])
         #
         # @example Waiting for file processing
         #   def file_processing_complete?
@@ -60,7 +64,7 @@ module ChronoForge
         # The condition method is called on each check interval:
         # - Should return truthy value when condition is met
         # - Should return falsy value when condition is not yet met
-        # - Can raise exceptions that will be handled based on retry_on parameter
+        # - Can raise exceptions that will be handled based on the retry_policy
         #
         # === Timeout Handling
         # - Timeout is calculated from the first execution start time
@@ -69,9 +73,10 @@ module ChronoForge
         #
         # === Error Handling
         # - Exceptions during condition evaluation are caught and logged
-        # - If exception class is in retry_on array, it triggers retry with exponential backoff
-        # - Other exceptions cause immediate failure with ExecutionFailedError
-        # - Retry backoff: 2^attempt seconds (capped at 2^5 = 32 seconds)
+        # - If the retry_policy deems the error retryable, it triggers a retry with the
+        #   policy's backoff
+        # - Otherwise the error causes immediate failure with ExecutionFailedError
+        # - Backoff is governed by the resolved RetryPolicy
         #
         # === Persistence and Resumability
         # - Wait state is persisted in execution logs with metadata
@@ -85,7 +90,8 @@ module ChronoForge
         # - Tracks attempt count and execution times
         # - Records final result (true for success, :timed_out for timeout)
         #
-        def wait_until(condition, timeout: 1.hour, check_interval: 15.minutes, retry_on: [])
+        def wait_until(condition, timeout: 1.hour, check_interval: 15.minutes, retry_policy: nil)
+          policy = wait_retry_policy(retry_policy)
           validate_step_name_segment!(condition)
           step_name = "wait_until$#{condition}"
           # Find or create execution log
@@ -117,13 +123,13 @@ module ChronoForge
             Rails.logger.error { "Error evaluating condition #{condition}: #{e.message}" }
             self.class::ExecutionTracker.track_error(workflow, e, execution_log: execution_log)
 
-            # Optional retry logic
-            if retry_on.include?(e.class)
-              # Reschedule with exponential backoff
-              backoff = (2**[execution_log.attempts, 5].min).seconds
-
+            # Optional retry logic for errors raised while evaluating the
+            # condition. The poll cadence (check_interval/timeout) below is
+            # separate and unaffected by the retry policy.
+            if policy.retryable?(e, execution_log.attempts)
+              # Reschedule with the policy's backoff
               self.class
-                .set(wait: backoff)
+                .set(wait: policy.backoff_for(execution_log.attempts))
                 .perform_later(
                   @workflow.key
                 )

@@ -9,19 +9,22 @@ module ChronoForge
         # execution log, ensuring idempotent behavior during workflow replays.
         #
         # @param method [Symbol] The name of the instance method to execute
-        # @param max_attempts [Integer] Maximum retry attempts before failing (default: 3)
+        # @param retry_policy [RetryPolicy, nil] Per-call retry policy. When nil,
+        #   uses the class-level `retry_policy` default, then the step built-in
+        #   (RetryPolicy.step_default: 3 attempts, exponential backoff capped at 30s).
         # @param name [String, nil] Custom name for the execution step. Defaults to method name.
         #   Used to create unique step names for execution logs.
         #
         # @return [nil]
         #
-        # @raise [ExecutionFailedError] When the method fails after max_attempts
+        # @raise [ExecutionFailedError] When the method fails after the policy's max_attempts
         #
         # @example Basic usage
         #   durably_execute :send_welcome_email
         #
-        # @example With custom retry attempts
-        #   durably_execute :critical_payment_processing, max_attempts: 5
+        # @example With a custom retry policy
+        #   durably_execute :critical_payment_processing,
+        #     retry_policy: RetryPolicy.new(max_attempts: 5)
         #
         # @example With custom name for tracking
         #   durably_execute :complex_calculation, name: "phase_1_calculation"
@@ -33,7 +36,7 @@ module ChronoForge
         #     Rails.logger.info "Successfully uploaded file to S3"
         #   end
         #
-        #   durably_execute :upload_to_s3, max_attempts: 5
+        #   durably_execute :upload_to_s3, retry_policy: RetryPolicy.new(max_attempts: 5)
         #
         # == Behavior
         #
@@ -43,9 +46,9 @@ module ChronoForge
         # already completed, it will be skipped.
         #
         # === Retry Logic
-        # - Failed executions are automatically retried with exponential backoff
-        # - Backoff calculation: 2^attempt seconds (capped at 2^5 = 32 seconds)
-        # - After max_attempts, ExecutionFailedError is raised
+        # - Failed executions are retried per the resolved RetryPolicy
+        # - Backoff and attempt cap come from that policy (see RetryPolicy)
+        # - After the policy's max_attempts, ExecutionFailedError is raised
         #
         # === Error Handling
         # - All exceptions except HaltExecutionFlow are caught and handled
@@ -59,7 +62,8 @@ module ChronoForge
         # - Stores error details when failures occur
         # - Enables monitoring and debugging of execution history
         #
-        def durably_execute(method, max_attempts: 3, name: nil)
+        def durably_execute(method, retry_policy: nil, name: nil)
+          policy = step_retry_policy(retry_policy)
           validate_step_name_segment!(name || method)
           step_name = "durably_execute$#{name || method}"
           # Find or create execution log
@@ -97,16 +101,13 @@ module ChronoForge
             self.class::ExecutionTracker.track_error(workflow, e, execution_log: execution_log)
 
             # Optional retry logic
-            if execution_log.attempts < max_attempts
-              # Reschedule with exponential backoff
-              backoff = (2**[execution_log.attempts, 5].min).seconds
-
+            if policy.retryable?(e, execution_log.attempts)
+              # Reschedule with the policy's backoff. The workflow replays on
+              # resume and skips completed steps, so the rescheduled run picks
+              # this step up again by its persisted execution log.
               self.class
-                .set(wait: backoff)
-                .perform_later(
-                  @workflow.key,
-                  retry_method: method
-                )
+                .set(wait: policy.backoff_for(execution_log.attempts))
+                .perform_later(@workflow.key)
 
               # Halt current execution
               halt_execution!
