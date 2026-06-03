@@ -14,6 +14,17 @@ module ChronoForge
         Array
       ]
 
+      # Maximum serialized byte size of a single context value. Applies to the
+      # variable-length types (String, Hash, Array); scalars are unbounded in
+      # practice. Measured in bytes (not characters) since that is what is
+      # actually stored and what matters for write/storage cost.
+      #
+      # Context is meant to hold small working state (ids, flags, timestamps,
+      # small structures) — not documents or payloads, which belong in their own
+      # storage and can be referenced from context by id. 16 KB per value is
+      # already generous for that (hundreds of ids / dozens of records).
+      MAX_VALUE_BYTESIZE = 16.kilobytes
+
       def initialize(workflow)
         @workflow = workflow
         @context = workflow.context || {}
@@ -67,7 +78,11 @@ module ChronoForge
 
         @context[key.to_s] =
           if value.is_a?(Hash) || value.is_a?(Array)
-            deep_dup(value)
+            # as_json returns a fresh JSON-compatible structure with string keys
+            # — the same normalization the JSON column would apply on save and a
+            # deep copy that protects the store from later mutation of the
+            # source — without the cost of serializing to a string and reparsing.
+            value.as_json
           else
             value
           end
@@ -84,16 +99,19 @@ module ChronoForge
           raise ValidationError, "Unsupported context value type: #{value.inspect}"
         end
 
-        # Optional: Add size constraints
-        if value.is_a?(String) && value.size > 64.kilobytes
-          raise ValidationError, "Context value too large"
+        byte_size = value_byte_size(value)
+        if byte_size && byte_size > MAX_VALUE_BYTESIZE
+          raise ValidationError, "Context value too large (#{byte_size} bytes, max #{MAX_VALUE_BYTESIZE})"
         end
       end
 
-      def deep_dup(obj)
-        JSON.parse(JSON.generate(obj))
-      rescue
-        obj.dup
+      # Serialized byte size for the variable-length types; nil for scalars,
+      # which need no size constraint.
+      def value_byte_size(value)
+        case value
+        when String then value.bytesize
+        when Hash, Array then value.to_json.bytesize
+        end
       end
     end
   end
