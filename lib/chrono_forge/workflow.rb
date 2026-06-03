@@ -36,9 +36,6 @@ module ChronoForge
       stalled
     ]
 
-    # Serialization for metadata
-    serialize :metadata, coder: JSON
-
     def executable?
       idle? || running?
     end
