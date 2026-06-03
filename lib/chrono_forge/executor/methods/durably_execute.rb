@@ -60,12 +60,10 @@ module ChronoForge
         # - Enables monitoring and debugging of execution history
         #
         def durably_execute(method, max_attempts: 3, name: nil)
+          validate_step_name_segment!(name || method)
           step_name = "durably_execute$#{name || method}"
           # Find or create execution log
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          execution_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
           end
 

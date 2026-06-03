@@ -73,12 +73,10 @@ module ChronoForge
         # - Marks as completed when wait period has elapsed
         #
         def wait(duration, name)
+          validate_step_name_segment!(name)
           step_name = "wait$#{name}"
           # Find or create execution log
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: @workflow,
-            step_name: step_name
-          ) do |log|
+          execution_log = find_or_create_execution_log!(step_name) do |log|
             log.started_at = Time.current
             log.metadata = {
               wait_until: duration.from_now

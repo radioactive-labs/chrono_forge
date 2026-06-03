@@ -49,24 +49,20 @@ module ChronoForge
         #
         def complete_workflow!
           # Create an execution log for workflow completion
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: workflow,
-            step_name: "$workflow_completion$"
-          ) do |log|
+          execution_log = find_or_create_execution_log!("$workflow_completion$") do |log|
             log.started_at = Time.current
           end
 
           begin
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current
-            )
-
             workflow.completed_at = Time.current
             workflow.completed!
 
-            # Mark execution log as completed
+            # Mark execution log as completed. Attempt tracking and the terminal
+            # state are written together: completion is not retried on an
+            # attempt-count basis, so there is no need for a separate pre-write.
             execution_log.update!(
+              attempts: execution_log.attempts + 1,
+              last_executed_at: Time.current,
               state: :completed,
               completed_at: Time.current
             )
@@ -142,10 +138,7 @@ module ChronoForge
         #
         def fail_workflow!(error_log)
           # Create an execution log for workflow failure
-          execution_log = ExecutionLog.create_or_find_by!(
-            workflow: workflow,
-            step_name: "$workflow_failure$#{error_log.id}"
-          ) do |log|
+          execution_log = find_or_create_execution_log!("$workflow_failure$#{error_log.id}") do |log|
             log.started_at = Time.current
             log.metadata = {
               error_log_id: error_log.id
@@ -153,15 +146,14 @@ module ChronoForge
           end
 
           begin
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current
-            )
-
             workflow.failed!
 
-            # Mark execution log as completed
+            # Mark execution log as completed. Attempt tracking and the terminal
+            # state are written together (failure handling is not retried on an
+            # attempt-count basis).
             execution_log.update!(
+              attempts: execution_log.attempts + 1,
+              last_executed_at: Time.current,
               state: :completed,
               completed_at: Time.current
             )
