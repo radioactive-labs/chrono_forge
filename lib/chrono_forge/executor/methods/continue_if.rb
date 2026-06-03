@@ -126,7 +126,7 @@ module ChronoForge
           rescue => e
             # Log the error and fail the execution
             Rails.logger.error { "Error evaluating condition #{condition}: #{e.message}" }
-            self.class::ExecutionTracker.track_error(workflow, e)
+            self.class::ExecutionTracker.track_error(workflow, e, execution_log: execution_log)
 
             execution_log.update!(
               state: :failed,

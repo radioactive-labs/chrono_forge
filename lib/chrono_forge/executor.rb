@@ -80,9 +80,11 @@ module ChronoForge
 
         # Mark as complete
         complete_workflow!
-      rescue ExecutionFailedError => e
+      rescue ExecutionFailedError
+        # The step that raised this already logged the underlying cause (with its
+        # step/attempt context); ExecutionFailedError is control flow, not a new
+        # error, so re-logging it here would just duplicate the row.
         Rails.logger.error { "ChronoForge:#{self.class}(#{key}) step execution failed" }
-        self.class::ExecutionTracker.track_error(workflow, e)
         workflow.stalled!
         nil
       rescue HaltExecutionFlow
@@ -97,7 +99,7 @@ module ChronoForge
         raise
       rescue => e
         Rails.logger.error { "ChronoForge:#{self.class}(#{key}) workflow execution failed" }
-        error_log = self.class::ExecutionTracker.track_error(workflow, e)
+        error_log = self.class::ExecutionTracker.track_error(workflow, e, attempt: attempt)
 
         # Retry if applicable
         if should_retry?(e, attempt)

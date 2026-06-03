@@ -94,7 +94,7 @@ module ChronoForge
           rescue => e
             # Log the error
             Rails.logger.error { "Error while durably executing #{method}: #{e.message}" }
-            self.class::ExecutionTracker.track_error(workflow, e)
+            self.class::ExecutionTracker.track_error(workflow, e, execution_log: execution_log)
 
             # Optional retry logic
             if execution_log.attempts < max_attempts

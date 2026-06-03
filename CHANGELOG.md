@@ -8,6 +8,7 @@
 - `chrono_forge:upgrade` generator that installs additive migrations existing apps are missing (idempotent — re-running either generator skips migrations that already exist).
 - Composite `[state, completed_at]` index on `chrono_forge_workflows` (separate, strong_migrations-safe migration: built `CONCURRENTLY` on PostgreSQL, `if_not_exists`) to keep monitoring and cleanup scans efficient.
 - Validation of user-supplied step names: a name/method/condition containing the reserved `$` separator now raises `ChronoForge::Executor::InvalidStepName`.
+- `step_name` and `attempt` columns on `chrono_forge_error_logs` (additive migration), populated by error tracking so each error is attributable to the step and attempt it came from and can be ordered/correlated when tailing a workflow.
 
 ### Changed
 
@@ -21,6 +22,10 @@
 ### Breaking
 
 - The per-value `Context` size limit is reduced from 64 KB to **16 KB** and is now measured in **bytes** (previously characters, and `String`-only). `Hash` and `Array` values are now size-validated too. Context is intended for small working state; store large payloads elsewhere and keep a reference. Existing workflows that *write* values larger than 16 KB will raise `ChronoForge::Executor::Context::ValidationError`; already-stored values are unaffected when read.
+
+### Fixed
+
+- A failed step no longer logs its terminal failure twice. Previously the step logged the underlying error and `perform` re-logged the `ExecutionFailedError` control-flow wrapper, producing a duplicate row. The wrapper is no longer logged; `wait_until` timeouts (which had no step-level log) are now logged at the step instead.
 
 ### Removed
 
