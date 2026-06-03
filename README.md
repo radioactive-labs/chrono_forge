@@ -235,7 +235,7 @@ Backoff is exponential with equal jitter, computed once at re-enqueue time (neve
 | Site | Default | Why |
 |------|---------|-----|
 | Steps (`durably_execute`/`durably_repeat`) | 3 attempts, cap 30s, retry any error | flaky calls fail fast |
-| Workflow-level (uncaught errors) | 10 attempts, cap 600s, retry any error | ~8.5 min tolerant window for transient infra errors; each retry replays the whole workflow from the top |
+| Workflow-level (uncaught errors) | 10 attempts, cap 600s, retry any error | tolerant window up to ~8.5 min (≈4 min typical w/ jitter) for transient infra errors; each retry replays the whole workflow from the top |
 | `wait_until` condition errors | retry nothing | a raised condition is usually a bug, not transient |
 
 **Class-wide default via the `retry_policy` DSL:**

@@ -182,8 +182,8 @@ module ChronoForge
     end
 
     # Retry policy for workflow-level (uncaught) errors: the class default if one
-    # was declared, else the workflow built-in (10 attempts, ~8.5 min tolerant
-    # window). Each retry replays the whole workflow from the top.
+    # was declared, else the workflow built-in (10 attempts, up to ~8.5 min).
+    # Each retry replays the whole workflow from the top.
     def workflow_retry_policy
       self.class.default_retry_policy || RetryPolicy.workflow_default
     end

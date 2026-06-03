@@ -57,7 +57,7 @@ same object and all are overridable.
 | Surface | Class-level default DSL + per-call `retry_policy:` override |
 | Attempt counters | Workflow-level stays in the `attempt:` job arg; steps stay on `execution_log.attempts`. Policy unifies; counting storage does not (no migration) |
 | `wait_until` poll cadence | Stays **out** of `RetryPolicy` (`check_interval`/`timeout` are polling, not retry) |
-| Per-site backoff defaults | Steps `max_attempts: 3, cap: 30`. Workflow-level `max_attempts: 10, cap: 600` — a ~8.5 min tolerant window for transient infra errors on uncaught `perform` errors (revised post-review from an inconsistent `8/600`, where the 600 cap was unreachable). `cap: 600` is a per-delay ceiling, not a dead default: it binds when a caller configures more attempts. |
+| Per-site backoff defaults | Steps `max_attempts: 3, cap: 30`. Workflow-level `max_attempts: 10, cap: 600` — a tolerant window up to ~8.5 min (≈4 min typical with jitter) for transient infra errors on uncaught `perform` errors (revised post-review from an inconsistent `8/600`, where the 600 cap was unreachable). `cap: 600` is a per-delay ceiling, not a dead default: it binds when a caller configures more attempts. |
 
 ## Design
 
@@ -100,7 +100,7 @@ distinct *defaults* to preserve current semantics:
 | Site | Default policy | Rationale (= today's behavior) |
 |---|---|---|
 | `durably_execute`, `durably_repeat` | `max_attempts: 3, base: 1, cap: 30, retry_on: nil` (retry **all** errors) | matches current `rescue => e; retry`; flaky calls fast-fail |
-| Workflow-level | `max_attempts: 10, base: 1, cap: 600, retry_on: nil` | only fires on uncaught `perform` errors (step failures stall instead), which are rare and may be transient infra blips. 10 attempts ≈ 8.5 min window rides those out; each retry replays the whole workflow, so the count is bounded rather than open-ended. `cap: 600` (10 min) ceils any single backoff |
+| Workflow-level | `max_attempts: 10, base: 1, cap: 600, retry_on: nil` | only fires on uncaught `perform` errors (step failures stall instead), which are rare and may be transient infra blips. 10 attempts (up to ~8.5 min, ≈4 min typical with jitter) rides those out; each retry replays the whole workflow, so the count is bounded rather than open-ended. `cap: 600` (10 min) ceils any single backoff |
 | `wait_until` (error path) | `retry_on: []` (retry **nothing** by default) | a condition that *raises* is usually a bug, not transient — matches current `retry_on: []` |
 
 `wait_until`'s polling cadence (`check_interval` / `timeout`) is **not** retry
@@ -182,7 +182,7 @@ workflow curve is the fixed array (truncated at attempt 3 by the dead config).
 |---|---|---|
 | `durably_execute`/`durably_repeat` (`max_attempts:3`) | `2, 4` then fail | `~1, ~2` (jittered) then fail |
 | `wait_until` error path | `2, 4, 8, …` cap 32 | unchanged in shape; cap 30 |
-| Workflow-level | `1, 5, 30` then fail | `~1, 2, 4, 8, 16, 32, 64, 128, 256` (jittered) then fail, `max_attempts:10` (~8.5 min) |
+| Workflow-level | `1, 5, 30` then fail | `~1, 2, 4, 8, 16, 32, 64, 128, 256` (jittered) then fail, `max_attempts:10` (up to ~8.5 min, ≈4 min typical) |
 
 Steps and `wait_until` are effectively unchanged (jitter added, cap 32→30). The
 workflow level keeps the array's intended 5-attempt count but with one curve;

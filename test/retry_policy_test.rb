@@ -101,7 +101,7 @@ class RetryPolicyTest < ActiveSupport::TestCase
 
   def test_workflow_default_preset
     policy = RetryPolicy.workflow_default
-    assert_equal 10, policy.max_attempts, "~8.5 min tolerant window for transient infra errors"
+    assert_equal 10, policy.max_attempts, "tolerant window up to ~8.5 min for transient infra errors"
     assert_nil policy.retry_on
     assert_in_delta 600.0, policy.cap.to_f, 0.001, "10 min per-delay ceiling"
   end

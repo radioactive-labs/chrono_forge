@@ -50,9 +50,10 @@ module ChronoForge
       # Workflow-level (uncaught) errors retry the whole workflow from the top
       # (replaying completed steps). They cover two populations the default can't
       # distinguish: transient infra blips — worth riding out — and deterministic
-      # bugs, where every replay is waste. 10 attempts gives a ~8.5 min tolerant
-      # window (enough for a DB failover or deploy restart) without dragging out
-      # the bug case; cap (600s / 10 min) bounds any single backoff and only
+      # bugs, where every replay is waste. 10 attempts gives a tolerant window of
+      # up to ~8.5 min (≈4 min typical, since equal jitter puts each wait in
+      # [d/2, d]) — enough for a DB failover or deploy restart — without dragging
+      # out the bug case; cap (600s / 10 min) bounds any single backoff and only
       # binds if a caller configures more attempts.
       def self.workflow_default
         new(max_attempts: 10, base: 1, cap: 600, jitter: true, retry_on: nil)
