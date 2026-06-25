@@ -180,9 +180,48 @@ module ChronoForge
     # which accumulate unbounded repetition logs: we touch only the rows we need,
     # never the whole set. create_or_find_by! is used only on a miss, keeping
     # creation safe if a lock takeover ever lets two executors race.
+    #
+    # Completed steps are short-circuited up front from a single bulk read (see
+    # #completed_step_cache) so that replaying N already-done steps costs one
+    # query for the whole batch rather than one SELECT each — without that, a
+    # workflow with hundreds of steps pays hundreds of SELECTs on every resume.
+    # The cached value is a readonly, unsaved stand-in: completed steps are only
+    # ever read (.completed? and metadata["result"]), never written, so it needs
+    # no database row.
     def find_or_create_execution_log!(step_name, &)
+      if completed_step_cache.key?(step_name)
+        return ExecutionLog.new(
+          workflow: @workflow, step_name: step_name, state: :completed,
+          metadata: completed_step_cache[step_name]
+        ).tap(&:readonly!)
+      end
+
       ExecutionLog.find_by(workflow: @workflow, step_name: step_name) ||
         ExecutionLog.create_or_find_by!(workflow: @workflow, step_name: step_name, &)
+    end
+
+    # One bulk read of this workflow's completed steps, mapping step_name to its
+    # metadata, memoized for the duration of a single replay pass.
+    #
+    # Only completed rows are loaded: they are the ones replayed steps short-
+    # circuit on, and once completed a step never changes, so the snapshot stays
+    # valid for the whole pass. Plucking (step_name, metadata) avoids
+    # instantiating AR objects and keeps the read portable — Rails type-casts the
+    # JSON metadata column to a Hash on SQLite, PostgreSQL and MySQL alike, with
+    # no database-specific JSON extraction.
+    #
+    # durably_repeat repetition logs (durably_repeat$<name>$<timestamp>) are
+    # deliberately excluded: they accumulate without bound yet are never replayed
+    # (durably_repeat only ever looks up its coordination log plus the single
+    # current repetition), so pulling them into memory would be all cost and no
+    # benefit. Their coordination log (durably_repeat$<name>, only two segments)
+    # is not matched by the pattern and is still cached.
+    def completed_step_cache
+      @completed_step_cache ||= ExecutionLog
+        .where(workflow: @workflow, state: ExecutionLog.states[:completed])
+        .where.not("step_name LIKE ?", "durably_repeat#{STEP_NAME_DELIMITER}%#{STEP_NAME_DELIMITER}%")
+        .pluck(:step_name, :metadata)
+        .to_h
     end
 
     # Guards the user-supplied portion of a step name (a custom name, method, or
