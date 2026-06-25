@@ -1,0 +1,15 @@
+<h1>Waiting workflows</h1>
+<table class="cf-table">
+  <thead><tr><th>Key</th><th>Condition</th><th>Waiting</th><th>Timeout</th></tr></thead>
+  <tbody>
+    <% @waits.each do |h| %>
+      <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
+      <tr class="<%= "cf-wait--long" if long %>">
+        <td><%= link_to h[:workflow].key, workflow_path(h[:workflow]) %></td>
+        <td><code><%= h[:wait].condition %></code></td>
+        <td><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>
+        <td><%= h[:wait].timeout_at || "—" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
