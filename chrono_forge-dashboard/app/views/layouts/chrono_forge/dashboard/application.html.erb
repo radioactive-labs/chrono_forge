@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ChronoForge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <%= csrf_meta_tags %>
+  <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css" %>">
+</head>
+<body data-poll-interval="<%= ChronoForge::Dashboard.config.polling_interval %>">
+  <header class="cf-header"><a href="<%= root_path %>">ChronoForge</a></header>
+  <main class="cf-main">
+    <% flash.each do |type, msg| %><div class="cf-flash cf-flash--<%= type %>"><%= msg %></div><% end %>
+    <%= yield %>
+  </main>
+  <script src="<%= "#{request.script_name}/assets/dashboard.js" %>"></script>
+</body>
+</html>

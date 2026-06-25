@@ -1,0 +1,5 @@
+<div class="cf-stats">
+  <% stats.each do |state, count| %>
+    <span class="cf-stat cf-stat--<%= state %>"><%= cf_badge(state) %> <%= count %></span>
+  <% end %>
+</div>

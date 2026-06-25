@@ -1,0 +1,7 @@
+<tr>
+  <td><%= cf_badge(workflow.state) %></td>
+  <td><%= link_to workflow.key, workflow_path(workflow) %></td>
+  <td><%= workflow.job_class %></td>
+  <td><%= cf_time(workflow.started_at) %></td>
+  <td><%= cf_time(workflow.updated_at) %></td>
+</tr>

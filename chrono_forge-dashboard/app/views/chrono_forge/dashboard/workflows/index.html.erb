@@ -1,0 +1,14 @@
+<%= render "stats", stats: @stats %>
+<%= render "filters", query: @query %>
+<div data-poll-region>
+  <table class="cf-table">
+    <thead><tr><th>State</th><th>Key</th><th>Class</th><th>Started</th><th>Updated</th></tr></thead>
+    <tbody>
+      <%= render partial: "workflow_row", collection: @workflows, as: :workflow %>
+    </tbody>
+  </table>
+  <nav class="cf-pager">
+    <% if @query.page > 1 %><%= link_to "‹ Prev", request.query_parameters.merge(page: @query.page - 1) %><% end %>
+    <% if @query.total_count > @query.page * @query.per %><%= link_to "Next ›", request.query_parameters.merge(page: @query.page + 1) %><% end %>
+  </nav>
+</div>

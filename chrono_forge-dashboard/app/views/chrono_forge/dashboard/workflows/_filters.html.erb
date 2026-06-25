@@ -1,0 +1,6 @@
+<%= form_with url: workflows_path, method: :get, class: "cf-filters" do |f| %>
+  <%= f.select :state, ["", *ChronoForge::Workflow.states.keys], selected: params[:state] %>
+  <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class" %>
+  <%= f.text_field :key, value: params[:key], placeholder: "Key" %>
+  <%= f.submit "Filter" %>
+<% end %>
