@@ -1,0 +1,32 @@
+:root { --cf-fg:#1c1e21; --cf-muted:#6b7280; --cf-line:#e5e7eb; --cf-accent:#2563eb; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: system-ui, -apple-system, sans-serif; color: var(--cf-fg); }
+.cf-header { padding:.8rem 1rem; border-bottom:1px solid var(--cf-line); font-weight:600; }
+.cf-header a { color: var(--cf-fg); text-decoration:none; }
+.cf-main { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+.cf-table { width:100%; border-collapse:collapse; }
+.cf-table th, .cf-table td { text-align:left; padding:.4rem .6rem; border-bottom:1px solid var(--cf-line); }
+.cf-badge { display:inline-block; padding:.1rem .5rem; border-radius:1rem; font-size:.78rem; }
+.cf-badge--failed,.cf-badge--stalled { background:#fee2e2; color:#991b1b; }
+.cf-badge--completed { background:#dcfce7; color:#166534; }
+.cf-badge--running { background:#dbeafe; color:#1e40af; }
+.cf-badge--idle { background:#f3f4f6; color:#374151; }
+.cf-stats { display:flex; gap:.6rem; flex-wrap:wrap; margin:.6rem 0; }
+.cf-filters { display:flex; gap:.4rem; margin:.6rem 0; flex-wrap:wrap; }
+.cf-pager { margin:.8rem 0; display:flex; gap:1rem; }
+.cf-timeline { list-style:none; padding-left:0; }
+.cf-timeline--runs { margin-left:1rem; }
+.cf-step { padding:.4rem .6rem; border-left:3px solid var(--cf-line); margin:.2rem 0; display:flex; gap:.6rem; align-items:center; }
+.cf-step--failed { border-color:#ef4444; }
+.cf-step--current { background:#fff7ed; }
+.cf-step__kind { color: var(--cf-muted); font-size:.78rem; text-transform:uppercase; }
+.cf-step__error { color:#991b1b; }
+.cf-context__type { color: var(--cf-muted); font-size:.8rem; }
+.cf-wait-callout, .cf-wait--long { background:#fff7ed; }
+.cf-wait-callout { padding:.6rem .8rem; border-radius:.4rem; margin:.6rem 0; }
+.cf-flash { padding:.5rem .8rem; margin:.5rem 0; border-radius:.3rem; }
+.cf-flash--alert { background:#fee2e2; } .cf-flash--notice { background:#dcfce7; }
+.cf-btn { display:inline-block; padding:.3rem .7rem; border:1px solid var(--cf-line); border-radius:.3rem; background:#fff; cursor:pointer; }
+.cf-btn--danger { border-color:#ef4444; color:#991b1b; }
+.cf-sparkline { height:24px; width:100px; color: var(--cf-accent); }
+.cf-collapsed > ul, .cf-collapsed > .cf-context__val { display:none; }
