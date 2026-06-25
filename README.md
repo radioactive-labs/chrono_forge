@@ -254,6 +254,29 @@ class ChargeWorkflow < ApplicationJob
 end
 ```
 
+**Composite policies (per-error budgets):**
+
+Pass an **array** of policies to handle different error types differently. On a failure, the **first** policy whose `retry_on` matches the raised error applies — each error type gets its **own independent attempt budget and backoff**:
+
+```ruby
+durably_execute :charge_card, retry_policy: [
+  RetryPolicy.new(retry_on: [NetworkError],         max_attempts: 5),            # transient: retry hard
+  RetryPolicy.new(retry_on: [RateLimitError],       max_attempts: 10, base: 5),  # back off longer
+  RetryPolicy.new(retry_on: [PaymentDeclinedError], max_attempts: 1),            # fail fast, never retry
+  RetryPolicy.new(retry_on: nil)                                                 # catch-all (optional), keep last
+]
+```
+
+- **Order matters** — the first matching policy wins, so list specific errors first and a catch-all (`retry_on: nil`) last. An error matched by no policy is **not retried** (fails fast).
+- A subclass of a listed error routes to that policy and draws from its budget.
+- Per-error counts are tracked by the policy's declared errors, so the budgets are stable even if you reorder the list.
+- The class-level DSL accepts the same form as positional arguments (applies to steps **and** workflow-level errors):
+
+  ```ruby
+  retry_policy RetryPolicy.new(retry_on: [NetworkError], max_attempts: 5),
+               RetryPolicy.new(retry_on: nil, max_attempts: 2)
+  ```
+
 #### ⏱️ Wait States
 
 ChronoForge supports three types of wait states, each optimized for different use cases:

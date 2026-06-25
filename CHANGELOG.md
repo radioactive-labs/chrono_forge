@@ -4,6 +4,7 @@
 
 - `ChronoForge::Executor::RetryPolicy` — a single, unified retry abstraction (attempt cap + exponential-with-jitter backoff + error-class predicate) used by every retry site: workflow-level uncaught errors, `durably_execute`, `durably_repeat`, and `wait_until` condition errors. Replaces the three previously-independent retry systems and two backoff algorithms.
 - Class-level `retry_policy` DSL to set a workflow's default retry policy, plus a per-call `retry_policy:` keyword on `durably_execute`, `durably_repeat`, and `wait_until`. Resolution is per-call → class default → per-site built-in. `wait_until` deliberately does not inherit the class default (so a class-wide "retry everything" can't silently retry condition-evaluation bugs).
+- **Composite retry policies** — pass an ordered array of `RetryPolicy` objects (per-call, or to the class-level `retry_policy` DSL as positional args) to give each error type its own independent attempt budget and backoff. The first policy whose `retry_on` matches the raised error wins (subclasses route to the policy that lists their ancestor; a trailing `retry_on: nil` is a catch-all; an unmatched error fails fast). Per-error counts are keyed by each policy's declared errors (`RetryPolicy#budget_key`) and persisted in execution-log metadata (steps) or the job args (workflow-level), so budgets are stable across replays and policy reordering. `RetryPolicy.compose(*policies)` builds one explicitly.
 
 ### Changed
 
