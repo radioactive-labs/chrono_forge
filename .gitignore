@@ -14,3 +14,5 @@ test/internal/db/*.sqlite*
 ai_tools
 .DS_Store
 Gemfile.lock
+# git worktrees
+.worktrees/
