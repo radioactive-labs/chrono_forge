@@ -43,6 +43,21 @@ module ChronoForge
         delay.seconds
       end
 
+      # Public routing predicate: would this policy handle this error at all?
+      # (independent of the attempt cap). nil retry_on = any StandardError;
+      # [] = nothing; a list = those classes and their subclasses.
+      def matches?(error)
+        retryable_error?(error)
+      end
+
+      # Single-call decision used by every retry site: the backoff Duration to
+      # retry, or nil to stop. A plain policy uses `attempts` and ignores any
+      # block (the block exists only so a CompositeRetryPolicy can supply a
+      # per-error count — see CompositeRetryPolicy#retry_backoff).
+      def retry_backoff(error, attempts:)
+        retryable?(error, attempts) ? backoff_for(attempts) : nil
+      end
+
       def self.step_default
         new(max_attempts: 3, base: 1, cap: 30, jitter: true, retry_on: nil)
       end
@@ -61,6 +76,11 @@ module ChronoForge
 
       def self.wait_default
         new(max_attempts: nil, base: 1, cap: 30, jitter: true, retry_on: [])
+      end
+
+      # Build a composite policy from an ordered list of RetryPolicy objects.
+      def self.compose(*policies)
+        CompositeRetryPolicy.new(policies)
       end
 
       private

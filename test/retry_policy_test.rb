@@ -110,4 +110,53 @@ class RetryPolicyTest < ActiveSupport::TestCase
     policy = RetryPolicy.wait_default
     assert_equal [], policy.retry_on, "condition errors are not retried unless opted in"
   end
+
+  # --- matches?: routing predicate ---
+
+  def test_matches_nil_retry_on_matches_any_standard_error
+    policy = RetryPolicy.new(retry_on: nil)
+    assert policy.matches?(CustomError.new)
+    assert policy.matches?(UnrelatedError.new)
+  end
+
+  def test_matches_empty_retry_on_matches_nothing
+    policy = RetryPolicy.new(retry_on: [])
+    refute policy.matches?(CustomError.new)
+    refute policy.matches?(StandardError.new)
+  end
+
+  def test_matches_list_matches_class_and_subclass
+    policy = RetryPolicy.new(retry_on: [CustomError])
+    assert policy.matches?(CustomError.new)
+    assert policy.matches?(SubError.new), "subclass matches"
+    refute policy.matches?(UnrelatedError.new)
+  end
+
+  # --- retry_backoff: plain policy ignores the block ---
+
+  def test_retry_backoff_returns_duration_when_retryable
+    policy = RetryPolicy.new(max_attempts: 3, base: 1, cap: 1000, jitter: false)
+    assert_in_delta 1.0, policy.retry_backoff(StandardError.new, attempts: 1).to_f, 0.001
+  end
+
+  def test_retry_backoff_returns_nil_past_cap
+    policy = RetryPolicy.new(max_attempts: 2)
+    assert_nil policy.retry_backoff(StandardError.new, attempts: 2)
+  end
+
+  def test_retry_backoff_ignores_block
+    policy = RetryPolicy.new(max_attempts: 3, base: 1, cap: 1000, jitter: false)
+    called = false
+    result = policy.retry_backoff(StandardError.new, attempts: 1) { |_idx| called = true; 99 }
+    refute called, "plain policy must not invoke the count block"
+    assert_in_delta 1.0, result.to_f, 0.001
+  end
+
+  # --- compose factory ---
+
+  def test_compose_builds_composite
+    composite = RetryPolicy.compose(RetryPolicy.new, RetryPolicy.new)
+    assert_instance_of ChronoForge::Executor::CompositeRetryPolicy, composite
+    assert_equal 2, composite.policies.size
+  end
 end
