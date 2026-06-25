@@ -69,7 +69,7 @@ module ChronoForge
       end
     end
 
-    def perform(key, attempt: 0, retry_workflow: false, options: {}, **kwargs)
+    def perform(key, attempt: 0, retry_counts: {}, retry_workflow: false, options: {}, **kwargs)
       # Safety net: prevent re-running a workflow whose attempts are exhausted
       # (e.g. a stale job left in the queue). The normal exhaustion path fails the
       # workflow from the rescue below before this is ever reached.
@@ -123,12 +123,19 @@ module ChronoForge
         error_log = self.class::ExecutionTracker.track_error(workflow, e, attempt: attempt)
 
         # Retry if applicable. `attempt` is a 0-based index, so the count of
-        # attempts made so far (including this one) is attempt + 1.
+        # attempts made so far (including this one) is attempt + 1. For a
+        # composite policy the per-error budget lives in `retry_counts` (keyed by
+        # the matched policy's budget_key) and rides along the job args, mirroring
+        # how `attempt` is threaded — there is no execution log at this level.
         attempts_made = attempt + 1
-        if policy.retryable?(e, attempts_made)
+        backoff = policy.retry_backoff(e, attempts: attempts_made) do |policy_key|
+          retry_counts[policy_key] = retry_counts[policy_key].to_i + 1
+          retry_counts[policy_key]
+        end
+        if backoff
           self.class
-            .set(wait: policy.backoff_for(attempts_made))
-            .perform_later(workflow.key, attempt: attempts_made)
+            .set(wait: backoff)
+            .perform_later(workflow.key, attempt: attempts_made, retry_counts: retry_counts)
         else
           fail_workflow! error_log
         end
