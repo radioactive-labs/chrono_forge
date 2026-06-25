@@ -17,6 +17,13 @@
 - Workflow-level retry no longer has a contradictory cap (`should_retry?` stopped at 3 while `RetryStrategy.max_attempts` was 5, making the array's `2m`/`10m` entries unreachable). The single `RetryPolicy` is now the sole decider.
 - Removed the dead `retry_method:` argument that `durably_execute` passed on reschedule but `perform` never bound.
 
+## [0.9.1] - 2026-06-25
+
+### Fixed
+
+- `LockStrategy.acquire_lock` no longer raises a `NameError` (`undefined local variable or method 'key'`) on lock contention. The concurrent-execution branch referenced an undefined `key` while building its error message, so the intended, benign `ConcurrentExecutionError` ("currently being executed by job X") was masked by a hard `NameError` on every duplicate/racing execution of the same workflow. It now surfaces the real `ConcurrentExecutionError`.
+- Corrected `#{self.class}` → `#{name}` in `LockStrategy`'s lock log/error messages. These are singleton methods (`class << self`), so `self` is already the class and `self.class` rendered the literal string `Class`; messages now name the strategy class.
+
 ## [0.9.0] - 2026-06-03
 
 ### Added

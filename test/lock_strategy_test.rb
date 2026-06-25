@@ -20,6 +20,25 @@ class LockStrategyTest < ActiveJob::TestCase
     )
   end
 
+  def test_acquire_lock_raises_concurrent_execution_error_when_freshly_locked
+    workflow = make_workflow(locked_by: "job-b")
+
+    # job-a tries to acquire a lock held by job-b whose lock is still fresh.
+    # This must surface as a clean ConcurrentExecutionError, not a NameError
+    # raised while building the message string.
+    error = assert_raises(ChronoForge::Executor::ConcurrentExecutionError) do
+      LockStrategy.acquire_lock("job-a", workflow, max_duration: 10.minutes)
+    end
+
+    assert_includes error.message, workflow.key
+    assert_includes error.message, "job-a"
+    assert_includes error.message, "job-b"
+    # The message should name the strategy class, not the literal "Class" that
+    # `self.class` produced inside the `class << self` singleton.
+    assert_includes error.message, "LockStrategy"
+    refute_match(/ChronoForge:Class\b/, error.message)
+  end
+
   def test_release_lock_clears_lock_for_owning_job
     workflow = make_workflow(locked_by: "job-a")
 
