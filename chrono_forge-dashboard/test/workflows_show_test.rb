@@ -30,6 +30,28 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     assert_match "cf-wait-callout", response.body
   end
 
+  test "renders periodic-task health for durably_repeat workflows" do
+    wf = create_workflow(key: "show-periodic", state: :running)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 3, started_at: 1.day.ago,
+      metadata: {"last_execution_at" => 2.hours.ago.iso8601})
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync$1717000000",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 1, error_class: "TimeoutError",
+      started_at: 3.hours.ago, completed_at: 3.hours.ago)
+
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    assert_match "Periodic tasks", response.body
+    assert_match "sync", response.body
+    assert_match "cf-periodic--timeout", response.body
+  end
+
+  test "no periodic section when there are no durably_repeat steps" do
+    wf = create_workflow(key: "show-no-periodic", state: :completed)
+    get "/chrono_forge/workflows/#{wf.id}"
+    refute_match "Periodic tasks", response.body
+  end
+
   test "unknown step name renders without raising" do
     wf = create_workflow(key: "show-3", state: :running)
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "legacy_thing",

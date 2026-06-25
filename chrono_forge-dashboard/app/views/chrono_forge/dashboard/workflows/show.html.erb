@@ -11,5 +11,6 @@
 </div>
 <%= render "wait_callout", wait: @wait if @wait %>
 <section><h2>Timeline</h2><%= render "timeline", timeline: @timeline %></section>
+<% if @periodic.any? %><section><h2>Periodic tasks</h2><%= render "periodic", tasks: @periodic %></section><% end %>
 <section><h2>Context</h2><%= render "context_tree", context: @context %></section>
 <section><h2>Errors</h2><%= render "errors", errors: @errors %></section>

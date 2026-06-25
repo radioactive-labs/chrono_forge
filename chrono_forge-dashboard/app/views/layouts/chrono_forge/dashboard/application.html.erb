@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css" %>">
 </head>
 <body data-poll-interval="<%= ChronoForge::Dashboard.config.polling_interval %>">
-  <header class="cf-header"><a href="<%= root_path %>">ChronoForge</a></header>
+  <header class="cf-header"><a href="<%= root_path %>">ChronoForge</a> <a class="cf-nav" href="<%= wait_states_path %>">Waiting</a></header>
   <main class="cf-main">
     <% flash.each do |type, msg| %><div class="cf-flash cf-flash--<%= type %>"><%= msg %></div><% end %>
     <%= yield %>

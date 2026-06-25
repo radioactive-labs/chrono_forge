@@ -13,6 +13,7 @@ module ChronoForge
         @context = ContextPresenter.new(@workflow)
         @errors = @workflow.error_logs.order(created_at: :desc)
         @wait = WaitStatePresenter.new(@workflow).active
+        @periodic = PeriodicHealthPresenter.new(@workflow).tasks
       end
 
       private

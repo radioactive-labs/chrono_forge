@@ -1,0 +1,13 @@
+<table class="cf-table cf-periodic">
+  <thead><tr><th>Task</th><th>Last run</th><th>Timed out</th><th>Recent latency</th></tr></thead>
+  <tbody>
+    <% tasks.each do |t| %>
+      <tr>
+        <td><code><%= t.name %></code></td>
+        <td><%= t.last_execution_at || "—" %></td>
+        <td class="<%= "cf-periodic--timeout" if t.timed_out_count.positive? %>"><%= t.timed_out_count %></td>
+        <td><span data-sparkline data-values="<%= t.latencies.join(",") %>"></span></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
