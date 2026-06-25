@@ -10,14 +10,14 @@ class AuthTest < ActionDispatch::IntegrationTest
   end
 
   test "http basic accepts correct credentials" do
-    ChronoForge::Dashboard.configure { |c| c.http_basic = { username: "a", password: "b" } }
-    get "/chrono_forge", headers: { "HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials("a", "b") }
+    ChronoForge::Dashboard.configure { |c| c.http_basic = {username: "a", password: "b"} }
+    get "/chrono_forge", headers: {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials("a", "b")}
     assert_response :success
   end
 
   test "http basic rejects wrong credentials" do
-    ChronoForge::Dashboard.configure { |c| c.http_basic = { username: "a", password: "b" } }
-    get "/chrono_forge", headers: { "HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials("a", "x") }
+    ChronoForge::Dashboard.configure { |c| c.http_basic = {username: "a", password: "b"} }
+    get "/chrono_forge", headers: {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials("a", "x")}
     assert_response :unauthorized
   end
 

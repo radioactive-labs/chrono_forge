@@ -19,7 +19,7 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
   end
 
   test "filters by state" do
-    get "/chrono_forge/workflows", params: { state: "failed" }
+    get "/chrono_forge/workflows", params: {state: "failed"}
     assert_match "ord-1", response.body
     refute_match "pay-1", response.body
   end

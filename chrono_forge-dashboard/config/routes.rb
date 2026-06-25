@@ -10,5 +10,5 @@ ChronoForge::Dashboard::Engine.routes.draw do
     end
   end
   resources :wait_states, only: :index
-  get "assets/:file", to: "assets#show", constraints: { file: /dashboard\.(css|js)/ }
+  get "assets/:file", to: "assets#show", constraints: {file: /dashboard\.(css|js)/}
 end

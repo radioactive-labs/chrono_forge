@@ -2,11 +2,12 @@ require "test_helper"
 
 class WorkflowsShowTest < ActionDispatch::IntegrationTest
   include DashboardTestHelpers
+
   setup { ChronoForge::Dashboard.configure { |c| c.authentication = :none } }
   teardown { ChronoForge::Dashboard.reset_configuration! }
 
   test "renders timeline, context, errors" do
-    wf = create_workflow(key: "show-1", state: :failed, context: { "amount" => 10 })
+    wf = create_workflow(key: "show-1", state: :failed, context: {"amount" => 10})
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_execute$charge",
       state: ChronoForge::ExecutionLog.states[:failed], attempts: 3, started_at: 1.minute.ago, error_class: "Boom")
     ChronoForge::ErrorLog.create!(workflow: wf, step_name: "durably_execute$charge", attempt: 3,
@@ -24,7 +25,7 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$paid?",
       state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
       started_at: 2.hours.ago, last_executed_at: 2.hours.ago,
-      metadata: { "timeout_at" => 1.hour.from_now })
+      metadata: {"timeout_at" => 1.hour.from_now})
     get "/chrono_forge/workflows/#{wf.id}"
     assert_match "cf-wait-callout", response.body
   end

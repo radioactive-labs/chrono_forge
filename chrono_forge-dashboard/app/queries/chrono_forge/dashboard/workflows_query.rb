@@ -17,9 +17,9 @@ module ChronoForge
 
       def total_count = scope.count
 
-      def page = @page
+      attr_reader :page
 
-      def per = @per
+      attr_reader :per
 
       private
 

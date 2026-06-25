@@ -31,7 +31,7 @@ class PresentersTest < ActiveSupport::TestCase
   end
 
   test "context presenter exposes typed nodes and size" do
-    wf = create_workflow(key: "t3", context: { "amount" => 5, "intl" => true })
+    wf = create_workflow(key: "t3", context: {"amount" => 5, "intl" => true})
     cp = ChronoForge::Dashboard::ContextPresenter.new(wf)
     types = cp.nodes.map { |n| [n[:key], n[:type]] }.to_h
     assert_equal "Integer", types["amount"]
