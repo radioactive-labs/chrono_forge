@@ -14,10 +14,12 @@ module ChronoForge
         # @param till [Symbol, Proc] The condition to check for stopping repetition. Should return
         #   true when repetition should stop. Can be a symbol for instance methods or a callable.
         # @param start_at [Time, nil] When to start the periodic task. Defaults to coordination_log.created_at + every
-        # @param max_attempts [Integer] Maximum retry attempts per individual execution (default: 3)
+        # @param retry_policy [RetryPolicy, nil] Per-call retry policy for an individual
+        #   execution. When nil, uses the class-level `retry_policy` default, then the
+        #   step built-in (RetryPolicy.step_default: 3 attempts, backoff capped at 30s).
         # @param timeout [ActiveSupport::Duration] How long after scheduled time an execution is
         #   considered stale and skipped (default: 1.hour). This enables catch-up behavior.
-        # @param on_error [Symbol] How to handle repetition failures after max_attempts. Options:
+        # @param on_error [Symbol] How to handle repetition failures after the policy's max_attempts. Options:
         #   - :continue (default): Log failure and continue with next scheduled execution
         #   - :fail_workflow: Raise ExecutionFailedError to fail the entire workflow
         # @param name [String, nil] Custom name for the periodic task. Defaults to method name.
@@ -60,7 +62,7 @@ module ChronoForge
         #     every: 1.day,
         #     till: :reports_complete?,
         #     start_at: Date.tomorrow.beginning_of_day,
-        #     max_attempts: 5,
+        #     retry_policy: RetryPolicy.new(max_attempts: 5),
         #     timeout: 2.hours,
         #     on_error: :fail_workflow,
         #     name: "daily_reports"
@@ -89,7 +91,7 @@ module ChronoForge
         # - Eventually reaches current/future execution times
         #
         # === Error Handling
-        # - Individual execution failures are retried up to `max_attempts` with exponential backoff
+        # - Individual execution failures are retried per the resolved RetryPolicy
         # - After max attempts, behavior depends on `on_error` parameter:
         #   - `:continue`: Failed execution is logged, next execution is scheduled
         #   - `:fail_workflow`: ExecutionFailedError is raised, failing the entire workflow
@@ -100,7 +102,8 @@ module ChronoForge
         # - Coordination log: `durably_repeat$#{name}` - tracks overall periodic task state
         # - Repetition logs: `durably_repeat$#{name}$#{timestamp}` - tracks individual executions
         #
-        def durably_repeat(method, every:, till:, start_at: nil, max_attempts: 3, timeout: 1.hour, on_error: :continue, name: nil)
+        def durably_repeat(method, every:, till:, start_at: nil, retry_policy: nil, timeout: 1.hour, on_error: :continue, name: nil)
+          policy = step_retry_policy(retry_policy)
           validate_step_name_segment!(name || method)
           step_name = "durably_repeat$#{name || method}"
 
@@ -145,13 +148,13 @@ module ChronoForge
             coordination_log.created_at + every
           end
 
-          execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, max_attempts, timeout, on_error)
+          execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           nil
         end
 
         private
 
-        def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, max_attempts, timeout, on_error)
+        def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           step_name = "#{coordination_log.step_name}$#{next_execution_at.to_i}"
 
           # Create execution log for this specific repetition
@@ -175,7 +178,7 @@ module ChronoForge
 
           # Check if it's time to execute this repetition
           if next_execution_at <= Time.current
-            execute_repetition_now(method, repetition_log, coordination_log, next_execution_at, every, max_attempts, timeout, on_error)
+            execute_repetition_now(method, repetition_log, coordination_log, next_execution_at, every, policy, timeout, on_error)
           else
             schedule_repetition_for_later(repetition_log, next_execution_at)
           end
@@ -194,7 +197,7 @@ module ChronoForge
           halt_execution!
         end
 
-        def execute_repetition_now(method, repetition_log, coordination_log, execution_time, every, max_attempts, timeout, on_error)
+        def execute_repetition_now(method, repetition_log, coordination_log, execution_time, every, policy, timeout, on_error)
           # Check for timeout
           if Time.current > repetition_log.metadata["timeout_at"]
             repetition_log.update!(
@@ -223,10 +226,11 @@ module ChronoForge
           self.class::ExecutionTracker.track_error(@workflow, e, execution_log: repetition_log)
 
           # Handle retry logic for this specific repetition
-          if repetition_log.attempts < max_attempts
-            # Reschedule this same repetition with exponential backoff
-            backoff = (2**[repetition_log.attempts, 5].min).seconds
-
+          backoff = policy.retry_backoff(e, attempts: repetition_log.attempts) do |policy_key|
+            bump_retry_count!(repetition_log, policy_key)
+          end
+          if backoff
+            # Reschedule this same repetition with the policy's backoff
             self.class
               .set(wait: backoff)
               .perform_later(@workflow.key)
@@ -243,7 +247,7 @@ module ChronoForge
 
             # Handle failure based on on_error setting
             if on_error == :fail_workflow
-              raise ExecutionFailedError, "Periodic task #{method} failed after #{max_attempts} attempts: #{e.message}"
+              raise ExecutionFailedError, "Periodic task #{method} failed after #{repetition_log.attempts} attempts: #{e.message}"
             else
               # Continue with next execution despite this failure
               schedule_next_execution_after_completion(coordination_log, execution_time, every)

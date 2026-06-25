@@ -168,8 +168,9 @@ The `durably_execute` method ensures operations are executed exactly once with a
 # Basic execution
 durably_execute :send_welcome_email
 
-# With custom retry attempts
-durably_execute :critical_payment_processing, max_attempts: 5
+# With a custom retry policy
+durably_execute :critical_payment_processing,
+  retry_policy: RetryPolicy.new(max_attempts: 5)
 
 # With custom name for tracking multiple calls to same method
 durably_execute :upload_file, name: "profile_image_upload"
@@ -182,10 +183,10 @@ class FileProcessingWorkflow < ApplicationJob
     @file_id = file_id
     
     # This might fail due to network issues, rate limits, etc.
-    durably_execute :upload_to_s3, max_attempts: 5
+    durably_execute :upload_to_s3, retry_policy: RetryPolicy.new(max_attempts: 5)
     
     # Process file after successful upload
-    durably_execute :generate_thumbnails, max_attempts: 3
+    durably_execute :generate_thumbnails, retry_policy: RetryPolicy.new(max_attempts: 3)
   end
 
   private
@@ -204,9 +205,77 @@ end
 
 **Key Features:**
 - **Idempotent**: Same operation won't be executed twice during replays
-- **Automatic Retries**: Failed executions retry with exponential backoff (2^attempt seconds, capped at 32s)
+- **Automatic Retries**: Failed executions retry per a unified `RetryPolicy` (exponential backoff with jitter; the step default caps at 30s over 3 attempts)
 - **Error Tracking**: All failures are logged with detailed error information
-- **Configurable**: Customize retry attempts and step naming
+- **Configurable**: Pass a `retry_policy:` per call, or set a class-wide default with the `retry_policy` DSL (see [Retry Policies](#retry-policies))
+
+#### 🔁 Retry Policies
+
+All retrying in ChronoForge goes through a single `RetryPolicy` (`ChronoForge::Executor::RetryPolicy`). It answers two questions: *should this failure be retried?* and *how long until the next attempt?*
+
+```ruby
+RetryPolicy.new(
+  max_attempts: 3,        # cap on total attempts; nil = no count cap (bounded elsewhere)
+  base: 1,                # seconds; delay of the first retry
+  cap: 30,                # seconds; ceiling for a single delay
+  jitter: true,           # spread retries with equal jitter
+  retry_on: nil           # nil = retry any StandardError; [Classes] = only those; [] = none
+)
+```
+
+Backoff is exponential with equal jitter, computed once at re-enqueue time (never replayed, so it stays deterministic where it matters).
+
+**Resolution order:**
+
+- **`durably_execute`, `durably_repeat`, workflow-level errors** — per-call `retry_policy:` → class-level `retry_policy` default → built-in default.
+- **`wait_until`** — per-call `retry_policy:` → built-in default. It deliberately does **not** inherit the class default, so a class-wide "retry everything" can't silently turn condition-evaluation bugs into retried errors.
+
+**Built-in defaults:**
+
+| Site | Default | Why |
+|------|---------|-----|
+| Steps (`durably_execute`/`durably_repeat`) | 3 attempts, cap 30s, retry any error | flaky calls fail fast |
+| Workflow-level (uncaught errors) | 10 attempts, cap 600s, retry any error | tolerant window up to ~8.5 min (≈4 min typical w/ jitter) for transient infra errors; each retry replays the whole workflow from the top |
+| `wait_until` condition errors | retry nothing | a raised condition is usually a bug, not transient |
+
+**Class-wide default via the `retry_policy` DSL:**
+
+```ruby
+class ChargeWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+  retry_policy max_attempts: 5, base: 2, cap: 60   # applies to steps + workflow-level
+
+  def perform
+    durably_execute :charge,
+      retry_policy: RetryPolicy.new(max_attempts: 8, retry_on: [Net::OpenTimeout])
+    wait_until :settled?,
+      retry_policy: RetryPolicy.new(retry_on: [BankApiError])
+  end
+end
+```
+
+**Composite policies (per-error budgets):**
+
+Pass an **array** of policies to handle different error types differently. On a failure, the **first** policy whose `retry_on` matches the raised error applies — each error type gets its **own independent attempt budget and backoff**:
+
+```ruby
+durably_execute :charge_card, retry_policy: [
+  RetryPolicy.new(retry_on: [NetworkError],         max_attempts: 5),            # transient: retry hard
+  RetryPolicy.new(retry_on: [RateLimitError],       max_attempts: 10, base: 5),  # back off longer
+  RetryPolicy.new(retry_on: [PaymentDeclinedError], max_attempts: 1),            # fail fast, never retry
+  RetryPolicy.new(retry_on: nil)                                                 # catch-all (optional), keep last
+]
+```
+
+- **Order matters** — the first matching policy wins, so list specific errors first and a catch-all (`retry_on: nil`) last. An error matched by no policy is **not retried** (fails fast).
+- A subclass of a listed error routes to that policy and draws from its budget.
+- Per-error counts are tracked by the policy's declared errors, so the budgets are stable even if you reorder the list.
+- The class-level DSL accepts the same form as positional arguments (applies to steps **and** workflow-level errors):
+
+  ```ruby
+  retry_policy RetryPolicy.new(retry_on: [NetworkError], max_attempts: 5),
+               RetryPolicy.new(retry_on: nil, max_attempts: 2)
+  ```
 
 #### ⏱️ Wait States
 
@@ -243,11 +312,11 @@ wait_until :external_api_ready?,
   timeout: 30.minutes, 
   check_interval: 1.minute
 
-# Wait with retry on specific errors
+# Wait with retry on specific errors raised while evaluating the condition
 wait_until :database_migration_complete?,
   timeout: 2.hours,
   check_interval: 30.seconds,
-  retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError]
+  retry_policy: RetryPolicy.new(retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError])
 
 # Complex condition example
 def third_party_service_ready?
@@ -258,7 +327,7 @@ end
 wait_until :third_party_service_ready?,
   timeout: 1.hour,
   check_interval: 2.minutes,
-  retry_on: [Net::TimeoutError, Net::HTTPClientException]
+  retry_policy: RetryPolicy.new(retry_on: [Net::TimeoutError, Net::HTTPClientException])
 ```
 
 **3. Event-driven Waits (`continue_if`)**
@@ -390,7 +459,7 @@ durably_repeat :generate_daily_report,
   every: 1.day,                          # Execution interval
   till: :reports_complete?,              # Stop condition
   start_at: Date.tomorrow.beginning_of_day, # Custom start time (optional)
-  max_attempts: 5,                       # Retries per execution (default: 3)
+  retry_policy: RetryPolicy.new(max_attempts: 5), # Retry policy per execution (default: step_default)
   timeout: 2.hours,                      # Catch-up timeout (default: 1.hour)
   on_error: :fail_workflow,              # Error handling (:continue or :fail_workflow)
   name: "daily_reports"                  # Custom task name (optional)
@@ -461,26 +530,24 @@ Context is meant for **small working state** — ids, flags, timestamps, and sma
 
 ### 🛡️ Error Handling
 
-ChronoForge automatically tracks errors and provides configurable retry capabilities:
+ChronoForge automatically tracks errors and routes all retrying through a single [`RetryPolicy`](#-retry-policies). Configure it per call with `retry_policy:`, or set a class-wide default with the `retry_policy` DSL:
 
 ```ruby
 class MyWorkflow < ApplicationJob
   prepend ChronoForge::Executor
 
-  private
+  # Class-wide default for workflow-level errors and steps without an override
+  retry_policy max_attempts: 5, base: 2, cap: 60
 
-  def should_retry?(error, attempt_count)
-    case error
-    when NetworkError
-      attempt_count < 5  # Retry network errors up to 5 times
-    when ValidationError
-      false  # Don't retry validation errors
-    else
-      attempt_count < 3  # Default retry policy
-    end
+  def perform
+    # Retry only network errors, up to 5 times, for this step
+    durably_execute :call_external_api,
+      retry_policy: RetryPolicy.new(max_attempts: 5, retry_on: [NetworkError])
   end
 end
 ```
+
+To make an error non-retryable, leave it out of `retry_on:` (an empty `retry_on: []` retries nothing).
 
 ## 🧪 Testing
 
@@ -762,11 +829,11 @@ This gem is available as open source under the terms of the [MIT License](https:
 
 | Method | Purpose | Key Parameters |
 |--------|---------|----------------|
-| `durably_execute` | Execute method with retry logic | `method`, `max_attempts: 3`, `name: nil` |
+| `durably_execute` | Execute method with retry logic | `method`, `retry_policy: nil`, `name: nil` |
 | `wait` | Time-based pause | `duration`, `name` |
-| `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_on: []` |
+| `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_policy: nil` |
 | `continue_if` | Manual continuation wait | `condition`, `name: nil` |
-| `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `max_attempts: 3`, `timeout: 1.hour`, `on_error: :continue` |
+| `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `retry_policy: nil`, `timeout: 1.hour`, `on_error: :continue` |
 
 ### Context Methods
 

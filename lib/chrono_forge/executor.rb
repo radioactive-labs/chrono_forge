@@ -22,6 +22,10 @@ module ChronoForge
 
     # Add class methods
     def self.prepended(base)
+      # Class-wide default retry policy, inherited by subclasses. Set via the
+      # `retry_policy` DSL below; nil means "use the per-site built-in default".
+      base.class_attribute :default_retry_policy, instance_accessor: false, default: nil
+
       class << base
         # Enforce expected signature for perform_now with key as first arg and keywords after
         def perform_now(key, **kwargs)
@@ -48,12 +52,29 @@ module ChronoForge
         def retry_later(key, **)
           perform_later(key, retry_workflow: true, **)
         end
+
+        # Class-level DSL to set this workflow's default retry policy. Applies to
+        # workflow-level retries and to steps without a per-call override.
+        # Positional RetryPolicy objects build a composite (per-error budgets);
+        # keyword options build a single RetryPolicy. The two forms are mutually
+        # exclusive.
+        def retry_policy(*policies, **opts)
+          if policies.any? && opts.any?
+            raise ArgumentError, "retry_policy takes either positional policies or keyword options, not both"
+          end
+
+          self.default_retry_policy =
+            policies.any? ? RetryPolicy.compose(*policies) : RetryPolicy.new(**opts)
+        end
       end
     end
 
-    def perform(key, attempt: 0, retry_workflow: false, options: {}, **kwargs)
-      # Prevent excessive retries
-      if attempt >= self.class::RetryStrategy.max_attempts
+    def perform(key, attempt: 0, retry_counts: {}, retry_workflow: false, options: {}, **kwargs)
+      # Safety net: prevent re-running a workflow whose attempts are exhausted
+      # (e.g. a stale job left in the queue). The normal exhaustion path fails the
+      # workflow from the rescue below before this is ever reached.
+      policy = workflow_retry_policy
+      if policy.max_attempts && attempt >= policy.max_attempts
         Rails.logger.error { "ChronoForge:#{self.class} max attempts reached for job workflow(#{key})" }
         return
       end
@@ -101,9 +122,20 @@ module ChronoForge
         Rails.logger.error { "ChronoForge:#{self.class}(#{key}) workflow execution failed" }
         error_log = self.class::ExecutionTracker.track_error(workflow, e, attempt: attempt)
 
-        # Retry if applicable
-        if should_retry?(e, attempt)
-          self.class::RetryStrategy.schedule_retry(workflow, attempt: attempt)
+        # Retry if applicable. `attempt` is a 0-based index, so the count of
+        # attempts made so far (including this one) is attempt + 1. For a
+        # composite policy the per-error budget lives in `retry_counts` (keyed by
+        # the matched policy's budget_key) and rides along the job args, mirroring
+        # how `attempt` is threaded — there is no execution log at this level.
+        attempts_made = attempt + 1
+        backoff = policy.retry_backoff(e, attempts: attempts_made) do |policy_key|
+          retry_counts[policy_key] = retry_counts[policy_key].to_i + 1
+          retry_counts[policy_key]
+        end
+        if backoff
+          self.class
+            .set(wait: backoff)
+            .perform_later(workflow.key, attempt: attempts_made, retry_counts: retry_counts)
         else
           fail_workflow! error_log
         end
@@ -164,8 +196,45 @@ module ChronoForge
         "ChronoForge step name may not contain '#{STEP_NAME_DELIMITER}' (reserved separator): #{segment.inspect}"
     end
 
-    def should_retry?(error, attempt_count)
-      attempt_count < 3
+    # Retry policy for workflow-level (uncaught) errors: the class default if one
+    # was declared, else the workflow built-in (10 attempts, up to ~8.5 min).
+    # Each retry replays the whole workflow from the top.
+    def workflow_retry_policy
+      self.class.default_retry_policy || RetryPolicy.workflow_default
+    end
+
+    # Retry policy for a durable step: an explicit per-call override, else the
+    # class default, else the step built-in (short, snappy fast-fail).
+    def step_retry_policy(override)
+      coerce_policy(override) || self.class.default_retry_policy || RetryPolicy.step_default
+    end
+
+    # Retry policy for a wait_until condition error. Deliberately does NOT inherit
+    # the class default, so a class-wide "retry everything" can't silently turn
+    # condition-evaluation bugs into retried errors. Built-in retries nothing.
+    def wait_retry_policy(override)
+      coerce_policy(override) || RetryPolicy.wait_default
+    end
+
+    # Normalize a retry-policy value: an Array becomes a composite; a RetryPolicy
+    # or CompositeRetryPolicy passes through; nil stays nil.
+    def coerce_policy(value)
+      value.is_a?(Array) ? RetryPolicy.compose(*value) : value
+    end
+
+    # JSON metadata key holding the per-error attempt counts of a composite
+    # policy, keyed by the matched policy's declared errors (RetryPolicy#budget_key).
+    RETRY_COUNTS_KEY = "retry_counts"
+
+    # Increment the matched policy's slot in the log's retry-count map and return
+    # the new count. Reassigns `metadata` so the JSON column is marked dirty.
+    def bump_retry_count!(log, policy_key)
+      meta = log.metadata || {}
+      counts = meta[RETRY_COUNTS_KEY] || {}
+      counts[policy_key] = counts[policy_key].to_i + 1
+      meta[RETRY_COUNTS_KEY] = counts
+      log.update!(metadata: meta)
+      counts[policy_key]
     end
 
     def halt_execution!

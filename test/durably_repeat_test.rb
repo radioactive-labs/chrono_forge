@@ -626,7 +626,8 @@ class MaxAttemptsJob < WorkflowJob
 
   def perform
     context.set_once(:failure_count, 0)
-    durably_repeat :failing_task, every: 2.seconds, till: :done?, max_attempts: 5, on_error: :continue
+    durably_repeat :failing_task, every: 2.seconds, till: :done?,
+      retry_policy: RetryPolicy.new(max_attempts: 5), on_error: :continue
   end
 
   private
