@@ -1,6 +1,8 @@
 module ChronoForge
   module Dashboard
     class BaseController < ActionController::Base
+      layout "chrono_forge/dashboard/application"
+
       protect_from_forgery with: :exception
       before_action :authenticate!
 

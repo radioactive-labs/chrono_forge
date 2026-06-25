@@ -1,4 +1,6 @@
 <%= render "stats", stats: @stats %>
+<%= button_to "Retry all failed", bulk_retry_workflows_path, method: :post,
+      form: { data: { confirm: "Re-enqueue every failed workflow?" } }, class: "cf-btn" %>
 <%= render "filters", query: @query %>
 <div data-poll-region>
   <table class="cf-table">

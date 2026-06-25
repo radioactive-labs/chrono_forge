@@ -11,7 +11,8 @@ require "action_controller/railtie"
 require "chrono_forge/dashboard"
 
 Combustion.path = "test/internal"
-Combustion.initialize! :active_record, :action_controller
+require "active_job/railtie"
+Combustion.initialize! :active_record, :active_job, :action_controller
 
 require "rails/test_help"
 require "rack/test"

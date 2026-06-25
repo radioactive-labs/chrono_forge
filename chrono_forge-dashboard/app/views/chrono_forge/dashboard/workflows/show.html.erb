@@ -1,5 +1,14 @@
 <h1 class="cf-title"><%= cf_badge(@workflow.state) %> <%= @workflow.key %></h1>
 <p class="cf-meta"><%= @workflow.job_class %> · locked_by=<%= @workflow.locked_by || "—" %></p>
+<div class="cf-actions">
+  <% if @workflow.retryable? %>
+    <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn" %>
+  <% end %>
+  <% if @workflow.running? %>
+    <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
+          form: { data: { confirm: "Force-unlocking a genuinely-running workflow can cause duplicate execution. Continue?" } }, class: "cf-btn cf-btn--danger" %>
+  <% end %>
+</div>
 <%= render "wait_callout", wait: @wait if @wait %>
 <section><h2>Timeline</h2><%= render "timeline", timeline: @timeline %></section>
 <section><h2>Context</h2><%= render "context_tree", context: @context %></section>
