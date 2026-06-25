@@ -55,8 +55,16 @@ module ChronoForge
 
         # Class-level DSL to set this workflow's default retry policy. Applies to
         # workflow-level retries and to steps without a per-call override.
-        def retry_policy(**)
-          self.default_retry_policy = RetryPolicy.new(**)
+        # Positional RetryPolicy objects build a composite (per-error budgets);
+        # keyword options build a single RetryPolicy. The two forms are mutually
+        # exclusive.
+        def retry_policy(*policies, **opts)
+          if policies.any? && opts.any?
+            raise ArgumentError, "retry_policy takes either positional policies or keyword options, not both"
+          end
+
+          self.default_retry_policy =
+            policies.any? ? RetryPolicy.compose(*policies) : RetryPolicy.new(**opts)
         end
       end
     end
@@ -191,14 +199,36 @@ module ChronoForge
     # Retry policy for a durable step: an explicit per-call override, else the
     # class default, else the step built-in (short, snappy fast-fail).
     def step_retry_policy(override)
-      override || self.class.default_retry_policy || RetryPolicy.step_default
+      coerce_policy(override) || coerce_policy(self.class.default_retry_policy) || RetryPolicy.step_default
     end
 
     # Retry policy for a wait_until condition error. Deliberately does NOT inherit
     # the class default, so a class-wide "retry everything" can't silently turn
     # condition-evaluation bugs into retried errors. Built-in retries nothing.
     def wait_retry_policy(override)
-      override || RetryPolicy.wait_default
+      coerce_policy(override) || RetryPolicy.wait_default
+    end
+
+    # Normalize a retry-policy value: an Array becomes a composite; a RetryPolicy
+    # or CompositeRetryPolicy passes through; nil stays nil.
+    def coerce_policy(value)
+      value.is_a?(Array) ? RetryPolicy.compose(*value) : value
+    end
+
+    # JSON metadata key holding the per-error attempt counts of a composite
+    # policy, keyed by the matched policy's index (as a string).
+    RETRY_COUNTS_KEY = "retry_counts"
+
+    # Increment the matched policy's slot in the log's retry-count map and return
+    # the new count. Reassigns `metadata` so the JSON column is marked dirty.
+    def bump_retry_count!(log, policy_index)
+      meta = log.metadata || {}
+      counts = meta[RETRY_COUNTS_KEY] || {}
+      key = policy_index.to_s
+      counts[key] = counts[key].to_i + 1
+      meta[RETRY_COUNTS_KEY] = counts
+      log.update!(metadata: meta)
+      counts[key]
     end
 
     def halt_execution!
