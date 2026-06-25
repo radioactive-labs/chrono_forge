@@ -1,7 +1,7 @@
 module ChronoForge
   module Dashboard
     class TimelinePresenter
-      Entry = Struct.new(:id, :kind, :name, :status, :attempts, :started_at, :completed_at, :error, :runs, keyword_init: true)
+      Entry = Struct.new(:id, :kind, :name, :status, :attempts, :started_at, :completed_at, :error, :runs)
 
       def initialize(workflow) = @workflow = workflow
 

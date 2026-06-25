@@ -1,7 +1,7 @@
 module ChronoForge
   module Dashboard
     class PeriodicHealthPresenter
-      Task = Struct.new(:name, :last_execution_at, :timed_out_count, :latencies, keyword_init: true)
+      Task = Struct.new(:name, :last_execution_at, :timed_out_count, :latencies)
 
       def initialize(workflow) = @workflow = workflow
 

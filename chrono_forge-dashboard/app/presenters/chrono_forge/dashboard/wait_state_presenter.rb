@@ -1,7 +1,7 @@
 module ChronoForge
   module Dashboard
     class WaitStatePresenter
-      Active = Struct.new(:condition, :waiting_since, :timeout_at, keyword_init: true)
+      Active = Struct.new(:condition, :waiting_since, :timeout_at)
 
       def initialize(workflow) = @workflow = workflow
 
