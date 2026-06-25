@@ -4,7 +4,7 @@
     {
       "id": 1,
       "subject": "Task 1: Reserved-key + keywords-only enqueue guard with retry-helper rerouting",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Public perform_now/perform_later of Executor-prepended jobs reject attempt/retry_counts/retry_workflow and extra positionals; options and user kwargs still flow through; retry_now/retry_later keep working by routing past the guard via `.set(...)`.\n\n**Files:**\n- Modify: `lib/chrono_forge/executor.rb` (RESERVED_KWARGS constant near line 19; rewrite perform_now/perform_later/retry_now/retry_later in `class << base` ~29-54; append private `__validate_enqueue!` at end of block after retry_policy)\n- Test: `test/enqueue_contract_test.rb` (create)\n\n**Verify:** `bundle exec rake test TEST=test/enqueue_contract_test.rb` then `bundle exec rake test`\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor.rb\", \"test/enqueue_contract_test.rb\"], \"verifyCommand\": \"bundle exec rake test\", \"acceptanceCriteria\": [\"perform_now/perform_later reject attempt/retry_counts/retry_workflow with a clear ArgumentError and enqueue nothing\", \"extra positional args rejected with a keywords-only message\", \"non-string key still rejected\", \"options and user kwargs pass through to the workflow record\", \"retry_now/retry_later reject caller-supplied reserved keys and existing retry e2e tests still pass\", \"full suite green\"], \"requiresUserVerification\": false}\n```"
     }
   ],
