@@ -199,7 +199,7 @@ module ChronoForge
     # Retry policy for a durable step: an explicit per-call override, else the
     # class default, else the step built-in (short, snappy fast-fail).
     def step_retry_policy(override)
-      coerce_policy(override) || coerce_policy(self.class.default_retry_policy) || RetryPolicy.step_default
+      coerce_policy(override) || self.class.default_retry_policy || RetryPolicy.step_default
     end
 
     # Retry policy for a wait_until condition error. Deliberately does NOT inherit
@@ -216,19 +216,18 @@ module ChronoForge
     end
 
     # JSON metadata key holding the per-error attempt counts of a composite
-    # policy, keyed by the matched policy's index (as a string).
+    # policy, keyed by the matched policy's declared errors (RetryPolicy#budget_key).
     RETRY_COUNTS_KEY = "retry_counts"
 
     # Increment the matched policy's slot in the log's retry-count map and return
     # the new count. Reassigns `metadata` so the JSON column is marked dirty.
-    def bump_retry_count!(log, policy_index)
+    def bump_retry_count!(log, policy_key)
       meta = log.metadata || {}
       counts = meta[RETRY_COUNTS_KEY] || {}
-      key = policy_index.to_s
-      counts[key] = counts[key].to_i + 1
+      counts[policy_key] = counts[policy_key].to_i + 1
       meta[RETRY_COUNTS_KEY] = counts
       log.update!(metadata: meta)
-      counts[key]
+      counts[policy_key]
     end
 
     def halt_execution!

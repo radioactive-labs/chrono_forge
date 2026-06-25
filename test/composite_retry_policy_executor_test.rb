@@ -60,17 +60,17 @@ class CompositeRetryPolicyExecutorTest < ActiveSupport::TestCase
     workflow = ChronoForge::Workflow.create!(job_class: "X", key: "bump-#{Time.now.to_i}-#{rand(10000)}")
     log = ChronoForge::ExecutionLog.create!(workflow: workflow, step_name: "s", metadata: {})
 
-    assert_equal 1, executor.send(:bump_retry_count!, log, 0)
-    assert_equal 2, executor.send(:bump_retry_count!, log, 0)
-    assert_equal 1, executor.send(:bump_retry_count!, log, 1), "index 1 is independent"
+    assert_equal 1, executor.send(:bump_retry_count!, log, "NetworkError")
+    assert_equal 2, executor.send(:bump_retry_count!, log, "NetworkError")
+    assert_equal 1, executor.send(:bump_retry_count!, log, "RateLimitError"), "each policy key is independent"
 
     log.reload
-    assert_equal({"0" => 2, "1" => 1}, log.metadata["retry_counts"])
+    assert_equal({"NetworkError" => 2, "RateLimitError" => 1}, log.metadata["retry_counts"])
   end
 
   def test_bump_retry_count_handles_nil_metadata
     workflow = ChronoForge::Workflow.create!(job_class: "X", key: "bumpnil-#{Time.now.to_i}-#{rand(10000)}")
     log = ChronoForge::ExecutionLog.create!(workflow: workflow, step_name: "s", metadata: nil)
-    assert_equal 1, executor.send(:bump_retry_count!, log, 0)
+    assert_equal 1, executor.send(:bump_retry_count!, log, "NetworkError")
   end
 end

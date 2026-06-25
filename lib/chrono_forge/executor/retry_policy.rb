@@ -58,6 +58,16 @@ module ChronoForge
         retryable?(error, attempts) ? backoff_for(attempts) : nil
       end
 
+      # Stable per-policy identifier derived from the errors this policy
+      # *declares* (its retry_on), not the error thrown. Inside a composite this
+      # keys the policy's attempt budget, so the budget is shared across every
+      # class the policy lists (and their subclasses) and is independent of the
+      # policy's position — reordering the composite does not reset counts. A
+      # catch-all (retry_on: nil) keys "*".
+      def budget_key
+        retry_on.nil? ? "*" : retry_on.map(&:name).sort.join(",")
+      end
+
       def self.step_default
         new(max_attempts: 3, base: 1, cap: 30, jitter: true, retry_on: nil)
       end

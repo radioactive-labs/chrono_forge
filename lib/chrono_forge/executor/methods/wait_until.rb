@@ -126,8 +126,8 @@ module ChronoForge
             # Optional retry logic for errors raised while evaluating the
             # condition. The poll cadence (check_interval/timeout) below is
             # separate and unaffected by the retry policy.
-            backoff = policy.retry_backoff(e, attempts: execution_log.attempts) do |idx|
-              bump_retry_count!(execution_log, idx)
+            backoff = policy.retry_backoff(e, attempts: execution_log.attempts) do |policy_key|
+              bump_retry_count!(execution_log, policy_key)
             end
             if backoff
               # Reschedule with the policy's backoff

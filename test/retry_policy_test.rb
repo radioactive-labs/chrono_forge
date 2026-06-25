@@ -132,6 +132,20 @@ class RetryPolicyTest < ActiveSupport::TestCase
     refute policy.matches?(UnrelatedError.new)
   end
 
+  # --- budget_key: stable per-policy identifier from declared errors ---
+
+  def test_budget_key_nil_retry_on_is_catch_all
+    assert_equal "*", RetryPolicy.new(retry_on: nil).budget_key
+  end
+
+  def test_budget_key_lists_declared_classes_sorted
+    assert_equal CustomError.name, RetryPolicy.new(retry_on: [CustomError]).budget_key
+    # Declared Unrelated-first but keyed Custom-first: sorted, so the key is
+    # stable regardless of declaration order. Uses full class names.
+    assert_equal "#{CustomError.name},#{UnrelatedError.name}",
+      RetryPolicy.new(retry_on: [UnrelatedError, CustomError]).budget_key
+  end
+
   # --- retry_backoff: plain policy ignores the block ---
 
   def test_retry_backoff_returns_duration_when_retryable
@@ -147,7 +161,10 @@ class RetryPolicyTest < ActiveSupport::TestCase
   def test_retry_backoff_ignores_block
     policy = RetryPolicy.new(max_attempts: 3, base: 1, cap: 1000, jitter: false)
     called = false
-    result = policy.retry_backoff(StandardError.new, attempts: 1) { |_idx| called = true; 99 }
+    result = policy.retry_backoff(StandardError.new, attempts: 1) { |_idx|
+      called = true
+      99
+    }
     refute called, "plain policy must not invoke the count block"
     assert_in_delta 1.0, result.to_f, 0.001
   end

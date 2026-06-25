@@ -226,8 +226,8 @@ module ChronoForge
           self.class::ExecutionTracker.track_error(@workflow, e, execution_log: repetition_log)
 
           # Handle retry logic for this specific repetition
-          backoff = policy.retry_backoff(e, attempts: repetition_log.attempts) do |idx|
-            bump_retry_count!(repetition_log, idx)
+          backoff = policy.retry_backoff(e, attempts: repetition_log.attempts) do |policy_key|
+            bump_retry_count!(repetition_log, policy_key)
           end
           if backoff
             # Reschedule this same repetition with the policy's backoff

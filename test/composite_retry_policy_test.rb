@@ -5,8 +5,11 @@ class CompositeRetryPolicyTest < ActiveSupport::TestCase
   CompositeRetryPolicy = ChronoForge::Executor::CompositeRetryPolicy
 
   class NetworkError < StandardError; end
+
   class FlakyNetworkError < NetworkError; end
+
   class RateLimitError < StandardError; end
+
   class DeclinedError < StandardError; end
 
   def composite
@@ -36,13 +39,13 @@ class CompositeRetryPolicyTest < ActiveSupport::TestCase
     assert_nil composite.policy_for(ArgumentError.new)
   end
 
-  def test_retry_backoff_yields_matched_index_and_uses_count
+  def test_retry_backoff_yields_matched_budget_key_and_uses_count
     yielded = nil
-    backoff = composite.retry_backoff(RateLimitError.new, attempts: 99) do |idx|
-      yielded = idx
+    backoff = composite.retry_backoff(RateLimitError.new, attempts: 99) do |key|
+      yielded = key
       3 # pretend this is the 3rd rate-limit failure
     end
-    assert_equal 1, yielded, "RateLimitError is the 2nd policy (index 1)"
+    assert_equal RateLimitError.name, yielded, "yields the matched policy's declared-error key"
     # base 2, exponent (3-1)=2 -> 2 * 2**2 = 8
     assert_in_delta 8.0, backoff.to_f, 0.001, "backoff uses the yielded count, not attempts:"
   end

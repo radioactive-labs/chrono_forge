@@ -8,7 +8,7 @@ module ChronoForge
     #
     # Pure: it never reads storage. The per-error count is supplied by the
     # caller through the block passed to #retry_backoff, keyed by the matched
-    # policy's index.
+    # policy's budget_key (its declared errors).
     class CompositeRetryPolicy
       attr_reader :policies
 
@@ -26,14 +26,13 @@ module ChronoForge
 
       # Routes on the live error and delegates the decision to the matched
       # sub-policy. When a block is given it is called with the matched policy's
-      # index and must return that policy's running attempt count (1-based,
+      # budget_key and must return that policy's running attempt count (1-based,
       # including the current failure); otherwise `attempts` is used.
       def retry_backoff(error, attempts:)
-        index = @policies.index { |p| p.matches?(error) }
-        return nil if index.nil?
+        sub = policy_for(error)
+        return nil if sub.nil?
 
-        sub = @policies[index]
-        count = block_given? ? yield(index) : attempts
+        count = block_given? ? yield(sub.budget_key) : attempts
         sub.retryable?(error, count) ? sub.backoff_for(count) : nil
       end
 
