@@ -89,7 +89,7 @@ module ChronoForge
           if reserved.any?
             raise ArgumentError,
               "#{reserved.join(", ")} #{reserved.one? ? "is a reserved" : "are reserved"} " \
-              "ChronoForge keyword(s) and cannot be passed to perform_now/perform_later"
+              "ChronoForge #{reserved.one? ? "keyword" : "keywords"} and cannot be passed to perform_now/perform_later"
           end
         end
       end

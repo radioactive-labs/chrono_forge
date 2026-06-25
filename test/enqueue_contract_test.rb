@@ -7,8 +7,6 @@ require "test_helper"
 class EnqueueContractTest < ActiveJob::TestCase
   include ChaoticJob::Helpers
 
-  RESERVED = %i[attempt retry_counts retry_workflow].freeze
-
   def setup
     ChronoForge::Workflow.destroy_all
   end
@@ -23,7 +21,7 @@ class EnqueueContractTest < ActiveJob::TestCase
   # --- reserved-key rejection ------------------------------------------------
 
   def test_perform_later_rejects_reserved_keys
-    RESERVED.each do |reserved|
+    ChronoForge::Executor::RESERVED_KWARGS.each do |reserved|
       err = nil
       # assert_raises must sit inside the block-based assertion: Rails wraps the
       # block in assert_nothing_raised, which would otherwise rewrap our error.
@@ -38,7 +36,7 @@ class EnqueueContractTest < ActiveJob::TestCase
   end
 
   def test_perform_now_rejects_reserved_keys
-    RESERVED.each do |reserved|
+    ChronoForge::Executor::RESERVED_KWARGS.each do |reserved|
       err = assert_raises(ArgumentError) do
         ContractJob.perform_now("k-#{reserved}", reserved => 1)
       end
