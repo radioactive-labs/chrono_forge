@@ -18,6 +18,12 @@ module ChronoForge
     # User-supplied names/methods must not contain it.
     STEP_NAME_DELIMITER = "$"
 
+    # Keyword args ChronoForge threads through job args internally. Users must
+    # not pass these to perform_now/perform_later; the framework injects them
+    # via `.set(...)` continuations, whose ConfiguredJob proxy bypasses the
+    # class-level guard in `prepended` below.
+    RESERVED_KWARGS = %i[attempt retry_counts retry_workflow].freeze
+
     include Methods
 
     # Add class methods
@@ -27,30 +33,31 @@ module ChronoForge
       base.class_attribute :default_retry_policy, instance_accessor: false, default: nil
 
       class << base
-        # Enforce expected signature for perform_now with key as first arg and keywords after
-        def perform_now(key, **kwargs)
-          if !key.is_a?(String)
-            raise ArgumentError, "Workflow key must be a string as the first argument"
-          end
-          super
+        # Public enqueue contract: exactly one positional (`key`) plus keywords.
+        # Reserved internal kwargs (RESERVED_KWARGS) are rejected here; the
+        # framework injects them only via `.set(...)` continuations, whose
+        # ActiveJob ConfiguredJob proxy bypasses these class-level overrides.
+        def perform_now(key, *extra, **kwargs)
+          __validate_enqueue!(key, extra, kwargs)
+          super(key, **kwargs)
         end
 
-        # Enforce expected signature for perform_later with key as first arg and keywords after
-        def perform_later(key, **kwargs)
-          if !key.is_a?(String)
-            raise ArgumentError, "Workflow key must be a string as the first argument"
-          end
-          super
+        def perform_later(key, *extra, **kwargs)
+          __validate_enqueue!(key, extra, kwargs)
+          super(key, **kwargs)
         end
 
-        # Add retry_now class method that calls perform_now with retry_workflow: true
-        def retry_now(key, **)
-          perform_now(key, retry_workflow: true, **)
+        # Re-run a failed/stalled workflow. Routes through `.set(...)` so the
+        # reserved `retry_workflow: true` flag reaches the instance perform
+        # without tripping the public guard above.
+        def retry_now(key, **kwargs)
+          __validate_enqueue!(key, [], kwargs)
+          set.perform_now(key, retry_workflow: true, **kwargs)
         end
 
-        # Add retry_later class method that calls perform_later with retry_workflow: true
-        def retry_later(key, **)
-          perform_later(key, retry_workflow: true, **)
+        def retry_later(key, **kwargs)
+          __validate_enqueue!(key, [], kwargs)
+          set.perform_later(key, retry_workflow: true, **kwargs)
         end
 
         # Class-level DSL to set this workflow's default retry policy. Applies to
@@ -65,6 +72,25 @@ module ChronoForge
 
           self.default_retry_policy =
             policies.any? ? RetryPolicy.compose(*policies) : RetryPolicy.new(**opts)
+        end
+
+        private
+
+        def __validate_enqueue!(key, extra, kwargs)
+          unless key.is_a?(String)
+            raise ArgumentError, "Workflow key must be a string as the first argument"
+          end
+          unless extra.empty?
+            raise ArgumentError,
+              "ChronoForge workflows accept only `key` positionally; pass " \
+              "everything else as keywords (got #{extra.size} extra positional arg(s))"
+          end
+          reserved = kwargs.keys & RESERVED_KWARGS
+          if reserved.any?
+            raise ArgumentError,
+              "#{reserved.join(", ")} #{reserved.one? ? "is a reserved" : "are reserved"} " \
+              "ChronoForge #{reserved.one? ? "keyword" : "keywords"} and cannot be passed to perform_now/perform_later"
+          end
         end
       end
     end
