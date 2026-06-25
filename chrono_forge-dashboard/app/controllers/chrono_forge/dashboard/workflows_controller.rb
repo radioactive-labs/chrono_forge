@@ -1,6 +1,6 @@
 module ChronoForge
   module Dashboard
-    class WorkflowsController < ActionController::Base
+    class WorkflowsController < BaseController
       def index
         render plain: "ChronoForge Dashboard"
       end
