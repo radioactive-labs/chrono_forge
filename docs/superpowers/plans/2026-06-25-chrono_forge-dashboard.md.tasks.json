@@ -1,0 +1,17 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-25-chrono_forge-dashboard.md",
+  "tasks": [
+    {"id": 8, "subject": "Task 1: Engine skeleton, gemspec, core exclusion, test harness", "status": "completed", "description": "Loadable mountable engine + Combustion dummy + smoke test; core gem excludes chrono_forge-dashboard/. Verify: cd chrono_forge-dashboard && bundle exec rake test"},
+    {"id": 9, "subject": "Task 2: Configuration + fail-closed auth", "status": "completed", "blockedBy": [8], "description": "Config object + BaseController authenticate! (hook → http_basic → :none → raise). Verify: bundle exec ruby -Itest test/auth_test.rb"},
+    {"id": 10, "subject": "Task 3: Step-name parser", "status": "completed", "blockedBy": [8], "description": "Pure parser: execute/wait/repeat-coordination/repeat-run; unknown preserved, never raises. Verify: test/step_name_parser_test.rb"},
+    {"id": 11, "subject": "Task 4: Query objects (WorkflowsQuery, StatsQuery)", "status": "completed", "blockedBy": [8], "description": "Filter/paginate list; zero-filled state counts. Verify: test/queries_test.rb"},
+    {"id": 12, "subject": "Task 5: Workflows#index — list, filters, stats, pagination", "status": "completed", "blockedBy": [8, 9, 11], "description": "List page with badges/filters/stats/pager + controller tests. Verify: test/workflows_index_test.rb"},
+    {"id": 13, "subject": "Task 6: Timeline + Context presenters", "status": "completed", "blockedBy": [8, 10], "description": "Replay timeline (repetition rollup, current position) + typed context nodes/size. Verify: test/presenters_test.rb"},
+    {"id": 15, "subject": "Task 8: Periodic health + wait-state presenters and wait-states index", "status": "completed", "blockedBy": [8, 10, 13], "description": "durably_repeat health, wait-state age model, wait-states list flagging long waiters. Verify: test/periodic_and_wait_test.rb"},
+    {"id": 14, "subject": "Task 7: Workflows#show — timeline, context tree, errors, wait callout", "status": "completed", "blockedBy": [12, 13, 15], "description": "Detail page wiring presenters + error logs + wait callout. Verify: test/workflows_show_test.rb"},
+    {"id": 16, "subject": "Task 9: Operational actions (retry, unlock, bulk retry)", "status": "completed", "blockedBy": [9, 12], "description": "POST retry/unlock/bulk_retry, guarded (non-retryable flashes), CSRF+auth. Verify: test/actions_test.rb"},
+    {"id": 17, "subject": "Task 10: Assets controller + CSS/JS (polling, tree, sparklines, confirms)", "status": "completed", "blockedBy": [8, 12, 14], "description": "Engine-served CSS/JS (no host pipeline) + vanilla JS behaviors. Verify: test/assets_test.rb"},
+    {"id": 18, "subject": "Task 11: README + install docs for the dashboard gem", "status": "completed", "blockedBy": [17], "description": "Dashboard README (install/mount/auth) + core README Dashboard section. Verify: grep -n 'Dashboard' README.md"}
+  ],
+  "lastUpdated": "2026-06-25"
+}
