@@ -7,6 +7,14 @@ module ChronoForge
         @stats = StatsQuery.new.counts
       end
 
+      def show
+        @workflow = ChronoForge::Workflow.find(params[:id])
+        @timeline = TimelinePresenter.new(@workflow)
+        @context = ContextPresenter.new(@workflow)
+        @errors = @workflow.error_logs.order(created_at: :desc)
+        @wait = WaitStatePresenter.new(@workflow).active
+      end
+
       private
 
       def list_params

@@ -1,0 +1,11 @@
+<div class="cf-context" data-collapsible>
+  <p class="cf-context__size"><%= number_to_human_size(context.byte_size) %></p>
+  <ul>
+    <% context.nodes.each do |n| %>
+      <li><code class="cf-context__key"><%= n[:key] %></code>
+        <span class="cf-context__type"><%= n[:type] %></span>
+        <span class="cf-context__val"><%= truncate(n[:value].inspect, length: 200) %></span>
+      </li>
+    <% end %>
+  </ul>
+</div>

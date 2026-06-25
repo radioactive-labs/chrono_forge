@@ -1,0 +1,18 @@
+<ol class="cf-timeline">
+  <% timeline.entries.each do |e| %>
+    <li class="cf-step cf-step--<%= e.status %> <%= "cf-step--current" if timeline.current_position&.id == e.id %>">
+      <span class="cf-step__kind"><%= e.kind %></span>
+      <span class="cf-step__name"><%= e.name %></span>
+      <span class="cf-step__status"><%= e.status %></span>
+      <span class="cf-step__attempts">×<%= e.attempts %></span>
+      <% if e.error %><span class="cf-step__error"><%= e.error %></span><% end %>
+      <% if e.runs.any? %>
+        <ol class="cf-timeline cf-timeline--runs">
+          <% e.runs.each do |r| %>
+            <li class="cf-step cf-step--<%= r.status %>"><%= r.status %> ×<%= r.attempts %></li>
+          <% end %>
+        </ol>
+      <% end %>
+    </li>
+  <% end %>
+</ol>

@@ -1,0 +1,10 @@
+<ul class="cf-errors">
+  <% errors.each do |err| %>
+    <li>
+      <strong><%= err.error_class %></strong> (attempt <%= err.attempt %>) — <%= err.error_message %>
+      <% if err.backtrace.present? %>
+        <details><summary>backtrace</summary><pre><%= err.backtrace %></pre></details>
+      <% end %>
+    </li>
+  <% end %>
+</ul>

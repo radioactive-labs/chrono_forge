@@ -1,0 +1,4 @@
+<div class="cf-wait-callout">
+  Waiting on <code><%= wait.condition %></code> for <%= distance_of_time_in_words(wait.waiting_since, Time.current) %>
+  (timeout <%= wait.timeout_at || "—" %>)
+</div>
