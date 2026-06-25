@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-25-composite-retry-policies.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: RetryPolicy — matches?, retry_backoff, compose",
+      "status": "completed",
+      "description": "**Goal:** Add matches?, retry_backoff(error, attempts:), and self.compose to RetryPolicy without changing existing behavior.\n\n**Files:** Modify lib/chrono_forge/executor/retry_policy.rb; Test test/retry_policy_test.rb\n\n**Verify:** bin/rails test test/retry_policy_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/retry_policy.rb\", \"test/retry_policy_test.rb\"], \"verifyCommand\": \"bin/rails test test/retry_policy_test.rb\", \"acceptanceCriteria\": [\"matches? routing predicate\", \"retry_backoff returns Duration/nil and ignores block\", \"compose returns CompositeRetryPolicy\", \"existing tests pass\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: CompositeRetryPolicy class",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Add pure CompositeRetryPolicy with policy_for, block-driven retry_backoff, coarse max_attempts, empty-list guard.\n\n**Files:** Create lib/chrono_forge/executor/composite_retry_policy.rb; Test test/composite_retry_policy_test.rb\n\n**Verify:** bin/rails test test/composite_retry_policy_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/composite_retry_policy.rb\", \"test/composite_retry_policy_test.rb\"], \"verifyCommand\": \"bin/rails test test/composite_retry_policy_test.rb\", \"acceptanceCriteria\": [\"policy_for first-match/subclass/nil\", \"retry_backoff yields index and uses count\", \"no-block falls back to attempts\", \"max_attempts coarse bound\", \"empty list raises\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Executor coercion, class DSL overload, bump_retry_count!",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Accept arrays as composites, extend class DSL for positional policies, add metadata counter helper.\n\n**Files:** Modify lib/chrono_forge/executor.rb; Test test/composite_retry_policy_executor_test.rb\n\n**Verify:** bin/rails test test/composite_retry_policy_executor_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor.rb\", \"test/composite_retry_policy_executor_test.rb\"], \"verifyCommand\": \"bin/rails test test/composite_retry_policy_executor_test.rb\", \"acceptanceCriteria\": [\"coerce_policy wraps array/passes through/nil\", \"resolvers coerce\", \"class DSL positional vs kwargs vs mixed\", \"bump_retry_count! increments+persists+nil-safe\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Wire three step sites to retry_backoff",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** Switch durably_execute, wait_until, durably_repeat to retry_backoff + bump_retry_count!; terminal branches unchanged.\n\n**Files:** Modify lib/chrono_forge/executor/methods/{durably_execute,wait_until,durably_repeat}.rb\n\n**Verify:** bin/rails test test/retry_policy_integration_test.rb test/workflow_retry_api_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/durably_execute.rb\", \"lib/chrono_forge/executor/methods/wait_until.rb\", \"lib/chrono_forge/executor/methods/durably_repeat.rb\"], \"verifyCommand\": \"bin/rails test test/retry_policy_integration_test.rb test/workflow_retry_api_test.rb\", \"acceptanceCriteria\": [\"each step site uses retry_backoff + bump_retry_count!\", \"terminal branches unchanged\", \"single-policy integration tests pass\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Wire workflow-level perform site",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** Thread retry_counts job arg for per-error budgets at workflow level; keep safety-net guard correct for composites.\n\n**Files:** Modify lib/chrono_forge/executor.rb (perform signature + rescue)\n\n**Verify:** bin/rails test test/workflow_retry_api_test.rb test/retry_policy_integration_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor.rb\"], \"verifyCommand\": \"bin/rails test test/workflow_retry_api_test.rb test/retry_policy_integration_test.rb\", \"acceptanceCriteria\": [\"perform threads retry_counts\", \"rescue uses retry_backoff\", \"safety-net guard honors coarse max_attempts\", \"single-policy workflow tests pass\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Integration tests for composite behavior",
+      "status": "completed",
+      "blockedBy": [4, 5],
+      "description": "**Goal:** Prove per-error budgets, fail-fast, subclass routing, array coercion, single-policy regression end-to-end.\n\n**Files:** Create test/composite_retry_policy_integration_test.rb\n\n**Verify:** bin/rails test\n\n```json:metadata\n{\"files\": [\"test/composite_retry_policy_integration_test.rb\"], \"verifyCommand\": \"bin/rails test\", \"acceptanceCriteria\": [\"independent per-error budgets\", \"fail-fast max_attempts:1\", \"subclass routes to parent budget\", \"array coerced\", \"single policy writes no retry_counts\", \"full suite green\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Document composite policies in README",
+      "status": "completed",
+      "blockedBy": [6],
+      "description": "**Goal:** Add \"Composite policies (per-error budgets)\" subsection to README Retry Policies section.\n\n**Files:** Modify README.md\n\n**Verify:** grep -n 'Composite policies' README.md\n\n```json:metadata\n{\"files\": [\"README.md\"], \"verifyCommand\": \"grep -n 'Composite policies' README.md\", \"acceptanceCriteria\": [\"worked array example\", \"ordering + catch-all + fail-fast stated\", \"independent budget/backoff stated\", \"class DSL positional form shown\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-25"
+}
