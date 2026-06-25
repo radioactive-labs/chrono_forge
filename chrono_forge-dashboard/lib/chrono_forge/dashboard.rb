@@ -2,6 +2,7 @@ require "chrono_forge"
 require "chrono_forge/dashboard/version"
 require "chrono_forge/dashboard/configuration"
 require "chrono_forge/dashboard/engine"
+require "chrono_forge/dashboard/step_name_parser"
 
 module ChronoForge
   module Dashboard
