@@ -25,7 +25,7 @@ class AddChronoForgeParentExecutionLog < ActiveRecord::Migration[7.1]
   # and uuid installs.
   def parent_log_fk_type
     id_col = connection.columns(:chrono_forge_workflows).find { |c| c.name == "id" }
-    id_col && id_col.sql_type.to_s.downcase.include?("uuid") ? :uuid : :bigint
+    id_col&.type == :uuid ? :uuid : :bigint
   end
 
   def chrono_forge_index_algorithm
