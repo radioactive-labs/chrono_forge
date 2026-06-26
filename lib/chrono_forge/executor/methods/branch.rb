@@ -24,7 +24,7 @@ module ChronoForge
           # enumeration in spawn_each never re-runs after sealing. Do not move
           # dispatch out from behind this guard.
           unless log.completed?
-            @current_branch = {name: name.to_s, log: log, seq: 0}
+            @current_branch = {name: name.to_s, log: log}
             begin
               yield
             ensure
