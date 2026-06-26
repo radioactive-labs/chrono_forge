@@ -35,7 +35,19 @@
 
 <%= render "wait_callout", wait: @wait if @wait %>
 
-<div class="mb-5 grid gap-5 md:grid-cols-2">
+<section class="cf-card mb-5 p-5">
+  <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</h2>
+  <%= render "timeline", timeline: @timeline %>
+</section>
+
+<% if @periodic.any? %>
+  <section class="cf-card mb-5 p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Periodic tasks</h2>
+    <%= render "periodic", tasks: @periodic %>
+  </section>
+<% end %>
+
+<div class="grid gap-5 md:grid-cols-2">
   <section class="cf-card p-5">
     <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Arguments</h2>
     <% if @workflow.kwargs.present? %>
@@ -56,15 +68,3 @@
     <%= render "context_tree", context: @context %>
   </section>
 </div>
-
-<section class="cf-card mb-5 p-5">
-  <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</h2>
-  <%= render "timeline", timeline: @timeline %>
-</section>
-
-<% if @periodic.any? %>
-  <section class="cf-card mb-5 p-5">
-    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Periodic tasks</h2>
-    <%= render "periodic", tasks: @periodic %>
-  </section>
-<% end %>
