@@ -1,0 +1,59 @@
+<%= link_to "‹ #{@workflow.key}", workflow_path(@workflow), class: "mb-4 inline-block text-sm text-zinc-500 hover:text-zinc-900" %>
+
+<div class="mb-5">
+  <h1 class="text-lg font-semibold tracking-tight">
+    Repetitions <span class="text-zinc-400">·</span> <span class="font-mono text-base"><%= @step %></span>
+  </h1>
+  <p class="mt-1 text-sm text-zinc-500">
+    <%= number_with_delimiter(@summary[:iterations]) %> iterations
+    <% if @summary[:tombstones] > 0 %>· <span class="text-amber-600"><%= number_with_delimiter(@summary[:tombstones]) %> catch-up tombstone<%= "s" unless @summary[:tombstones] == 1 %></span><% end %>
+    <% if @summary[:last_run_at] %>· last run <%= cf_ago(@summary[:last_run_at]) %><% end %>
+  </p>
+  <p class="mt-1 text-xs text-zinc-400">
+    Tombstones are expired/retried repetitions the engine marks failed and steps past — normal <code class="font-mono">durably_repeat</code> mechanics, not workflow errors.
+  </p>
+</div>
+
+<div class="cf-card overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+        <th class="px-4 py-2.5 font-medium">Scheduled</th>
+        <th class="px-4 py-2.5 font-medium">Status</th>
+        <th class="px-4 py-2.5 font-medium">Started</th>
+        <th class="px-4 py-2.5 text-right font-medium">Duration</th>
+        <th class="px-4 py-2.5 text-right font-medium">Attempts</th>
+        <th class="px-4 py-2.5 font-medium">Error</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-zinc-100">
+      <% @runs.each do |run| %>
+        <% ts = ChronoForge::Dashboard::StepNameParser.parse(run.step_name).timestamp %>
+        <% tombstone = run.failed? %>
+        <tr class="<%= "bg-amber-50" if tombstone %>">
+          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= ts ? cf_ago(Time.zone.at(ts)) : "—" %></td>
+          <td class="px-4 py-2.5 text-xs">
+            <% if tombstone %>
+              <span class="font-medium text-amber-700">tombstone</span>
+            <% else %>
+              <span class="<%= cf_status_color(run.state) %>"><%= run.state %></span>
+            <% end %>
+          </td>
+          <td class="px-4 py-2.5 text-zinc-600"><%= cf_ago(run.started_at) %></td>
+          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= cf_duration(run.started_at, run.completed_at) %></td>
+          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500">×<%= run.attempts %></td>
+          <td class="px-4 py-2.5 font-mono text-xs text-rose-600"><%= run.error_class || "—" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <% if @runs.none? %>
+    <p class="px-4 py-12 text-center text-sm text-zinc-500">No repetitions recorded for this step.</p>
+  <% end %>
+</div>
+
+<% base_params = request.query_parameters.except("before", "after") %>
+<nav class="mt-4 flex gap-4 text-sm">
+  <% if @query.has_prev? %><%= link_to "‹ Newer", base_params.merge(after: @query.prev_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
+  <% if @query.has_next? %><%= link_to "Older ›", base_params.merge(before: @query.next_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
+</nav>

@@ -9,17 +9,21 @@ class PresentersTest < ActiveSupport::TestCase
       started_at: started_at, completed_at: completed_at, **attrs)
   end
 
-  test "timeline orders and rolls up repetitions" do
+  test "timeline orders steps and summarizes repetitions without inlining runs" do
     wf = create_workflow(key: "t1")
     log(wf, "durably_execute$validate", state: :completed, started_at: 3.minutes.ago)
     log(wf, "durably_repeat$remind", state: :pending, started_at: 2.minutes.ago)
-    log(wf, "durably_repeat$remind$1717000000", state: :completed, started_at: 1.minute.ago)
+    log(wf, "durably_repeat$remind$1717000000", state: :completed, started_at: 90.seconds.ago)
+    log(wf, "durably_repeat$remind$1717000600", state: :failed, started_at: 1.minute.ago)
 
     tl = ChronoForge::Dashboard::TimelinePresenter.new(wf)
-    kinds = tl.entries.map(&:kind)
-    assert_equal :execute, kinds.first
+    # Run logs are excluded from the timeline entries entirely.
+    assert_equal 2, tl.entries.size
+    assert_equal :execute, tl.entries.first.kind
+
     repeat = tl.entries.find { |e| e.kind == :repeat_coordination }
-    assert_equal 1, repeat.runs.size
+    assert_equal 2, repeat.iterations
+    assert_equal 1, repeat.tombstones
   end
 
   test "current position is the failed step" do

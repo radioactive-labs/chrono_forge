@@ -2,9 +2,16 @@ module ChronoForge
   module Dashboard
     class TimelinePresenter
       Entry = Struct.new(:id, :kind, :name, :status, :attempts,
-        :started_at, :completed_at, :last_executed_at, :error_class, :error_message, :runs)
+        :started_at, :completed_at, :last_executed_at, :error_class, :error_message,
+        :iterations, :tombstones, :last_run_at)
+
+      # Per-iteration run logs of a durably_repeat step are excluded from the
+      # timeline (they get their own paginated page) and summarized instead.
+      RUN_PATTERN = "durably_repeat#{StepNameParser::DELIM}%#{StepNameParser::DELIM}%".freeze
 
       def initialize(workflow) = @workflow = workflow
+
+      attr_reader :workflow
 
       def entries
         @entries ||= build
@@ -20,28 +27,28 @@ module ChronoForge
       private
 
       def ordered_logs
-        @ordered_logs ||= @workflow.execution_logs.order(Arel.sql("started_at, id")).to_a
+        @ordered_logs ||= @workflow.execution_logs
+          .where.not("step_name LIKE ?", RUN_PATTERN)
+          .order(Arel.sql("started_at, id")).to_a
       end
 
       def build
-        coord_by_name = {}
-        top = []
-        ordered_logs.each do |l|
+        ordered_logs.map do |l|
           p = StepNameParser.parse(l.step_name)
           entry = Entry.new(id: l.id, kind: p.kind, name: p.name, status: l.state,
             attempts: l.attempts, started_at: l.started_at, completed_at: l.completed_at,
             last_executed_at: l.last_executed_at, error_class: l.error_class,
-            error_message: l.error_message, runs: [])
-          if p.kind == :repeat_coordination
-            coord_by_name[p.name] = entry
-            top << entry
-          elsif p.kind == :repeat_run && (parent = coord_by_name[p.name])
-            parent.runs << entry
-          else
-            top << entry
-          end
+            error_message: l.error_message)
+          summarize_repetitions(entry, p.name) if p.kind == :repeat_coordination
+          entry
         end
-        top
+      end
+
+      def summarize_repetitions(entry, name)
+        s = RepetitionsQuery.new(workflow: @workflow, step: name).summary
+        entry.iterations = s[:iterations]
+        entry.tombstones = s[:tombstones]
+        entry.last_run_at = s[:last_run_at]
       end
     end
   end

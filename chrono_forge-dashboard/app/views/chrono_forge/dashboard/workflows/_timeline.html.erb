@@ -26,19 +26,17 @@
             <%= e.error_class %><% if e.error_message.present? %>: <span class="font-normal text-rose-500"><%= truncate(e.error_message, length: 160) %></span><% end %>
           </div>
         <% end %>
-        <% if e.runs.any? %>
-          <ul class="mt-2 space-y-1 border-l border-zinc-200 pl-4">
-            <% e.runs.each do |r| %>
-              <li class="flex flex-wrap items-baseline gap-2 text-xs">
-                <span class="cf-dot cf-dot-<%= r.status %>"></span>
-                <span class="<%= cf_status_color(r.status) %>"><%= r.status %></span>
-                <span class="font-mono text-zinc-400">×<%= r.attempts %></span>
-                <% if r.started_at && r.completed_at %><span class="font-mono text-zinc-400"><%= cf_duration(r.started_at, r.completed_at) %></span><% end %>
-                <% if r.started_at %><span class="font-mono text-zinc-400" title="<%= r.started_at.iso8601 %>"><%= time_ago_in_words(r.started_at) %> ago</span><% end %>
-                <% if r.error_class %><span class="font-mono text-rose-600"><%= r.error_class %></span><% end %>
-              </li>
+        <% if e.kind == :repeat_coordination && e.iterations.to_i > 0 %>
+          <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
+            <span><%= pluralize(e.iterations, "iteration") %></span>
+            <% if e.tombstones.to_i > 0 %>
+              <span class="text-amber-600">· <%= e.tombstones %> catch-up tombstone<%= "s" unless e.tombstones == 1 %></span>
             <% end %>
-          </ul>
+            <% if e.last_run_at %>
+              <span title="<%= e.last_run_at.iso8601 %>">· last run <%= time_ago_in_words(e.last_run_at) %> ago</span>
+            <% end %>
+            <%= link_to "view repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name), class: "underline hover:text-zinc-900" %>
+          </div>
         <% end %>
       </div>
     </li>

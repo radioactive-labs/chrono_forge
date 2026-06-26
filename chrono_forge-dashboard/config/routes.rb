@@ -4,6 +4,7 @@ ChronoForge::Dashboard::Engine.routes.draw do
     member do
       post :retry, to: "actions#retry"
       post :unlock, to: "actions#unlock"
+      get :repetitions, to: "repetitions#index"
     end
     collection do
       post :bulk_retry, to: "actions#bulk_retry"
