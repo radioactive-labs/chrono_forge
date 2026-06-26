@@ -7,6 +7,8 @@ module ChronoForge
       def self.parse(step_name)
         prefix, name, ts = step_name.to_s.split(DELIM, 3)
         case prefix
+        when "" # framework lifecycle markers: $workflow_completion$, $workflow_failure$<id>, $workflow_retry$<ts>
+          Parsed.new(kind: :lifecycle, name: name.to_s.delete_prefix("workflow_"), raw: step_name)
         when "durably_execute" then Parsed.new(kind: :execute, name: name, raw: step_name)
         when "wait" then Parsed.new(kind: :sleep, name: name, raw: step_name)
         when "wait_until" then Parsed.new(kind: :wait, name: name, raw: step_name)

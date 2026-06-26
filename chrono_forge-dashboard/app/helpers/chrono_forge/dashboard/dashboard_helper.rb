@@ -80,7 +80,7 @@ module ChronoForge
       # Short, readable label for a parsed step kind.
       KIND_LABELS = {
         execute: "execute", sleep: "wait", wait: "wait until", continue: "continue if",
-        repeat_coordination: "repeat", repeat_run: "run",
+        repeat_coordination: "repeat", repeat_run: "run", lifecycle: "workflow",
         branch: "branch", merge: "merge", unknown: "step"
       }.freeze
 

@@ -40,6 +40,13 @@ class StepNameParserTest < ActiveSupport::TestCase
     assert_equal 1717000000, r.timestamp
   end
 
+  test "framework lifecycle markers" do
+    assert_equal :lifecycle, P.parse("$workflow_completion$").kind
+    assert_equal "completion", P.parse("$workflow_completion$").name
+    assert_equal "failure", P.parse("$workflow_failure$42").name
+    assert_equal "retry", P.parse("$workflow_retry$1717000000").name
+  end
+
   test "unknown is preserved, never raises" do
     r = P.parse("legacy_thing")
     assert_equal :unknown, r.kind

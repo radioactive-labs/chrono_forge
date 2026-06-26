@@ -50,6 +50,7 @@ E.create!(workflow: wf2b, step_name: "continue_if$gateway_webhook_received", sta
 wf3 = W.create!(key: "order-1000", job_class: "OrderWorkflow", state: W.states[:completed],
   context: {"amount" => 1200}, kwargs: {}, options: {}, started_at: 1.day.ago, completed_at: 1.day.ago)
 E.create!(workflow: wf3, step_name: "durably_execute$process", state: estate(:completed), attempts: 1, started_at: 1.day.ago, completed_at: 1.day.ago)
+E.create!(workflow: wf3, step_name: "$workflow_completion$", state: estate(:completed), attempts: 1, started_at: 1.day.ago, completed_at: 1.day.ago)
 
 # Running with a durably_repeat (3 completed runs + 1 timeout)
 wf4 = W.create!(key: "newsletter-9", job_class: "OrderWorkflow", state: W.states[:running],
