@@ -64,6 +64,8 @@ A few deliberate choices behind that table:
 
 ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
 
+[![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
+
 ```ruby
 # Gemfile
 gem "chrono_forge-dashboard"
@@ -72,7 +74,7 @@ gem "chrono_forge-dashboard"
 mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 ```
 
-See [`chrono_forge-dashboard`](chrono_forge-dashboard/README.md) for setup and authentication.
+See [`chrono_forge-dashboard`](chrono_forge-dashboard/README.md) for setup, authentication, and [more screenshots](chrono_forge-dashboard/README.md#screenshots).
 
 ## 📦 Installation
 
