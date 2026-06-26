@@ -12,6 +12,7 @@
 #  kwargs       :json             not null
 #  options      :json             not null
 #  locked_at    :datetime
+#  parent_execution_log_id :integer
 #  started_at   :datetime
 #  state        :integer          default("idle"), not null
 #  created_at   :datetime         not null
@@ -29,7 +30,9 @@ module ChronoForge
     has_many :error_logs, dependent: :destroy
 
     belongs_to :parent_execution_log,
-      class_name: "ChronoForge::ExecutionLog", optional: true
+      class_name: "ChronoForge::ExecutionLog",
+      inverse_of: :spawned_workflows,
+      optional: true
 
     enum :state, %i[
       idle
