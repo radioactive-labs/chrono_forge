@@ -150,7 +150,7 @@ module ChronoForge
         # Graceful handling of concurrent execution
         Rails.logger.warn { "ChronoForge:#{self.class}(#{key}) concurrent execution detected" }
         nil
-      rescue NotExecutableError
+      rescue NotExecutableError, ArgumentError
         raise
       rescue => e
         Rails.logger.error { "ChronoForge:#{self.class}(#{key}) workflow execution failed" }
