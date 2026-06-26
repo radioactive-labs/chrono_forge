@@ -64,17 +64,19 @@ module ChronoForge
             if source.order_values.present?
               raise NotExecutableError,
                 "spawn_each iterates #{source.model_name} by primary key; remove the " \
-                "explicit .order(...) from the source relation"
+                "explicit .order(...) (or default-scope order) from the source relation"
             end
             source.find_in_batches(batch_size: of, start: cursor["pk"]) do |records|
               entries = records.map do |record|
                 klass, kw = normalize_spawn(yield(record))
-                ck = "#{@workflow.key}$#{cb[:name]}$#{name}_#{n}"
-                n += 1
+                # Stable per-record key: an inclusive find_in_batches re-yield of the
+                # boundary record on crash-resume produces the SAME key, so insert_all
+                # dedups it (idempotent). Sequential indexing would duplicate it.
+                ck = "#{@workflow.key}$#{cb[:name]}$#{name}_#{record.id}"
                 [ck, klass, kw]
               end
               dispatch_children(cb, entries)
-              advance_cursor!(cb, name, pk: records.last.id, n: n)
+              advance_cursor!(cb, name, pk: records.last.id)
             end
           else
             source.drop(n).each_slice(of) do |slice|
@@ -132,11 +134,11 @@ module ChronoForge
         # Advance (and persist) a spawn_each cursor on the branch log.
         # `n` is the running item index; `pk` is the AR keyset position (nil for
         # plain enumerables). (Used by spawn_each in a later task.)
-        def advance_cursor!(cb, spawn_name, n:, pk: nil)
+        def advance_cursor!(cb, spawn_name, n: nil, pk: nil)
           meta = cb[:log].metadata || {}
           cursors = meta["cursors"] || {}
           entry = cursors[spawn_name.to_s] || {}
-          entry["n"] = n
+          entry["n"] = n unless n.nil?
           entry["pk"] = pk unless pk.nil?
           cursors[spawn_name.to_s] = entry
           meta["cursors"] = cursors
@@ -146,6 +148,10 @@ module ChronoForge
         # Normalize a spawn_each block return: [Klass, kwargs] or a bare Klass.
         def normalize_spawn(result)
           klass, kwargs = Array(result)
+          unless klass.is_a?(Module)
+            raise ArgumentError,
+              "spawn_each block must return a workflow class or [class, kwargs] (got #{result.inspect})"
+          end
           [klass, kwargs || {}]
         end
       end

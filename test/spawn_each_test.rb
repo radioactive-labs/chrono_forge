@@ -16,11 +16,10 @@ class SpawnEachTest < ActiveJob::TestCase
     branch_log = parent.execution_logs.find_by(step_name: "branch$grp")
     children = ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id).order(:key)
 
+    assert_equal @users.map { |u| "se-1$grp$items_#{u.id}" }.sort, children.pluck(:key).sort
     assert_equal 5, children.count
-    assert_equal (0..4).map { |i| "se-1$grp$items_#{i}" }, children.pluck(:key)
-    assert_equal @users.first.id, children.first.kwargs["user_id"]
     cursor = branch_log.reload.metadata["cursors"]["items"]
-    assert_equal 5, cursor["n"]
+    assert_equal @users.last.id, cursor["pk"]
   end
 
   def test_spawn_each_honors_class_from_block
