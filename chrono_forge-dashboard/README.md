@@ -4,6 +4,22 @@ A mountable Rails engine that provides visibility and operational controls for C
 
 Version: `0.1.0` (early release). The UI and config API may change before `1.0`.
 
+## Screenshots
+
+| Workflow list | Analytics |
+| --- | --- |
+| [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
+| Filter by state/class/key, keyset pagination, capped state counts. | Completion/failure rate, throughput, top errors, queue health — per class. |
+
+| Waiting | Repetitions |
+| --- | --- |
+| [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
+| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with tombstones and lateness. |
+
+**Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
+
+[![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
+
 ## Installation
 
 Add to your application's Gemfile (requires `chrono_forge`):
