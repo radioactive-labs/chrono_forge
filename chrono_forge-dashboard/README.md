@@ -106,3 +106,20 @@ bundle exec rake tailwind:build
 ```
 
 Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
+
+## Development
+
+Run a seeded preview locally (compiles the stylesheet, then boots a demo app on `http://localhost:9876/chrono_forge`):
+
+```bash
+bin/dev          # PORT=9877 bin/dev to change the port
+```
+
+Before a release:
+
+```bash
+bundle exec rake prepare   # compile assets, run tests + linter
+bundle exec rake release   # tag, build (recompiles dashboard.css), push
+```
+
+`rake build` always recompiles `dashboard.css` first, so a release never ships a stale stylesheet.
