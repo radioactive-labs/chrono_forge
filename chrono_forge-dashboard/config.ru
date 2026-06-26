@@ -33,6 +33,19 @@ E.create!(workflow: wf, step_name: "durably_execute$charge_card", state: estate(
 L.create!(workflow: wf, step_name: "durably_execute$charge_card", attempt: 3, error_class: "PaymentDeclinedError",
   error_message: "card declined: insufficient funds", backtrace: "app/services/payments.rb:42\napp/workflows/order.rb:18")
 
+# Workflow-level failure: an uncaught error in perform records a nil-step error
+# log linked from a $workflow_failure$<id> marker. The dashboard attaches it to
+# the marker so the failure isn't invisible.
+wf6 = W.create!(key: "import-88", job_class: "OrderWorkflow", state: W.states[:failed],
+  context: {"batch" => 88}, kwargs: {"batch_id" => 88}, options: {}, started_at: 2.hours.ago)
+E.create!(workflow: wf6, step_name: "durably_execute$import_rows", state: estate(:pending),
+  attempts: 1, started_at: 2.hours.ago, last_executed_at: 90.minutes.ago)
+imp_err = L.create!(workflow: wf6, step_name: nil, attempt: 1,
+  error_class: "ActiveRecord::Deadlocked", error_message: "deadlock detected during batch import",
+  backtrace: "app/workflows/import.rb:14\nlib/chrono_forge/executor.rb:124")
+E.create!(workflow: wf6, step_name: "$workflow_failure$#{imp_err.id}", state: estate(:completed),
+  attempts: 1, started_at: 90.minutes.ago, completed_at: 90.minutes.ago, metadata: {"error_log_id" => imp_err.id})
+
 # Idle, waiting a long time (flagged in wait-states view)
 wf2 = W.create!(key: "signup-77", job_class: "OrderWorkflow", state: W.states[:idle],
   context: {"user_id" => 77}, kwargs: {}, options: {}, started_at: 5.hours.ago)

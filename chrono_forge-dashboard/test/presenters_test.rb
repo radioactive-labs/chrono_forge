@@ -37,6 +37,28 @@ class PresentersTest < ActiveSupport::TestCase
     assert_equal "kaboom", step.errors.first.error_message
   end
 
+  test "workflow-level failure error attaches to the failure marker by id" do
+    wf = create_workflow(key: "wl-fail", state: :failed)
+    log(wf, "durably_execute$charge", state: :pending, started_at: 2.minutes.ago)
+    err = ChronoForge::ErrorLog.create!(workflow: wf, step_name: nil, attempt: 1,
+      error_class: "BoomError", error_message: "kaboom")
+    log(wf, "$workflow_failure$#{err.id}", state: :completed, started_at: 1.minute.ago, completed_at: 1.minute.ago)
+
+    tl = ChronoForge::Dashboard::TimelinePresenter.new(wf)
+    marker = tl.entries.find { |e| e.kind == :lifecycle }
+    assert_equal [err.id], marker.errors.map(&:id)
+    assert_empty tl.orphan_errors, "the error is shown on the marker, so not an orphan"
+  end
+
+  test "an error log attached to no step is surfaced as an orphan" do
+    wf = create_workflow(key: "orphan-err", state: :failed)
+    log(wf, "durably_execute$charge", state: :pending, started_at: 1.minute.ago)
+    err = ChronoForge::ErrorLog.create!(workflow: wf, step_name: nil, attempt: 1,
+      error_class: "BoomError", error_message: "kaboom")
+
+    assert_equal [err.id], ChronoForge::Dashboard::TimelinePresenter.new(wf).orphan_errors.map(&:id)
+  end
+
   test "current position is the failed step" do
     wf = create_workflow(key: "t2", state: :failed)
     log(wf, "durably_execute$a", state: :completed, started_at: 2.minutes.ago)

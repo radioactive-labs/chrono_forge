@@ -92,9 +92,15 @@ module ChronoForge
       # — surfaces things like a wait's resume time, a wait_until timeout, or a
       # durably_repeat's last execution. Keys are humanized; values are stringified
       # (the view truncates). Blank values are dropped.
+      # Internal references shown elsewhere (the linked error is rendered inline),
+      # so they'd just be noise in the metadata line.
+      META_SKIP = %w[error_log_id].freeze
+
       def cf_meta_pairs(metadata)
         return [] unless metadata.is_a?(Hash)
-        metadata.reject { |_, v| v.nil? || v == "" }.map { |k, v| [k.to_s.tr("_", " "), v.to_s] }
+        metadata
+          .reject { |k, v| v.nil? || v == "" || META_SKIP.include?(k.to_s) }
+          .map { |k, v| [k.to_s.tr("_", " "), v.to_s] }
       end
 
       # Text color for an execution-log status (pending/completed/failed).

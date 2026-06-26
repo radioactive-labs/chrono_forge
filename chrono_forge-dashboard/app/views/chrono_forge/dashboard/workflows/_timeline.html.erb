@@ -30,21 +30,7 @@
           </dl>
         <% end %>
         <% if e.errors.any? %>
-          <% e.errors.each do |err| %>
-            <div class="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5">
-              <div class="flex flex-wrap items-baseline gap-x-2 font-mono text-xs">
-                <span class="font-medium text-rose-600"><%= err.error_class %></span>
-                <% if err.attempt %><span class="text-zinc-400">attempt <%= err.attempt %></span><% end %>
-              </div>
-              <% if err.error_message.present? %><div class="mt-0.5 text-xs text-rose-700"><%= err.error_message %></div><% end %>
-              <% if err.backtrace.present? %>
-                <details class="mt-1">
-                  <summary class="cursor-pointer text-[11px] text-zinc-500">backtrace</summary>
-                  <pre class="mt-1 overflow-x-auto rounded bg-white p-2 font-mono text-[11px] text-zinc-600"><%= err.backtrace %></pre>
-                </details>
-              <% end %>
-            </div>
-          <% end %>
+          <%= render partial: "error_card", collection: e.errors, as: :err %>
         <% elsif e.error_class %>
           <div class="mt-1 font-mono text-xs text-rose-600">
             <%= e.error_class %><% if e.error_message.present? %>: <span class="font-normal text-rose-500"><%= truncate(e.error_message, length: 160) %></span><% end %>
@@ -66,3 +52,10 @@
     </li>
   <% end %>
 </ol>
+
+<% if timeline.orphan_errors.any? %>
+  <div class="mt-4 border-t border-zinc-100 pt-3">
+    <p class="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Other errors</p>
+    <%= render partial: "error_card", collection: timeline.orphan_errors, as: :err %>
+  </div>
+<% end %>

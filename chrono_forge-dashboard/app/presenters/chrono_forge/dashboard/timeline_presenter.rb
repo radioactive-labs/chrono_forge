@@ -17,6 +17,15 @@ module ChronoForge
         @entries ||= build
       end
 
+      # Error logs not shown on any step — workflow-level failures whose step_name
+      # is nil and that aren't linked to a $workflow_failure$ marker. Surfaced so
+      # a failure is never invisible. (Repeat-run errors live on the repetitions
+      # page, so they're excluded.)
+      def orphan_errors
+        entries
+        @orphan_errors
+      end
+
       def current_position
         logs = ordered_logs
         logs.reverse.find { |l| l.failed? } ||
@@ -33,18 +42,34 @@ module ChronoForge
       end
 
       def build
-        errors_by_step = @workflow.error_logs.order(:attempt, :created_at).to_a.group_by(&:step_name)
-        ordered_logs.map do |l|
+        all_errors = @workflow.error_logs.order(:attempt, :created_at).to_a
+        by_step = all_errors.group_by(&:step_name)
+        by_id = all_errors.index_by(&:id)
+        shown = []
+
+        entries = ordered_logs.map do |l|
           p = StepNameParser.parse(l.step_name)
+          errors = (by_step[l.step_name] || []).dup
+          # A workflow-level failure ($workflow_failure$<id>) records its error
+          # with a nil step_name, so attach it to the marker by id.
+          if p.kind == :lifecycle && p.name == "failure" && (err = by_id[p.timestamp])
+            errors << err unless errors.include?(err)
+          end
+          shown.concat(errors)
           entry = Entry.new(id: l.id, kind: p.kind, name: p.name, step_name: l.step_name,
             status: l.state, attempts: l.attempts, started_at: l.started_at,
             completed_at: l.completed_at, last_executed_at: l.last_executed_at,
             error_class: l.error_class, error_message: l.error_message,
-            metadata: l.metadata, errors: errors_by_step[l.step_name] || [])
+            metadata: l.metadata, errors: errors)
           summarize_repetitions(entry, p.name) if p.kind == :repeat_coordination
           entry
         end
+
+        @orphan_errors = (all_errors - shown).reject { |e| e.step_name.to_s.match?(RUN_PATTERN_RX) }
+        entries
       end
+
+      RUN_PATTERN_RX = /\Adurably_repeat#{Regexp.escape(StepNameParser::DELIM)}.+#{Regexp.escape(StepNameParser::DELIM)}/
 
       def summarize_repetitions(entry, name)
         s = RepetitionsQuery.new(workflow: @workflow, step: name).summary
