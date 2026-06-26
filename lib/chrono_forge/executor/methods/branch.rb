@@ -45,6 +45,52 @@ module ChronoForge
           name
         end
 
+        # Dispatch one child per item of `source`, streamed. AR relations use
+        # keyset iteration (find_in_batches start:) for constant memory; any other
+        # enumerable uses an offset cursor. Items are keyed `name_{index}` by their
+        # sequential position, so the source must re-enumerate identically across
+        # replays. The block returns [WorkflowClass, kwargs] (or a bare class).
+        def spawn_each(name, source, of: 1000)
+          cb = current_branch!
+          validate_step_name_segment!(name)
+          cursor = (cb[:log].metadata&.dig("cursors", name.to_s)) || {}
+          n = (cursor["n"] || 0)
+
+          if source.is_a?(ActiveRecord::Relation)
+            # spawn_each iterates by primary key (find_in_batches) so the stream
+            # re-enumerates identically across replays. An explicit .order would
+            # make iteration non-deterministic, so reject it up front with a clear
+            # error rather than letting find_in_batches raise deep in the loop.
+            if source.order_values.present?
+              raise NotExecutableError,
+                "spawn_each iterates #{source.model_name} by primary key; remove the " \
+                "explicit .order(...) from the source relation"
+            end
+            source.find_in_batches(batch_size: of, start: cursor["pk"]) do |records|
+              entries = records.map do |record|
+                klass, kw = normalize_spawn(yield(record))
+                ck = "#{@workflow.key}$#{cb[:name]}$#{name}_#{n}"
+                n += 1
+                [ck, klass, kw]
+              end
+              dispatch_children(cb, entries)
+              advance_cursor!(cb, name, pk: records.last.id, n: n)
+            end
+          else
+            source.drop(n).each_slice(of) do |slice|
+              entries = slice.map do |item|
+                klass, kw = normalize_spawn(yield(item))
+                ck = "#{@workflow.key}$#{cb[:name]}$#{name}_#{n}"
+                n += 1
+                [ck, klass, kw]
+              end
+              dispatch_children(cb, entries)
+              advance_cursor!(cb, name, n: n)
+            end
+          end
+          name
+        end
+
         private
 
         def current_branch!
@@ -95,6 +141,12 @@ module ChronoForge
           cursors[spawn_name.to_s] = entry
           meta["cursors"] = cursors
           cb[:log].update!(metadata: meta)
+        end
+
+        # Normalize a spawn_each block return: [Klass, kwargs] or a bare Klass.
+        def normalize_spawn(result)
+          klass, kwargs = Array(result)
+          [klass, kwargs || {}]
         end
       end
     end
