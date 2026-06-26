@@ -1,6 +1,14 @@
 module ChronoForge
   module Dashboard
     module DashboardHelper
+      # Display order for state counts: active work first, terminal last. Any
+      # unknown states are appended so a new core state never silently vanishes.
+      STATE_ORDER = %w[running idle stalled failed completed].freeze
+
+      def cf_state_order(keys)
+        (STATE_ORDER & keys) + (keys - STATE_ORDER)
+      end
+
       def cf_badge(state)
         tag.span(state, class: "cf-pill cf-pill-#{state}")
       end

@@ -49,7 +49,8 @@
   <section class="cf-card mb-5 p-5">
     <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Queue health <span class="normal-case text-zinc-400">(current)</span></h2>
     <div class="flex flex-wrap gap-4">
-      <% @queue.counts.each do |state, count| %>
+      <% cf_state_order(@queue.counts.keys).each do |state| %>
+        <% count = @queue.counts[state] %>
         <div class="flex items-center gap-2 text-sm">
           <%= cf_dot(state) %>
           <span class="text-zinc-500"><%= state %></span>
