@@ -1,7 +1,8 @@
 module ChronoForge
   module Dashboard
     class TimelinePresenter
-      Entry = Struct.new(:id, :kind, :name, :status, :attempts, :started_at, :completed_at, :error, :runs)
+      Entry = Struct.new(:id, :kind, :name, :status, :attempts,
+        :started_at, :completed_at, :last_executed_at, :error_class, :error_message, :runs)
 
       def initialize(workflow) = @workflow = workflow
 
@@ -29,7 +30,8 @@ module ChronoForge
           p = StepNameParser.parse(l.step_name)
           entry = Entry.new(id: l.id, kind: p.kind, name: p.name, status: l.state,
             attempts: l.attempts, started_at: l.started_at, completed_at: l.completed_at,
-            error: l.error_class, runs: [])
+            last_executed_at: l.last_executed_at, error_class: l.error_class,
+            error_message: l.error_message, runs: [])
           if p.kind == :repeat_coordination
             coord_by_name[p.name] = entry
             top << entry

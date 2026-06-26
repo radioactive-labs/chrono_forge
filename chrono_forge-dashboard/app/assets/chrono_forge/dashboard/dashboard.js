@@ -6,6 +6,14 @@
     el.addEventListener("click", function () { el.closest("li").classList.toggle("cf-collapsed"); });
   });
 
+  // Auto-dismiss floating flash toasts after a few seconds (fade, then remove).
+  document.querySelectorAll("[data-flash]").forEach(function (el, i) {
+    setTimeout(function () {
+      el.classList.add("opacity-0");
+      setTimeout(function () { el.remove(); }, 300);
+    }, 4000 + i * 150);
+  });
+
   // Auto-submit a filter control (e.g. the state select) on change.
   document.querySelectorAll("[data-autosubmit]").forEach(function (el) {
     el.addEventListener("change", function () {

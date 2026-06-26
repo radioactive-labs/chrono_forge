@@ -12,7 +12,7 @@
     <tbody class="divide-y divide-zinc-100">
       <% @waits.each do |h| %>
         <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
-        <tr class="<%= "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50">
+        <tr class="cursor-pointer <%= "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50" data-href="<%= workflow_path(h[:workflow]) %>">
           <td class="px-4 py-2.5"><%= link_to h[:workflow].key, workflow_path(h[:workflow]), class: "font-mono hover:underline" %></td>
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:wait].condition %></td>
           <td class="px-4 py-2.5 <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>"><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>

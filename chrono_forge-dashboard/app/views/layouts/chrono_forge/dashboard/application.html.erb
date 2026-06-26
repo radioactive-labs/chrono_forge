@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css?v=#{ChronoForge::Dashboard.asset_digest("dashboard.css")}" %>">
 </head>
 <body class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= ChronoForge::Dashboard.config.polling_interval %>">
+  <% if flash.any? %>
+    <div class="pointer-events-none fixed right-4 top-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      <% flash.each do |type, msg| %>
+        <div data-flash class="pointer-events-auto rounded-md border px-3 py-2 text-sm shadow-md transition-opacity duration-300 <%= type.to_s == "alert" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800" %>"><%= msg %></div>
+      <% end %>
+    </div>
+  <% end %>
   <header class="border-b border-zinc-200 bg-white">
     <div class="mx-auto flex h-14 max-w-6xl items-center gap-8 px-4">
       <a href="<%= root_path %>" class="flex items-center gap-2 font-semibold tracking-tight">
@@ -20,9 +27,6 @@
     </div>
   </header>
   <main class="mx-auto max-w-6xl px-4 py-6">
-    <% flash.each do |type, msg| %>
-      <div class="mb-4 rounded-md border px-3 py-2 text-sm <%= type.to_s == "alert" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800" %>"><%= msg %></div>
-    <% end %>
     <%= yield %>
   </main>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>

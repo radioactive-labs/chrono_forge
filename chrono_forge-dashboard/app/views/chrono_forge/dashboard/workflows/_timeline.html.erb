@@ -4,22 +4,38 @@
     <% current = timeline.current_position&.id == e.id %>
     <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">
       <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white"></span>
-      <div class="<%= "-ml-2 rounded-md bg-amber-50 px-2 py-1 ring-1 ring-amber-200" if current %>">
+      <div class="<%= "-ml-2 rounded-md bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200" if current %>">
         <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-400"><%= cf_kind_label(e.kind) %></span>
           <span class="font-mono text-sm font-medium text-zinc-900"><%= e.name %></span>
           <span class="text-xs <%= cf_status_color(e.status) %>"><%= e.status %></span>
           <span class="font-mono text-xs text-zinc-400">×<%= e.attempts %></span>
-          <% if e.started_at %><span class="font-mono text-xs text-zinc-400" title="<%= e.started_at.iso8601 %>"><%= cf_duration(e.started_at, e.completed_at) %></span><% end %>
-          <% if e.error %><span class="font-mono text-xs text-rose-600"><%= e.error %></span><% end %>
+          <% if e.started_at && e.completed_at %>
+            <span class="font-mono text-xs text-zinc-400">· <%= cf_duration(e.started_at, e.completed_at) %></span>
+          <% end %>
         </div>
+        <% if e.started_at || e.last_executed_at %>
+          <div class="mt-0.5 font-mono text-[11px] text-zinc-400">
+            <% if e.started_at %><span title="<%= e.started_at.iso8601 %>">started <%= time_ago_in_words(e.started_at) %> ago</span><% end %>
+            <% if e.completed_at %><span title="<%= e.completed_at.iso8601 %>"> · finished <%= time_ago_in_words(e.completed_at) %> ago</span>
+            <% elsif e.last_executed_at %><span title="<%= e.last_executed_at.iso8601 %>"> · last run <%= time_ago_in_words(e.last_executed_at) %> ago</span><% end %>
+          </div>
+        <% end %>
+        <% if e.error_class %>
+          <div class="mt-1 font-mono text-xs text-rose-600">
+            <%= e.error_class %><% if e.error_message.present? %>: <span class="font-normal text-rose-500"><%= truncate(e.error_message, length: 160) %></span><% end %>
+          </div>
+        <% end %>
         <% if e.runs.any? %>
           <ul class="mt-2 space-y-1 border-l border-zinc-200 pl-4">
             <% e.runs.each do |r| %>
-              <li class="flex items-center gap-2 text-xs">
+              <li class="flex flex-wrap items-baseline gap-2 text-xs">
                 <span class="cf-dot cf-dot-<%= r.status %>"></span>
                 <span class="<%= cf_status_color(r.status) %>"><%= r.status %></span>
                 <span class="font-mono text-zinc-400">×<%= r.attempts %></span>
+                <% if r.started_at && r.completed_at %><span class="font-mono text-zinc-400"><%= cf_duration(r.started_at, r.completed_at) %></span><% end %>
+                <% if r.started_at %><span class="font-mono text-zinc-400" title="<%= r.started_at.iso8601 %>"><%= time_ago_in_words(r.started_at) %> ago</span><% end %>
+                <% if r.error_class %><span class="font-mono text-rose-600"><%= r.error_class %></span><% end %>
               </li>
             <% end %>
           </ul>

@@ -23,6 +23,9 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_response :redirect
     follow_redirect!
     assert_match(/cannot retry|not.*retry/i, response.body)
+    # Rendered as a floating, auto-dismissing toast (out of document flow).
+    assert_match "data-flash", response.body
+    assert_match "fixed", response.body
   end
 
   test "unlock clears the lock and idles" do
