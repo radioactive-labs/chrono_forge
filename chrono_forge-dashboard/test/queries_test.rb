@@ -14,8 +14,14 @@ class QueriesTest < ActiveSupport::TestCase
     assert_equal %w[a c].sort, q.records.map(&:key).sort
   end
 
-  test "filters by job_class and key substring" do
+  test "filters by job_class and key prefix" do
     assert_equal ["a"], ChronoForge::Dashboard::WorkflowsQuery.new(job_class: "OrderWorkflow", key: "a").records.map(&:key)
+  end
+
+  test "key filter is a prefix match, not a substring match" do
+    create_workflow(key: "order-99", state: :idle)
+    assert_equal ["order-99"], ChronoForge::Dashboard::WorkflowsQuery.new(key: "order").records.map(&:key)
+    assert_empty ChronoForge::Dashboard::WorkflowsQuery.new(key: "rder").records
   end
 
   test "blank filters return all, newest id first" do

@@ -70,7 +70,9 @@ module ChronoForge
         s = @base
         s = s.where(state: ChronoForge::Workflow.states[@state]) if @state && ChronoForge::Workflow.states.key?(@state)
         s = s.where(job_class: @job_class) if @job_class
-        s = s.where("key LIKE ?", "%#{@key}%") if @key
+        # Prefix match (not substring) so it can use the `key` index instead of
+        # full-scanning; LIKE wildcards in the input are escaped to literals.
+        s = s.where("key LIKE ?", "#{ChronoForge::Workflow.sanitize_sql_like(@key)}%") if @key
         s = s.where(created_at: @created_from..) if @created_from
         s = s.where(created_at: ..@created_to) if @created_to
         s
