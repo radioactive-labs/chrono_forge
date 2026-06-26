@@ -28,6 +28,9 @@ module ChronoForge
     has_many :execution_logs, dependent: :destroy
     has_many :error_logs, dependent: :destroy
 
+    belongs_to :parent_execution_log,
+      class_name: "ChronoForge::ExecutionLog", optional: true
+
     enum :state, %i[
       idle
       running

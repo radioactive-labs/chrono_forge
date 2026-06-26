@@ -33,6 +33,12 @@ module ChronoForge
 
     belongs_to :workflow
 
+    has_many :spawned_workflows,
+      class_name: "ChronoForge::Workflow",
+      foreign_key: :parent_execution_log_id,
+      inverse_of: :parent_execution_log,
+      dependent: :nullify
+
     enum :state, %i[
       pending
       completed
