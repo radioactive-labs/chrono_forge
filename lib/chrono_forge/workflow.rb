@@ -20,7 +20,10 @@
 #
 # Indexes
 #
-#  index_chrono_forge_workflows_on_key  (key) UNIQUE
+#  index_chrono_forge_workflows_on_key                         (key)
+#  index_chrono_forge_workflows_on_job_class_and_key           (job_class,key) UNIQUE
+#  index_chrono_forge_workflows_on_parent_execution_log_and_st (parent_execution_log_id,state)
+#  index_chrono_forge_workflows_on_state_and_completed_at      (state,completed_at)
 #
 module ChronoForge
   class Workflow < ApplicationRecord()
