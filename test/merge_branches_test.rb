@@ -25,7 +25,7 @@ class MergeBranchesTest < ActiveJob::TestCase
     end
     Object.const_set(:NoBranchMergeWorkflow, job)
     NoBranchMergeWorkflow.perform_later("nb-1")
-    assert_raises(ArgumentError) { perform_all_jobs }
+    assert_raises(ChronoForge::Executor::UnknownBranchError) { perform_all_jobs }
   ensure
     Object.send(:remove_const, :NoBranchMergeWorkflow) if defined?(NoBranchMergeWorkflow)
   end

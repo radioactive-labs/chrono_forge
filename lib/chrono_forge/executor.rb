@@ -22,6 +22,10 @@ module ChronoForge
     # automerge: true. Raised at the completion gate. Fail-fast (not retried).
     class UnmergedBranchError < NotExecutableError; end
 
+    # merge_branches given a name that was never opened as a branch this pass.
+    # NotExecutableError so it propagates (fail-fast) instead of being retried.
+    class UnknownBranchError < NotExecutableError; end
+
     # "$" separates the segments of a step name (e.g. "durably_repeat$name$ts").
     # User-supplied names/methods must not contain it.
     STEP_NAME_DELIMITER = "$"
@@ -150,7 +154,7 @@ module ChronoForge
         # Graceful handling of concurrent execution
         Rails.logger.warn { "ChronoForge:#{self.class}(#{key}) concurrent execution detected" }
         nil
-      rescue NotExecutableError, ArgumentError
+      rescue NotExecutableError
         raise
       rescue => e
         Rails.logger.error { "ChronoForge:#{self.class}(#{key}) workflow execution failed" }

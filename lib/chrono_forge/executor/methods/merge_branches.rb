@@ -34,7 +34,7 @@ module ChronoForge
 
         def open_branch!(name)
           (@open_branches || {}).fetch(name.to_s) do
-            raise ArgumentError, "no open branch named #{name.inspect} (open it with `branch #{name.inspect} do … end` first)"
+            raise UnknownBranchError, "no open branch named #{name.inspect} (open it with `branch #{name.inspect} do … end` first)"
           end
         end
 
