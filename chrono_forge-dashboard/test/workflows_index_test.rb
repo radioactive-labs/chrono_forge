@@ -28,4 +28,21 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     get "/chrono_forge/workflows"
     assert_match "cf-stat", response.body
   end
+
+  test "idle workflow parked on a future wait shows as scheduled" do
+    wf = create_workflow(key: "sched-1", state: :idle)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$payment_time?",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
+      started_at: 1.hour.ago, last_executed_at: 1.hour.ago,
+      metadata: {"timeout_at" => 2.hours.from_now.iso8601})
+    get "/chrono_forge/workflows"
+    assert_match "cf-pill-scheduled", response.body
+  end
+
+  test "plain idle workflow stays idle, not scheduled" do
+    create_workflow(key: "idle-1", state: :idle)
+    get "/chrono_forge/workflows"
+    assert_match "cf-pill-idle", response.body
+    refute_match "cf-pill-scheduled", response.body
+  end
 end

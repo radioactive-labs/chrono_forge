@@ -20,7 +20,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-zinc-100">
-        <%= render partial: "workflow_row", collection: @workflows, as: :workflow %>
+        <%= render partial: "workflow_row", collection: @workflows, as: :workflow, locals: {waits: @waits} %>
       </tbody>
     </table>
     <% if @workflows.none? %>

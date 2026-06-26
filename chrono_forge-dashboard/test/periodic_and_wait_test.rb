@@ -16,6 +16,23 @@ class PeriodicAndWaitTest < ActionDispatch::IntegrationTest
     assert_equal "ready?", active.condition
   end
 
+  test "active_map batch-resolves waits and flags scheduled vs overdue" do
+    future = create_workflow(key: "wm1", state: :idle)
+    ChronoForge::ExecutionLog.create!(workflow: future, step_name: "wait_until$ready?",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"timeout_at" => 1.hour.from_now.iso8601})
+    overdue = create_workflow(key: "wm2", state: :idle)
+    ChronoForge::ExecutionLog.create!(workflow: overdue, step_name: "wait_until$ready?",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1, started_at: 5.hours.ago,
+      metadata: {"timeout_at" => 1.hour.ago.iso8601})
+    plain = create_workflow(key: "wm3", state: :idle)
+
+    map = ChronoForge::Dashboard::WaitStatePresenter.active_map([future, overdue, plain])
+    assert map[future.id].scheduled?, "future wake time should read as scheduled"
+    refute map[overdue.id].scheduled?, "past wake time is not scheduled"
+    assert_nil map[plain.id], "idle workflow with no wait has no entry"
+  end
+
   test "wait-states index flags long waiters" do
     wf = create_workflow(key: "w2", state: :idle)
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$ready?",

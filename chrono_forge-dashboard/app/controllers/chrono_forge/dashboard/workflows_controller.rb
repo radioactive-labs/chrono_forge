@@ -4,6 +4,7 @@ module ChronoForge
       def index
         @query = WorkflowsQuery.new(**list_params)
         @workflows = @query.records
+        @waits = WaitStatePresenter.active_map(@workflows)
         stats = StatsQuery.new
         @stats = stats.counts
         @stats_cap = stats.cap

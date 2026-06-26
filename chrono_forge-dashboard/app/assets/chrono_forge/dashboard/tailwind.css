@@ -21,6 +21,7 @@
   .cf-pill-completed { @apply border-emerald-200 bg-emerald-50 text-emerald-700; }
   .cf-pill-failed { @apply border-rose-200 bg-rose-50 text-rose-700; }
   .cf-pill-stalled { @apply border-amber-200 bg-amber-50 text-amber-700; }
+  .cf-pill-scheduled { @apply border-violet-200 bg-violet-50 text-violet-700; }
 
   /* Pill-shaped state dot used in the stats strip + timeline */
   .cf-dot { @apply inline-block h-2 w-2 rounded-full; }
@@ -29,6 +30,7 @@
   .cf-dot-completed { @apply bg-emerald-500; }
   .cf-dot-failed { @apply bg-rose-500; }
   .cf-dot-stalled { @apply bg-amber-500; }
+  .cf-dot-scheduled { @apply bg-violet-500; }
   .cf-dot-pending { @apply bg-zinc-300; }
 
   /* Buttons: ink chrome, not brand color */

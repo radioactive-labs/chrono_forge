@@ -5,6 +5,14 @@ module ChronoForge
         tag.span(state, class: "cf-pill cf-pill-#{state}")
       end
 
+      # State badge, upgraded to "scheduled" for an idle workflow parked on a
+      # wait whose wake time is still in the future — so genuinely-scheduled work
+      # doesn't read as "stuck idle".
+      def cf_state_badge(workflow, wait = nil)
+        return cf_badge("scheduled") if workflow.idle? && wait&.scheduled?
+        cf_badge(workflow.state)
+      end
+
       def cf_dot(state)
         tag.span(class: "cf-dot cf-dot-#{state}")
       end
