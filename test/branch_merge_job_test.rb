@@ -56,4 +56,13 @@ class BranchMergeJobTest < ActiveJob::TestCase
     end
     assert_no_enqueued_jobs(only: NoopChild)
   end
+
+  # Fix 1: retry_on prevents a transient error from orphaning the parent in :idle.
+  # We use the structural assertion (rescue_handlers) rather than fighting test-adapter
+  # retry mechanics: the important invariant is that the declaration is in place so
+  # a real backend re-enqueues the job on failure.
+  def test_poller_retries_on_transient_error
+    assert ChronoForge::BranchMergeJob.rescue_handlers.any? { |klass, _| klass == "StandardError" },
+      "BranchMergeJob must declare retry_on StandardError so transient errors do not orphan the parent"
+  end
 end

@@ -139,6 +139,8 @@ module ChronoForge
           ActiveJob.perform_all_later(jobs) if jobs.any?
         end
 
+        # Mirrors the class-level __validate_enqueue! (executor.rb) because
+        # perform_all_later bypasses that guard — the two must stay in sync.
         def validate_child_enqueue!(child_key, kwargs)
           unless child_key.is_a?(String)
             raise ArgumentError, "child key must be a String (got #{child_key.inspect})"

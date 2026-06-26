@@ -60,6 +60,30 @@ class MergeBranchesTest < ActiveJob::TestCase
     Object.send(:remove_const, :CommaMergeWorkflow) if defined?(CommaMergeWorkflow)
   end
 
+  def test_duplicate_names_treated_as_single_branch
+    # merge_branches :a, :a must dedup to :a and behave identically to merge_branches :a.
+    dup_wf = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:a) { spawn :one, NoopChild }
+        merge_branches :a, :a
+        context["done"] = true
+      end
+    end
+    Object.const_set(:DupMergeWorkflow, dup_wf)
+    DupMergeWorkflow.perform_later("dup-merge-1")
+    perform_all_jobs
+
+    wf = ChronoForge::Workflow.find_by(key: "dup-merge-1")
+    assert wf.completed?, "parent should complete with deduped branch names"
+    assert_equal true, wf.context["done"]
+    merge_log = wf.execution_logs.find { |l| l.step_name == "merge$a" }
+    assert merge_log, "merge log should be named merge$a (single, deduped)"
+    assert merge_log.completed?
+  ensure
+    Object.send(:remove_const, :DupMergeWorkflow) if defined?(DupMergeWorkflow)
+  end
+
   def test_incomplete_child_keeps_parent_parked
     # StalledBranchWorkflow has branch :a (stalling child) and branch :b (noop).
     # The stalling child raises on every attempt and exhausts retries → failed.

@@ -207,4 +207,36 @@ class CleanupTest < ActiveJob::TestCase
 
     assert exists?(rep), "repetition scheduled within the window must be kept regardless of its created_at"
   end
+
+  # Fix 2: cleanup must nullify parent_execution_log_id on child workflows whose
+  # parent's branch$ log is bulk-deleted (bypassing dependent: :nullify callback).
+  def test_cleanup_nullifies_child_parent_execution_log_id
+    # Parent workflow that is old enough to be reclaimed.
+    parent = make_workflow(state: :completed, terminal_age: 40.days)
+    # A branch$ execution log on the parent.
+    branch_log = ChronoForge::ExecutionLog.create!(
+      workflow: parent,
+      step_name: "branch$cleanup_test",
+      state: :completed
+    )
+    # A child workflow referencing that branch log.
+    child = ChronoForge::Workflow.create!(
+      key: "cleanup_child_#{SecureRandom.hex(4)}",
+      job_class: "NoopChild",
+      kwargs: {}, options: {}, context: {},
+      state: :completed,
+      parent_execution_log_id: branch_log.id
+    )
+
+    Cleanup.run(older_than: 30.days)
+
+    # Parent and its logs are deleted.
+    refute ChronoForge::Workflow.exists?(parent.id), "parent should be reclaimed"
+    refute ChronoForge::ExecutionLog.exists?(branch_log.id), "branch log should be deleted"
+
+    # Child must have its parent_execution_log_id nullified, not left dangling.
+    child.reload
+    assert_nil child.parent_execution_log_id,
+      "child's parent_execution_log_id must be nullified when parent is bulk-deleted"
+  end
 end

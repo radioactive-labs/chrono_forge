@@ -15,7 +15,8 @@ module ChronoForge
             end
           end
 
-          step_name = "merge$#{names.map(&:to_s).sort.join(",")}"
+          names = names.map(&:to_s).uniq
+          step_name = "merge$#{names.sort.join(",")}"
           log = find_or_create_execution_log!(step_name) { |l| l.started_at = Time.current }
 
           if log.completed?
@@ -46,14 +47,8 @@ module ChronoForge
           end
         end
 
-        # A branch is done when its log is sealed (completed) and it has no
-        # incomplete children. exists? short-circuits at the first incomplete row.
         def branches_done?(branch_log_ids)
-          branch_log_ids.all? do |id|
-            next false unless ExecutionLog.where(id: id, state: ExecutionLog.states[:completed]).exists?
-            !Workflow.where(parent_execution_log_id: id)
-              .where.not(state: Workflow.states[:completed]).exists?
-          end
+          branch_log_ids.all? { |id| BranchProbe.done?(id) }
         end
 
         def enqueue_branch_merge_job(branch_log_ids, min_interval, max_interval)
