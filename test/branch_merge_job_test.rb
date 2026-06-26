@@ -57,19 +57,19 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_no_enqueued_jobs(only: NoopChild)
   end
 
-  # Fix 1: retry_on prevents a transient error from orphaning the parent in :idle.
-  # We use the structural assertion (rescue_handlers) rather than fighting test-adapter
-  # retry mechanics: the important invariant is that the declaration is in place so
-  # a real backend re-enqueues the job on failure.
+  # Fix 1: the poller retries TRANSIENT infrastructure errors so a DB blip does not
+  # orphan the parent in :idle. Structural assertion (rescue_handlers) rather than
+  # fighting test-adapter retry mechanics: the invariant is that the declaration is
+  # in place so a real backend re-enqueues the job on a transient error.
   def test_poller_retries_on_transient_error
-    assert ChronoForge::BranchMergeJob.rescue_handlers.any? { |klass, _| klass == "StandardError" },
-      "BranchMergeJob must declare retry_on StandardError so transient errors do not orphan the parent"
+    assert ChronoForge::BranchMergeJob.rescue_handlers.any? { |klass, _| klass == "ActiveRecord::Deadlocked" },
+      "BranchMergeJob must retry transient DB errors so they do not orphan the parent"
   end
 
-  # The empty-input guard is a caller bug, not a transient fault: discard_on
-  # ArgumentError makes it fail fast rather than retrying 25× via retry_on.
-  def test_empty_branch_log_ids_is_discarded_not_retried
-    assert_no_enqueued_jobs do
+  # A programming bug (e.g. the empty-input guard) must propagate loudly to the
+  # backend's failed-job queue, NOT be silently retried-then-discarded.
+  def test_empty_branch_log_ids_propagates_loudly
+    assert_raises(ArgumentError) do
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [], 5, 300)
     end
   end

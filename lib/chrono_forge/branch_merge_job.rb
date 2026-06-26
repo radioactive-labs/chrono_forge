@@ -5,16 +5,16 @@ module ChronoForge
   # no lock, does no replay, and carries no context. It exists so the heavy parent
   # workflow is replayed only twice per merge (kick off + completion wake).
   class BranchMergeJob < ActiveJob::Base
-    # The poller is the SOLE wake mechanism for a parked merge — a transient error
-    # (DB blip, etc.) before the reschedule below would otherwise orphan the parent
-    # in :idle (indistinguishable from never-started, invisible to recovery scans).
-    # Retry transient failures with backoff so the poll chain survives.
-    retry_on StandardError, wait: :polynomially_longer, attempts: 25
-    # An empty branch_log_ids is a caller bug, not a transient fault — don't retry it.
-    # MUST be declared AFTER retry_on: ActiveSupport::Rescuable matches handlers in
-    # reverse registration order (last wins), not by specificity — so this overrides
-    # the broad retry_on StandardError above for ArgumentError specifically.
-    discard_on ArgumentError
+    # The poller is the parent's only wake mechanism, so survive TRANSIENT
+    # infrastructure errors (DB connection/timeout/deadlock) with backoff. Any
+    # other error — a programming bug, a bad guard — is NOT retried: it propagates
+    # to the backend's failed-job queue where it's visible, rather than being
+    # silently retried-then-discarded (which would orphan the parent in :idle).
+    retry_on ActiveRecord::ConnectionNotEstablished,
+      ActiveRecord::ConnectionTimeoutError,
+      ActiveRecord::Deadlocked,
+      ActiveRecord::LockWaitTimeout,
+      wait: :polynomially_longer, attempts: 25
 
     CAP = 5_000          # cap the pending count; beyond it we just pick max_interval
     FACTOR = 0.06        # seconds of delay per pending child
