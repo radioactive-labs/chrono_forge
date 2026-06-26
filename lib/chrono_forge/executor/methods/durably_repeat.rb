@@ -188,10 +188,8 @@ module ChronoForge
           # Calculate delay until execution time
           delay = [next_execution_at - Time.current, 0].max.seconds
 
-          # Schedule the workflow to run at the specified time
-          self.class
-            .set(wait: delay)
-            .perform_later(@workflow.key)
+          # Schedule the workflow to run at the specified time (published after release).
+          enqueue_continuation(wait: delay)
 
           # Halt current execution until scheduled time
           halt_execution!
@@ -230,10 +228,8 @@ module ChronoForge
             bump_retry_count!(repetition_log, policy_key)
           end
           if backoff
-            # Reschedule this same repetition with the policy's backoff
-            self.class
-              .set(wait: backoff)
-              .perform_later(@workflow.key)
+            # Reschedule this same repetition with the policy's backoff (after release).
+            enqueue_continuation(wait: backoff)
 
             # Halt current execution
             halt_execution!
@@ -283,10 +279,8 @@ module ChronoForge
           # Calculate delay until next execution
           delay = [next_execution_time - Time.current, 0].max.seconds
 
-          # Schedule the workflow to run for the next periodic execution
-          self.class
-            .set(wait: delay)
-            .perform_later(@workflow.key)
+          # Schedule the next periodic execution (published after lock release).
+          enqueue_continuation(wait: delay)
 
           # Halt current execution
           halt_execution!

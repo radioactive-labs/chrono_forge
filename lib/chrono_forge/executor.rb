@@ -159,9 +159,7 @@ module ChronoForge
           retry_counts[policy_key]
         end
         if backoff
-          self.class
-            .set(wait: backoff)
-            .perform_later(workflow.key, attempt: attempts_made, retry_counts: retry_counts)
+          enqueue_continuation(wait: backoff, attempt: attempts_made, retry_counts: retry_counts)
         else
           fail_workflow! error_log
         end
@@ -169,6 +167,11 @@ module ChronoForge
         if lock_acquired # Only release lock if we acquired it
           context.save!
           self.class::LockStrategy.release_lock(job_id, workflow)
+          # Publish the continuation only now — after the lock is released — so a
+          # zero-delay, same-key continuation can't lose the acquire race against
+          # this still-locked job. If release_lock raised (this job overran and
+          # lost the lock), we never reach here and another job owns continuation.
+          flush_continuation!
         end
       end
     end
@@ -300,6 +303,27 @@ module ChronoForge
       meta[RETRY_COUNTS_KEY] = counts
       log.update!(metadata: meta)
       counts[policy_key]
+    end
+
+    # Record the continuation this job intends to enqueue. It is NOT published
+    # here: publishing while the lock is still held lets another worker claim it
+    # and lose the lock-acquisition race. The executor flushes it in `ensure`,
+    # after release_lock (see #flush_continuation!). At most one continuation is
+    # recorded per job run (every primitive records one then halts, or falls
+    # through the workflow-retry rescue).
+    def enqueue_continuation(wait:, **kwargs)
+      @continuation = {wait: wait, kwargs: kwargs}
+    end
+
+    # Publish the recorded continuation, if any. Called from `ensure` only after
+    # the lock row has been updated to released, so even a zero-delay continuation
+    # finds the lock free.
+    def flush_continuation!
+      return unless @continuation
+
+      self.class
+        .set(wait: @continuation[:wait])
+        .perform_later(@workflow.key, **@continuation[:kwargs])
     end
 
     def halt_execution!

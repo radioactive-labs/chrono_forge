@@ -130,12 +130,8 @@ module ChronoForge
               bump_retry_count!(execution_log, policy_key)
             end
             if backoff
-              # Reschedule with the policy's backoff
-              self.class
-                .set(wait: backoff)
-                .perform_later(
-                  @workflow.key
-                )
+              # Reschedule with the policy's backoff (published after lock release).
+              enqueue_continuation(wait: backoff)
 
               # Halt current execution
               halt_execution!
@@ -176,13 +172,8 @@ module ChronoForge
             raise error
           end
 
-          # Reschedule with delay
-          self.class
-            .set(wait: check_interval)
-            .perform_later(
-              @workflow.key,
-              wait_condition: condition
-            )
+          # Reschedule the poll (published after lock release).
+          enqueue_continuation(wait: check_interval, wait_condition: condition)
 
           # Halt current execution
           halt_execution!
