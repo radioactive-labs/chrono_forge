@@ -11,7 +11,7 @@
   <tbody class="divide-y divide-zinc-100">
     <% tasks.each do |t| %>
       <tr>
-        <td class="py-2 pr-4 font-mono"><%= t.name %></td>
+        <td class="py-2 pr-4 font-mono"><%= link_to t.name, repetitions_workflow_path(workflow, step: t.name), class: "hover:underline" %></td>
         <td class="py-2 pr-4 font-mono text-xs text-zinc-500"><%= t.last_execution_at || "—" %></td>
         <td class="py-2 pr-4 font-mono text-xs text-zinc-500"><%= t.next_scheduled_at&.iso8601 || "—" %></td>
         <td class="py-2 pr-4 font-mono <%= "cf-periodic--timeout text-rose-600" if t.timed_out_count.positive? %>"><%= t.timed_out_count %></td>
