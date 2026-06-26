@@ -33,6 +33,31 @@ class PeriodicAndWaitTest < ActionDispatch::IntegrationTest
     assert_nil map[plain.id], "idle workflow with no wait has no entry"
   end
 
+  test "active_map surfaces continue_if event waits (no timeout, never scheduled)" do
+    wf = create_workflow(key: "evt1", state: :idle)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "continue_if$webhook_received",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
+      started_at: 3.hours.ago, last_executed_at: 3.hours.ago, metadata: {})
+
+    active = ChronoForge::Dashboard::WaitStatePresenter.active_map([wf])[wf.id]
+    assert_equal :continue, active.kind
+    assert active.event_wait?
+    refute active.scheduled?, "an event wait has no future wake time"
+  end
+
+  test "wait-states page leads with oldest unresolved event wait per class" do
+    old = create_workflow(key: "evt-old", state: :idle, job_class: "PayoutWorkflow")
+    ChronoForge::ExecutionLog.create!(workflow: old, step_name: "continue_if$payout_callback",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
+      started_at: 12.hours.ago, last_executed_at: 12.hours.ago, metadata: {})
+
+    get "/chrono_forge/wait_states"
+    assert_response :success
+    assert_match "Oldest unresolved event wait", response.body
+    assert_match "payout_callback", response.body
+    assert_match "PayoutWorkflow", response.body
+  end
+
   test "wait-states index flags long waiters" do
     wf = create_workflow(key: "w2", state: :idle)
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$ready?",

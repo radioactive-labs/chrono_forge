@@ -39,6 +39,13 @@ wf2 = W.create!(key: "signup-77", job_class: "OrderWorkflow", state: W.states[:i
 E.create!(workflow: wf2, step_name: "wait_until$kyc_approved?", state: estate(:pending), attempts: 1,
   started_at: 5.hours.ago, last_executed_at: 5.hours.ago, metadata: {"timeout_at" => 2.hours.from_now.iso8601})
 
+# Idle on a continue_if (event wait) whose webhook never arrived — the silent
+# stall the wait-states "oldest event wait" panel exists to surface.
+wf2b = W.create!(key: "refund-204", job_class: "RefundWorkflow", state: W.states[:idle],
+  context: {"charge_id" => "ch_204"}, kwargs: {}, options: {}, started_at: 3.days.ago)
+E.create!(workflow: wf2b, step_name: "continue_if$gateway_webhook_received", state: estate(:pending),
+  attempts: 1, started_at: 3.days.ago, last_executed_at: 3.days.ago, metadata: {})
+
 # Completed
 wf3 = W.create!(key: "order-1000", job_class: "OrderWorkflow", state: W.states[:completed],
   context: {"amount" => 1200}, kwargs: {}, options: {}, started_at: 1.day.ago, completed_at: 1.day.ago)
