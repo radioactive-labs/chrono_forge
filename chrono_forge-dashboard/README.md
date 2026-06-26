@@ -115,11 +115,10 @@ Run a seeded preview locally (compiles the stylesheet, then boots a demo app on 
 bin/dev          # PORT=9877 bin/dev to change the port
 ```
 
-Before a release:
+To release: bump `lib/chrono_forge/dashboard/version.rb`, commit, then run:
 
 ```bash
-bundle exec rake prepare   # compile assets, run tests + linter
-bundle exec rake release   # tag, build (recompiles dashboard.css), push
+bin/release
 ```
 
-`rake build` always recompiles `dashboard.css` first, so a release never ships a stale stylesheet.
+It compiles the stylesheet, refuses to continue on a dirty tree, then runs `rake release` (tests, linter, build, git tag, and push to RubyGems). `rake build` always recompiles `dashboard.css` first, so a release never ships a stale stylesheet. Use `bundle exec rake prepare` on its own to run assets + tests + linter without releasing.

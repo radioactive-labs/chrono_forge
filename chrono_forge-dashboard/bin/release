@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Release chrono_forge-dashboard to RubyGems.
+#
+# Bump lib/chrono_forge/dashboard/version.rb and commit it first; the tag and
+# gem version come from there. This script then: compiles the stylesheet,
+# refuses to continue on a dirty tree, and runs `rake release` (tests, linter,
+# build — which recompiles dashboard.css — git tag, and push to RubyGems).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bundle install --quiet
+
+echo "==> Compiling stylesheet"
+bundle exec rake tailwind:build
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "✗ Working tree is dirty. Commit the rebuilt dashboard.css (and anything else) before releasing:" >&2
+  git status --short >&2
+  exit 1
+fi
+
+version="$(ruby -r ./lib/chrono_forge/dashboard/version -e 'print ChronoForge::Dashboard::VERSION')"
+echo "==> Releasing chrono_forge-dashboard v${version}"
+exec bundle exec rake release
