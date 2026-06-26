@@ -3,7 +3,7 @@
     <div class="cf-stat flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm">
       <%= cf_dot(state) %>
       <span class="text-zinc-500"><%= state %></span>
-      <span class="font-mono font-medium tabular-nums"><%= count %></span>
+      <span class="font-mono font-medium tabular-nums"><%= cf_capped(count, cap) %></span>
     </div>
   <% end %>
 </div>

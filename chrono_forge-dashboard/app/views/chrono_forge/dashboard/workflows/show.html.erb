@@ -17,9 +17,30 @@
       <% end %>
     </div>
   <% end %>
+
+  <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Created</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.created_at) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Started</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.started_at) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Completed</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.completed_at) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono text-zinc-700"><%= cf_duration(@workflow.started_at, @workflow.completed_at || @workflow.updated_at) %></dd></div>
+  </dl>
 </div>
 
 <%= render "wait_callout", wait: @wait if @wait %>
+
+<% if @workflow.kwargs.present? %>
+  <section class="cf-card mb-5 p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Arguments</h2>
+    <dl class="space-y-1.5">
+      <% @workflow.kwargs.each do |key, value| %>
+        <div class="flex items-baseline gap-2">
+          <dt class="font-mono text-sm text-zinc-900"><%= key %></dt>
+          <dd class="min-w-0 flex-1 truncate font-mono text-sm text-zinc-600"><%= truncate(value.inspect, length: 120) %></dd>
+        </div>
+      <% end %>
+    </dl>
+  </section>
+<% end %>
 
 <section class="cf-card mb-5 p-5">
   <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</h2>

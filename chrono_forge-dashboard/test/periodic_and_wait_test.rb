@@ -38,4 +38,17 @@ class PeriodicAndWaitTest < ActionDispatch::IntegrationTest
     health = ChronoForge::Dashboard::PeriodicHealthPresenter.new(wf).tasks
     assert_equal 1, health.first.timed_out_count
   end
+
+  test "periodic health reports the next scheduled run" do
+    wf = create_workflow(key: "p2")
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1, started_at: 1.day.ago,
+      metadata: {"last_execution_at" => 1.hour.ago.iso8601})
+    # a pending (not-yet-run) repetition scheduled for the future
+    future = 2.hours.from_now.to_i
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync$#{future}",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 0)
+    task = ChronoForge::Dashboard::PeriodicHealthPresenter.new(wf).tasks.first
+    assert_equal Time.zone.at(future), task.next_scheduled_at
+  end
 end

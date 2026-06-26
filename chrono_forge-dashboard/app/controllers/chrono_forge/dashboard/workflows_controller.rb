@@ -3,8 +3,10 @@ module ChronoForge
     class WorkflowsController < BaseController
       def index
         @query = WorkflowsQuery.new(**list_params)
-        @workflows = @query.results
-        @stats = StatsQuery.new.counts
+        @workflows = @query.records
+        stats = StatsQuery.new
+        @stats = stats.counts
+        @stats_cap = stats.cap
       end
 
       def show
@@ -19,7 +21,7 @@ module ChronoForge
       private
 
       def list_params
-        params.permit(:state, :job_class, :key, :created_from, :created_to, :page)
+        params.permit(:state, :job_class, :key, :created_from, :created_to, :before, :after)
           .to_h.symbolize_keys.merge(per: ChronoForge::Dashboard.config.page_size)
       end
     end

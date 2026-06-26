@@ -11,21 +11,36 @@ class QueriesTest < ActiveSupport::TestCase
 
   test "filters by state" do
     q = ChronoForge::Dashboard::WorkflowsQuery.new(state: "failed")
-    assert_equal %w[a c].sort, q.results.map(&:key).sort
+    assert_equal %w[a c].sort, q.records.map(&:key).sort
   end
 
   test "filters by job_class and key substring" do
-    assert_equal ["a"], ChronoForge::Dashboard::WorkflowsQuery.new(job_class: "OrderWorkflow", key: "a").results.map(&:key)
+    assert_equal ["a"], ChronoForge::Dashboard::WorkflowsQuery.new(job_class: "OrderWorkflow", key: "a").records.map(&:key)
   end
 
-  test "blank filters return all" do
-    assert_equal 3, ChronoForge::Dashboard::WorkflowsQuery.new(state: "", job_class: nil).results.count
+  test "blank filters return all, newest id first" do
+    q = ChronoForge::Dashboard::WorkflowsQuery.new(state: "", job_class: nil)
+    assert_equal %w[c b a], q.records.map(&:key)
   end
 
-  test "paginates" do
-    q = ChronoForge::Dashboard::WorkflowsQuery.new(page: 1, per: 2)
-    assert_equal 2, q.results.to_a.size
-    assert_equal 3, q.total_count
+  test "keyset paginates without offset or count" do
+    page1 = ChronoForge::Dashboard::WorkflowsQuery.new(per: 2)
+    assert_equal %w[c b], page1.records.map(&:key)
+    assert page1.has_next?
+    refute page1.has_prev?
+
+    page2 = ChronoForge::Dashboard::WorkflowsQuery.new(per: 2, before: page1.next_cursor)
+    assert_equal %w[a], page2.records.map(&:key)
+    refute page2.has_next?
+    assert page2.has_prev?
+
+    back = ChronoForge::Dashboard::WorkflowsQuery.new(per: 2, after: page2.prev_cursor)
+    assert_equal %w[c b], back.records.map(&:key)
+  end
+
+  test "runs over a custom base scope" do
+    q = ChronoForge::Dashboard::WorkflowsQuery.new(base: ChronoForge::Workflow.where(job_class: "PayoutWorkflow"))
+    assert_equal ["c"], q.records.map(&:key)
   end
 
   test "stats counts every state" do
@@ -33,5 +48,10 @@ class QueriesTest < ActiveSupport::TestCase
     assert_equal 2, counts["failed"]
     assert_equal 1, counts["completed"]
     assert_equal 0, counts["running"]
+  end
+
+  test "stats counts are capped" do
+    counts = ChronoForge::Dashboard::StatsQuery.new(cap: 1).counts
+    assert_equal 1, counts["failed"], "2 failed workflows, capped to 1"
   end
 end

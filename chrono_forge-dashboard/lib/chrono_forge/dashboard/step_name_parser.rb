@@ -9,6 +9,7 @@ module ChronoForge
         case prefix
         when "durably_execute" then Parsed.new(kind: :execute, name: name, raw: step_name)
         when "wait_until" then Parsed.new(kind: :wait, name: name, raw: step_name)
+        when "continue_if" then Parsed.new(kind: :continue, name: name, raw: step_name)
         when "durably_repeat"
           if ts
             Parsed.new(kind: :repeat_run, name: name, timestamp: Integer(ts, exception: false), raw: step_name)

@@ -15,6 +15,11 @@ class StepNameParserTest < ActiveSupport::TestCase
     assert_equal "paid?", P.parse("wait_until$paid?").name
   end
 
+  test "continue_if" do
+    assert_equal :continue, P.parse("continue_if$ready?").kind
+    assert_equal "ready?", P.parse("continue_if$ready?").name
+  end
+
   test "durably_repeat coordination" do
     r = P.parse("durably_repeat$remind")
     assert_equal :repeat_coordination, r.kind

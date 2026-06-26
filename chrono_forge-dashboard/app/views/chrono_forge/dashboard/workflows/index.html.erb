@@ -5,7 +5,7 @@
 </div>
 
 <div data-poll-region>
-  <%= render "stats", stats: @stats %>
+  <%= render "stats", stats: @stats, cap: @stats_cap %>
   <%= render "filters", query: @query %>
 
   <div class="cf-card overflow-hidden">
@@ -28,8 +28,9 @@
     <% end %>
   </div>
 
+  <% base_params = request.query_parameters.except("before", "after") %>
   <nav class="mt-4 flex gap-4 text-sm">
-    <% if @query.page > 1 %><%= link_to "‹ Prev", request.query_parameters.merge(page: @query.page - 1), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
-    <% if @query.total_count > @query.page * @query.per %><%= link_to "Next ›", request.query_parameters.merge(page: @query.page + 1), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
+    <% if @query.has_prev? %><%= link_to "‹ Newer", base_params.merge(after: @query.prev_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
+    <% if @query.has_next? %><%= link_to "Older ›", base_params.merge(before: @query.next_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
   </nav>
 </div>
