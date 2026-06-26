@@ -10,6 +10,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/radioactive-labs/chrono_forge"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.2"
+  spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/chrono_forge-dashboard/CHANGELOG.md"
@@ -17,7 +18,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*", "app/**/*", "config/**/*", "MIT-LICENSE", "README.md", "CHANGELOG.md"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "chrono_forge"
+  spec.add_dependency "chrono_forge", ">= 0.9.0"
   spec.add_dependency "railties", ">= 7.1"
   spec.add_dependency "actionpack", ">= 7.1"
 
