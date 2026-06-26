@@ -1,43 +1,7 @@
 # Branches — Concurrent Sub-Workflows (`branch` / `spawn` / `merge_branches`) — Design
 
 **Date:** 2026-06-25
-**Status:** Implemented (`feat/branches`). See "Implementation deltas" below for where
-the shipped behavior refined this design during the build.
-
-> ## Implementation deltas (as shipped — these override the body below)
->
-> The feature was built and reviewed task-by-task; a few decisions were refined mid-build
-> and the shipped code is the source of truth where it differs from this document:
->
-> 1. **Automerge joins INLINE at the branch block's close**, not deferred to a workflow
->    completion gate. `branch(name, automerge: true)` ≡ eager dispatch inside the block
->    followed immediately by `merge_branches(name)` — execution does not continue past the
->    block until the branch's children complete. (The "Completion gate — automerge" section
->    below describes the abandoned deferred design.) The completion gate now does only the
->    **unmerged-raise** check: any branch left in `@open_branches` at completion (i.e.
->    opened but neither `merge_branches`-d nor automerged) raises `UnmergedBranchError`.
-> 2. **`merge_branches` of an unopened name raises `UnknownBranchError`** (a
->    `NotExecutableError` subclass), not `ArgumentError` — so it fail-fasts via the existing
->    rescue without broadening the executor. `merge_branches` also validates each name
->    (`$` and `,` are rejected — `,` is the merge step-name separator).
-> 3. **AR `spawn_each` children are keyed by record primary key** (`name_<record.id>`), not
->    a sequential index. `find_in_batches(start:)` is inclusive, so a crash-resume re-yields
->    the boundary record under the SAME key and `insert_all`-ignore dedups it (idempotent).
->    Plain (non-AR) enumerables keep `name_<index>` + `drop(n)` (exclusive, already safe).
-> 4. **An explicit `.order` on an AR source raises** (iteration is by PK); `spawn_each`
->    checks `order_values.present?` up front rather than relying on `find_in_batches`'s
->    `error_on_ignore`.
-> 5. **Dispatch is queue-idempotent:** after `insert_all`, only children still `:idle` are
->    enqueued, so a crash-resume never re-runs an already-completed/running child.
-> 6. **The dropped-job re-kick filters by `state: :idle`**, not `started_at IS NULL` —
->    branch children are pre-inserted and never get `started_at` set, so `:idle` is the
->    correct "never picked up" signal. The re-kick is batch-capped.
-> 7. **`merge/automerge state is in-memory only** (`@open_branches`), rebuilt each replay
->    pass — no persisted `merged`/`automerge` flags (as the body already states).
->
-> Everything else in this document matches the implementation.
-
-**Original status:** Draft (pending spec review)
+**Status:** Implemented (branch `feat/branches`).
 **Scope:** New public API, additive. Introduces parent/child workflows and a
 fan-out/fan-in primitive built to dispatch **hundreds of thousands** of children per
 branch. One new (generic, reusable) column on `chrono_forge_workflows`; reuses the
@@ -68,8 +32,9 @@ block**. The model mirrors git: you branch, then you merge.
 - `spawn(name, WorkflowClass, **kwargs)` — inside a branch: dispatch a **single** named
   child.
 - `spawn_each(name, source, of:) { |item| [WorkflowClass, kwargs] }` — inside a branch:
-  dispatch **one child per item**, streamed like ActiveRecord batch loading; items are
-  keyed `name_{index}` (sequential index across the stream).
+  dispatch **one child per item**, streamed like ActiveRecord batch loading; AR items are
+  keyed `name_<record.id>` (primary key); plain enumerables are keyed `name_{index}`
+  (sequential index).
 - `merge_branches(*names)` — the **separate** join: halt until every named branch is
   sealed **and** all its children have completed.
 
@@ -77,7 +42,7 @@ block**. The model mirrors git: you branch, then you merge.
 def perform(cycle_id:)
   branch :fulfillment, automerge: true do        # the step; seals when the block closes
     spawn :reconcile, ReconcileWorkflow, region: "EU"   # single child of :fulfillment
-    spawn_each :orders, Order.pending do |order|        # bulk, streamed; keys orders_0, orders_1…
+    spawn_each :orders, Order.pending do |order|        # bulk, streamed; keys orders_<id>…
       order.priority? ? [PriorityOrderWorkflow, { order_id: order.id }]
                       : [OrderWorkflow, { order_id: order.id }]
     end
@@ -105,18 +70,18 @@ end
 | Dispatch timing | **Eager.** Spawns insert + enqueue as the block runs; children start at once. The branch **seals** (log → `completed`) when the block closes. |
 | Join | **Separate `merge_branches`** so branches run concurrently and work can happen in between. Joins one or more named branches at once (`merge_branches :a` for one). |
 | `merge_branch` alias | **Ship a singular `merge_branch(name, **opts)` alias** that delegates to `merge_branches` — reads naturally for the common one-branch case (`merge_branch :a`) without a plural-method/singular-arg mismatch. Decided, not just mentioned. |
-| Automerge | A property **of the branch**: `branch(name, automerge: true)`. When `true`, the branch is auto-joined just before workflow completion (an implicit final merge), so no explicit `merge_branches` is needed. |
+| Automerge | A property **of the branch**: `branch(name, automerge: true)`. When `true`, `branch` eagerly dispatches inside the block and then immediately calls `merge_branches(name)` at the block's close — execution does not continue past the block until the branch's children complete. No explicit `merge_branches` is needed. |
 | Branch tracking | An **in-memory registry** (`@open_branches`), rebuilt each replay pass: `branch` adds, `merge_branches` removes on completion, the completion gate inspects the remainder. Deterministic replay makes it exact — no persisted `merged`/`automerge` flags. |
-| Every branch must be joined | **No detached branches.** A branch left in `@open_branches` at completion with `automerge: false` **raises `UnmergedBranchError`** (fail-fast on a forgotten join), rather than silently letting children run orphaned. |
-| Spawn identity | Spawns are **named** (`spawn :reconcile, …`, `spawn_each :orders, …`). The name anchors the child key and the per-`spawn_each` cursor — stable across code reordering (unlike a positional ordinal). A `spawn_each`'s items are keyed `name_{index}` (sequential index across the stream). |
+| Every branch must be joined | **No detached branches.** Any branch remaining in `@open_branches` at completion (neither `merge_branches`-d nor automerged) **raises `UnmergedBranchError`** (fail-fast on a forgotten join), rather than silently letting children run orphaned. `automerge: true` branches are joined inline at the block close and are absent from `@open_branches` by the time the completion gate runs. |
+| Spawn identity | Spawns are **named** (`spawn :reconcile, …`, `spawn_each :orders, …`). The name anchors the child key and the per-`spawn_each` cursor — stable across code reordering (unlike a positional ordinal). AR items are keyed `name_<record.id>` (primary key); plain enumerable items are keyed `name_{index}` (sequential index). |
 | Bulk source | `spawn_each` **streams** the source — `in_batches(of:, start: cursor)` for AR — never materialising the batch in memory. Scales to millions. |
 | Child class | **Returned from the block** (`[WorkflowClass, kwargs]`); one branch may fan out into mixed workflow types. |
-| Child key | Deterministic: `spawn` → `"#{parent.key}$#{branch}$#{spawn_name}"`; `spawn_each` item → `"#{parent.key}$#{branch}$#{spawn_name}_#{index}"`. Idempotency falls out of the unique-key constraint. |
+| Child key | Deterministic: `spawn` → `"#{parent.key}$#{branch}$#{spawn_name}"`; AR `spawn_each` item → `"#{parent.key}$#{branch}$#{spawn_name}_#{record.id}"`; enumerable item → `"#{parent.key}$#{branch}$#{spawn_name}_#{index}"`. Idempotency falls out of the unique-key constraint. |
 | Cursor | Per `spawn_each`, stored in the `branch$<name>` log's `metadata` keyed by **spawn name** as `{ pk: <keyset>, n: <count/index> }`; persisted **once per dispatched chunk** (bundled with that chunk's `insert_all`). |
 | Completion | **Poll**, no counter: a branch is done when sealed and has no incomplete children (`branch_log.spawned_workflows.where.not(state: :completed)` empty — read as an O(CAP) capped count). Zero per-completion contention. |
 | Poll mechanism | A dedicated lightweight `ChronoForge::BranchMergeJob` (plain ActiveJob — no lock/replay/context) does the repeated probing and wakes the parent only at completion. The heavy parent runs just twice per merge (kick off + wake). No separate recovery timer. |
 | Poll cadence | **Adaptive, capped-count.** `pending = incomplete.limit(CAP).count` (**O(CAP)**, never O(N)); next delay `clamp(pending * factor, min_interval, max_interval)` — fast when few remain, slow when many. |
-| Determinism | Items are keyed by **sequential index**, so the stream must re-enumerate identically across replays. AR sources iterate by PK keyset with `error_on_ignore: true` (a conflicting `.order` **raises**); the index is a running counter alongside the keyset. Non-AR enumerables must re-enumerate deterministically (documented contract). |
+| Determinism | AR items are keyed by **primary key**, so the stream is stable by construction. `spawn_each` rejects an AR relation carrying an explicit `.order` by checking `order_values.present?` up front (raises `NotExecutableError`). Plain enumerable items are keyed by **sequential index** and must re-enumerate deterministically (documented contract). |
 | Failure semantics | **Option A.** A `stalled`/`failed` child keeps the branch incomplete; the parent stays parked; the user recovers the child (`retry_now`/`retry_later`) and the merge then resolves. No new failure states, no cascade. |
 | Nesting | **Free.** A child is a workflow and may open its own branches; the tree forms via `parent_execution_log_id` (child → branch log → parent workflow). |
 
@@ -197,8 +162,11 @@ dispatch cursors; `automerge`/merge state is in-memory, not seeded here):
    directly above the skip path in the implementation.)*
 2. **Pending / new** → set the current-branch context, **yield the block** (named spawns
    dispatch into this branch, advancing their cursors — see below), clear the context,
-   mark the `branch$<name>` log `completed` (**sealed**), and **return** (do not halt —
-   branches are concurrent; the join is separate).
+   mark the `branch$<name>` log `completed` (**sealed**). If `automerge: true`, immediately
+   call `merge_branches(name)` — **execution does not continue past the block** until the
+   branch's children complete (identical to an explicit `merge_branches` call placed right
+   after the block, but guaranteed by the method). Otherwise **return** without halting —
+   branches are concurrent; the explicit join is separate.
 
 Either way, `branch` **registers the branch in the in-memory registry**
 `@open_branches[name] = { automerge:, log_id: }` — this runs on *every* pass (sealed or
@@ -212,27 +180,34 @@ not), since the `branch` method itself always executes even when its block is sk
 - **`spawn(name, klass, **kwargs)`** → one child, key `"#{parent.key}$#{branch}$#{name}"`,
   `job_class: klass.name`, `parent_execution_log_id: branch_log.id`. Idempotent on the key.
 - **`spawn_each(name, source, of:)`** → stream, resuming from `metadata.cursors[name]`
-  (`{ pk:, n: }`); `n` is the running item index:
-  - **AR relation:** `source.in_batches(of:, start: cursor.pk, error_on_ignore: true)`. Per
-    batch, for each record (index `i = n, n+1, …`): `klass, kw = yield(record)`; build child
-    rows (key `"#{parent.key}$#{branch}$#{name}_#{i}"`, `job_class`, `kwargs`,
-    `parent_execution_log_id: branch_log.id`, `state: :idle`); `insert_all(…, unique_by: :key)`
-    (on-conflict-ignore); build the child **job instances** (`klass.new(child_key, **kw)`,
-    validating String key / no reserved kwargs — `perform_all_later` bypasses the class
-    `perform_later` guard) and `ActiveJob.perform_all_later(jobs)`; advance `metadata.cursors[name]` to
-    `{ pk: batch.last.id, n: i+1 }` (committed with the inserts).
-  - **Enumerable:** resume via `drop(n)`; same per-chunk insert/enqueue/advance (`n` only).
+  (`{ pk:, n: }`); `n` is a running count (AR) or the resume index (enumerable):
+  - **AR relation:** rejects `source` if `source.order_values.present?` (raises
+    `NotExecutableError` — iteration is by PK and an explicit order conflicts). Resumes via
+    `source.in_batches(of:, start: cursor.pk)`. Per batch, for each record: `klass, kw =
+    yield(record)`; build child rows (key
+    `"#{parent.key}$#{branch}$#{name}_#{record.id}"`, `job_class`, `kwargs`,
+    `parent_execution_log_id: branch_log.id`, `state: :idle`); `insert_all(…, unique_by:
+    :key)` (on-conflict-ignore); enqueue only those children still `:idle` (dispatch is
+    **queue-idempotent** — a crash-resume never re-runs an already-completed/running child);
+    advance `metadata.cursors[name]` to `{ pk: batch.last.id, n: n + batch.size }`
+    (committed with the inserts).
+  - **Enumerable:** resume via `drop(n)`; child key uses `name_#{n}` (sequential index);
+    same per-chunk insert/idle-filter/enqueue/advance (`n` only).
   - Enqueue the chunk, **then** advance the cursor — a crash in between re-enqueues only
     that one chunk on resume (idempotent).
 
 ### `merge_branches(*names)` — separate poll-join
 
+Each name is validated up front: `$` is rejected via `validate_step_name_segment!`, and `,`
+(the merge step-name separator) is also rejected — both raise `InvalidStepName`.
+
 Gated by `find_or_create_execution_log!("merge$#{names.sort.join(',')}")`:
 
 1. **Completed** → return, continue.
 2. For each `name`: require it to be in `@open_branches` (opened earlier this pass) — a name
-   that was never opened **raises `ArgumentError`**; a not-yet-sealed branch means "still
-   dispatching".
+   that was never opened **raises `UnknownBranchError`** (a `NotExecutableError` subclass,
+   so it fail-fasts via the existing rescue without broadening the executor); a not-yet-sealed
+   branch means "still dispatching".
 3. **Capped-count probe** per branch:
    `branch_log.spawned_workflows.where.not(state: :completed).limit(CAP).count`
    (`where(parent_execution_log_id: branch_log.id, …)`, index-only, **O(CAP) not O(N)**).
@@ -253,7 +228,7 @@ parent isn't replayed per check:
   if pending.zero? && all_sealed?(branch_log_ids)
     ParentWorkflow.perform_later(parent_key)                 # wake the parent once
   else
-    rekick_dropped_jobs(branch_log_ids)                      # started_at re-kick lives here
+    rekick_dropped_jobs(branch_log_ids)                      # idle re-kick lives here
     delay = [[pending * factor, min_interval].max, max_interval].min   # adaptive cadence
     self.class.set(wait: delay).perform_later(parent_key, branch_log_ids, min_interval, max_interval)
   end
@@ -262,9 +237,10 @@ parent isn't replayed per check:
   `merge_branches` re-checks, marks the `merge$<names>` log `completed`, and continues.
   **The parent completes its own merge step** — the poller only *detects* and wakes.
 
-`merge_branches` (and the automerge gate) **(re)spawn a poller whenever reached while
-still pending**, so a manual retry of a parked parent self-heals a lost poller; a rare
-double-poller from an external re-trigger is harmless (the wake is idempotent).
+`merge_branches` **(re)spawns a poller whenever reached while still pending**, so a manual
+retry of a parked parent self-heals a lost poller (including when the poller was spawned by
+an automerge inline call); a rare double-poller from an external re-trigger is harmless (the
+wake is idempotent).
 
 **No separate recovery poll.** The poller is a durable backend-scheduled job — the same
 durability `wait_until`'s reschedule already relies on. A lost poller just parks the
@@ -274,41 +250,45 @@ counter, no per-child shared write, no hot-row contention at any scale; latency 
 toward `min_interval` as the branch nears done. Option A falls out — a failed child keeps
 pending > 0, so the parent waits until it is recovered.
 
-### Completion gate — automerge, and "every branch must be merged"
+### Completion gate — every branch must be joined
 
 Every branch must be joined — explicitly via `merge_branches` or implicitly via
-`automerge: true`. **There is no detached branch.** `complete_workflow!` gains a gate
-**before** it seals the workflow that inspects `@open_branches` — the in-memory registry
-that `branch` populated and `merge_branches` pruned during this pass (rebuilt
-deterministically every replay, so it's exact):
+`automerge: true`. **There is no detached branch.** `complete_workflow!` (`enforce_branch_joins!`)
+gains a gate **before** it seals the workflow that inspects `@open_branches` — the in-memory
+registry that `branch` populated and `merge_branches` pruned during this pass (rebuilt
+deterministically every replay, so it's exact). The gate does **only** the unmerged-raise
+check:
 
-1. **Unmerged check:** any leftover branch with `automerge == false` is a forgotten join →
-   **raise `UnmergedBranchError`** naming the branch(es), with the hint *"add
+1. **Unmerged check:** any branch remaining in `@open_branches` at completion is a forgotten
+   join → **raise `UnmergedBranchError`** naming the branch(es), with the hint *"add
    `merge_branches :x` or `branch(:x, automerge: true)`."* This fails the workflow fast
    rather than letting children run orphaned; the developer fixes the code and retries. The
    check is unconditional (fires even if the branch's children happen to have finished) so
    the contract is deterministic, not timing-dependent.
-2. **Automerge join:** for every leftover branch with `automerge == true` not yet done, run
-   the merge logic. If all are done, the workflow completes. If any is incomplete, **do not
-   complete** — enqueue a `BranchMergeJob` over those `log_id`s and `halt_execution!`; the
-   poller wakes the parent, which re-reaches the gate and seals once they finish.
 
 (A branch joined via `merge_branches` was already deleted from `@open_branches` when that
-merge completed, so it's absent here — neither raised nor re-joined.)
+merge completed, so it's absent here. An `automerge: true` branch is also absent — its join
+ran inline at the `branch` block's close, removing it from `@open_branches` before
+execution ever continued past the block.)
 
 ## Determinism
 
 The cursor is only meaningful if iteration is reproducible across replays:
 
-- **Item index:** items are keyed `name_{index}` by their **sequential position** in the
+- **AR relation:** children are keyed by **primary key** (`name_<record.id>`), so the
+  mapping from record to child key is stable regardless of enumeration order. Iteration is
+  driven by **primary-key keyset** (`in_batches(start:)`). `spawn_each` rejects a relation
+  carrying an explicit `.order(...)` by checking `order_values.present?` up front (raises
+  `NotExecutableError`) — relying on `find_in_batches`'s `error_on_ignore` is not
+  sufficient because `find_in_batches(start:)` is inclusive and a crash-resume re-yields
+  the boundary record; the explicit up-front check catches order conflicts before any
+  inserts occur.
+- **Enumerable:** items are keyed `name_{index}` by their **sequential position** in the
   stream, so the source must re-enumerate identically across replays (effectively frozen
   for the brief dispatch window — once the branch seals, replay skips the block, so no
-  re-enumeration happens thereafter).
-- **AR relation:** iteration is driven by **primary-key keyset** (`in_batches(start:)`)
-  with the index as a running counter; `error_on_ignore: true` makes a relation carrying
-  its own `.order(...)` **raise**.
-- **Enumerable:** deterministic re-enumeration is a documented, unverifiable contract —
-  misuse is still *safe* (`insert_all`-ignore + poll) but could dispatch the wrong set.
+  re-enumeration happens thereafter). Deterministic re-enumeration is a documented,
+  unverifiable contract — misuse is still *safe* (`insert_all`-ignore + poll) but could
+  dispatch the wrong set.
 
 ## Idempotency & crash recovery
 
@@ -323,14 +303,17 @@ Three layers — **what exists** (DB), **how far dispatch got** (cursor), **step
   Recovery resumes from the cursor and re-touches **one chunk**, not the whole set.
   *(Dispatch is not bound to the create block: a crash after the log is created must still
   create and enqueue the remaining rows, or the branch would stall forever.)*
-- **`started_at`/`executable?` for dropped jobs.** A child dispatched but never run is
-  re-kicked from the `BranchMergeJob` poll: re-enqueue children with `started_at IS NULL`
-  in an incomplete branch. *Child existence is not enough; the merge guarantees every
-  member is actually queued.* (verbatim into the code comment.) Safe because re-enqueue is
-  idempotent: `executable?` is `idle || running`, so `acquire_lock` raises
-  `NotExecutableError` for a `completed` child (its dispatch can never double-fire) and
-  `ConcurrentExecutionError` for a `running` one. Started children (running, mid-halt,
-  stalled/failed under Option A) have `started_at` set and are excluded.
+- **`:idle` filter for dropped jobs.** A child dispatched but never run is re-kicked from
+  the `BranchMergeJob` poll: re-enqueue branch children with `state: :idle` in an
+  incomplete branch. Branch children are pre-inserted with `state: :idle` and never get
+  `started_at` set before execution, so `:idle` is the correct "never picked up" signal
+  (filtering by `started_at IS NULL` would be unreliable). *Child existence is not enough;
+  the merge guarantees every member is actually queued.* (verbatim into the code comment.)
+  The re-kick is batch-capped. Safe because re-enqueue is idempotent: `executable?` is
+  `idle || running`, so `acquire_lock` raises `NotExecutableError` for a `completed` child
+  (its dispatch can never double-fire) and `ConcurrentExecutionError` for a `running` one.
+  Children in other states (running, mid-halt, stalled/failed under Option A) are excluded
+  by the `:idle` filter.
 
 ### Recovery walkthrough — 300,000 children, crash at 250,000
 
@@ -380,8 +363,9 @@ irreducible for N sub-workflows, done in bounded chunks by one parent job.
   job enqueue batching is best-effort.
 
 Other caveats to verify in the plan:
-- `in_batches` `start:`/`error_on_ignore:` semantics and the per-adapter bind-param limit
-  for the `of:` chunk size (notably SQLite's `SQLITE_MAX_VARIABLE_NUMBER`).
+- `in_batches` `start:` semantics (inclusive boundary — the boundary record is re-yielded on
+  crash-resume; PK-keyed children dedup via `insert_all`-ignore) and the per-adapter
+  bind-param limit for the `of:` chunk size (notably SQLite's `SQLITE_MAX_VARIABLE_NUMBER`).
 - The merge capped count must be index-only on `(parent_execution_log_id, state)`.
 
 ## Poll-cadence constants (class-configurable defaults)
@@ -434,21 +418,23 @@ workflow `state`, `execution_logs`).
   right `job_class` per item (and they bulk-enqueue together).
 - **Determinism guard:** an AR relation with a conflicting `.order(...)` **raises**.
 - **Crash mid-dispatch (cursor resume):** glitch after chunk *k*; assert
-  `metadata.cursors[name]` (`{pk, n}`) persisted, dispatch resumes from it (not 0), final child
-  count correct, no duplicate rows, only the in-flight chunk re-enqueued. (250k-of-300k.)
-- **Dropped-job re-kick:** a sealed branch with a child whose job was lost (`started_at`
-  nil, incomplete); assert the poll re-enqueues exactly that child and then resolves.
+  `metadata.cursors[name]` (`{ pk:, n: }` for AR; `{ n: }` for enumerable) persisted,
+  dispatch resumes from it (not 0), final child count correct, no duplicate rows, only the
+  in-flight chunk re-enqueued. (250k-of-300k.)
+- **Dropped-job re-kick:** a sealed branch with a child whose job was lost (state `:idle`,
+  never started); assert the poll re-enqueues exactly that child and then resolves.
 - **Poll job:** assert the parent runs only twice (kick-off + wake) regardless of poll
   count; a manual retry of a parked parent re-spawns the poller.
 - **Adaptive cadence:** assert the count is capped at `CAP` (a branch with ≫CAP incomplete
   issues an O(CAP) count and picks `max_interval`); the delay shrinks toward `min_interval`
   as pending drops.
-- **Automerge:** an `automerge: true` branch with **no** `merge_branches` blocks workflow
-  completion until its children finish; an automerge branch already merged explicitly is a
-  no-op at the gate.
+- **Automerge:** an `automerge: true` branch blocks execution inline at the block's close
+  (not at workflow completion) — assert execution does not continue past the block until
+  children finish, and that the `merge$<name>` log exists and is `completed` before the
+  next step runs. No explicit `merge_branches` is needed.
 - **Unmerged branch raises:** a branch opened with neither `merge_branches` nor
-  `automerge: true` raises `UnmergedBranchError` at the completion gate (even if its
-  children already finished — the check is unconditional), naming the branch.
+  `automerge: true` raises `UnmergedBranchError` at the completion gate (unconditional —
+  fires even if children already finished), naming the branch.
 - **Option A:** a child `permanently_fail`s → merge parks; recover via `retry_later` →
   merge resolves; assert no progress while parked.
 - **Idempotency / replay:** force replays; assert constant child count, no re-dispatch once
@@ -467,10 +453,11 @@ Surface these prominently in user-facing docs, not just here:
 - **Every branch must be merged or `automerge: true`** — otherwise `UnmergedBranchError`.
 - **The heavy parent is not replayed per poll** — a lightweight `BranchMergeJob` does the
   waiting; the parent runs twice per merge.
-- **Source must be stable during a branch's dispatch window** — items are keyed
-  `name_{index}` by stream position, so inserting/removing rows mid-dispatch (before a
-  crash-replay seals the branch) shifts indices. `error_on_ignore: true` catches *ordering*
-  mistakes, not *insertion*. Once sealed, the block never re-enumerates.
+- **AR source must be stable during a branch's dispatch window** — AR items are keyed by
+  primary key (`name_<id>`), so inserting rows mid-dispatch is safe but re-use of a PK
+  (soft-delete/re-insert) can confuse the cursor. Plain enumerables are keyed by sequential
+  index; inserting/removing items mid-dispatch (before a crash-replay seals the branch)
+  shifts indices. Once sealed, the block never re-enumerates.
 
 ## Future work
 
