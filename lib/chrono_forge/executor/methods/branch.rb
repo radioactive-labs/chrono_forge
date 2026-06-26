@@ -33,6 +33,13 @@ module ChronoForge
             log.update!(state: :completed, completed_at: Time.current)
           end
 
+          # automerge joins the branch inline, the moment its block closes (eager
+          # dispatch + immediate await). Deferred/concurrent joins use an explicit
+          # merge_branches instead. Runs on every pass so replay re-checks via the
+          # merge$<name> log's own idempotency; the inline merge removes the branch
+          # from @open_branches on completion, so the completion gate won't see it.
+          merge_branches(name) if automerge
+
           name
         end
 
