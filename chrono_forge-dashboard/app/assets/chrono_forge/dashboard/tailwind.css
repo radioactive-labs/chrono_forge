@@ -38,4 +38,30 @@
 
   /* Surfaces */
   .cf-card { @apply rounded-lg border border-zinc-200 bg-white shadow-sm; }
+
+  /* Stacked-bar segments for the analytics throughput chart. Widths are
+     quantized to 5% steps and applied as classes so the chart needs no inline
+     style (keeps a strict style-src CSP intact). */
+  .cf-bar { @apply h-full; }
+  .cf-bar-0 { width: 0%; }
+  .cf-bar-5 { width: 5%; }
+  .cf-bar-10 { width: 10%; }
+  .cf-bar-15 { width: 15%; }
+  .cf-bar-20 { width: 20%; }
+  .cf-bar-25 { width: 25%; }
+  .cf-bar-30 { width: 30%; }
+  .cf-bar-35 { width: 35%; }
+  .cf-bar-40 { width: 40%; }
+  .cf-bar-45 { width: 45%; }
+  .cf-bar-50 { width: 50%; }
+  .cf-bar-55 { width: 55%; }
+  .cf-bar-60 { width: 60%; }
+  .cf-bar-65 { width: 65%; }
+  .cf-bar-70 { width: 70%; }
+  .cf-bar-75 { width: 75%; }
+  .cf-bar-80 { width: 80%; }
+  .cf-bar-85 { width: 85%; }
+  .cf-bar-90 { width: 90%; }
+  .cf-bar-95 { width: 95%; }
+  .cf-bar-100 { width: 100%; }
 }

@@ -27,8 +27,30 @@ module ChronoForge
       # Human duration between two times (e.g. "1m 04s"); "—" if unfinished.
       def cf_duration(from, to)
         return "—" unless from && to
-        secs = (to - from).to_i
+        cf_secs((to - from).to_i)
+      end
+
+      # Human duration from a number of seconds (e.g. "1m 04s"); "—" if nil.
+      def cf_secs(secs)
+        return "—" if secs.nil?
+        secs = secs.to_i
         (secs < 60) ? "#{secs}s" : "#{secs / 60}m #{(secs % 60).to_s.rjust(2, "0")}s"
+      end
+
+      # Class name for a stacked-bar segment, width quantized to 5% steps so it
+      # stays CSP-safe (no inline style — see .cf-bar-{0..100} in tailwind.css).
+      def cf_bar_width(value, max)
+        pct = (max.to_f.zero? ? 0 : (value / max.to_f * 100))
+        "cf-bar-#{(pct / 5).round * 5}"
+      end
+
+      # A rate (0.0–1.0) as a percentage; "—" if nil. Small non-zero rates keep
+      # one decimal so a 0.0008% workflow-failure rate doesn't round to "0%".
+      def cf_pct(rate)
+        return "—" if rate.nil?
+        pct = rate * 100
+        return "0%" if pct.zero?
+        (pct >= 1 || pct.zero?) ? "#{pct.round}%" : "#{pct.round(2)}%"
       end
 
       # Concise latency summary (avg + most recent) from a list of run seconds.

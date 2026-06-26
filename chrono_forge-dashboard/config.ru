@@ -56,8 +56,14 @@ end
 E.create!(workflow: wf4, step_name: "durably_repeat$send_digest$#{12.hours.ago.to_i}", state: estate(:failed),
   attempts: 1, error_class: "TimeoutError", started_at: 12.hours.ago, completed_at: 12.hours.ago)
 
-# Stalled
-W.create!(key: "payout-3", job_class: "OrderWorkflow", state: W.states[:stalled],
-  context: {}, kwargs: {}, options: {}, started_at: 1.hour.ago)
+# Stalled — locked by a worker that died mid-step, with a last step + error
+wf5 = W.create!(key: "payout-3", job_class: "OrderWorkflow", state: W.states[:stalled],
+  context: {"amount" => 8000}, kwargs: {"payout_id" => "payout-3"}, options: {},
+  started_at: 1.hour.ago, locked_at: 50.minutes.ago, locked_by: "worker-42")
+E.create!(workflow: wf5, step_name: "durably_execute$disburse_funds", state: estate(:pending),
+  attempts: 2, started_at: 50.minutes.ago, last_executed_at: 50.minutes.ago)
+L.create!(workflow: wf5, step_name: "durably_execute$disburse_funds", attempt: 2,
+  error_class: "Net::ReadTimeout", error_message: "execution expired while calling disbursement API",
+  backtrace: "app/services/disbursements.rb:88\napp/workflows/payout.rb:25")
 
 run Combustion::Application

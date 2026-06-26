@@ -9,6 +9,7 @@
       </div>
       <p class="mt-1 text-sm text-zinc-500">
         <span class="font-mono"><%= @workflow.job_class %></span> · locked by <span class="font-mono"><%= @workflow.locked_by || "—" %></span>
+        · <%= link_to "metrics →", analytics_path(class: @workflow.job_class), class: "text-zinc-500 underline hover:text-zinc-900" %>
       </p>
     </div>
     <% if @workflow.retryable? || @workflow.running? %>

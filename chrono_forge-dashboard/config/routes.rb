@@ -10,5 +10,7 @@ ChronoForge::Dashboard::Engine.routes.draw do
     end
   end
   resources :wait_states, only: :index
+  get "stalled", to: "stalled#index", as: :stalled
+  get "analytics", to: "analytics#index", as: :analytics
   get "assets/:file", to: "assets#show", constraints: {file: /dashboard\.(css|js)/}
 end
