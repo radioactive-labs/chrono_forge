@@ -47,4 +47,13 @@ class BranchMergeJobTest < ActiveJob::TestCase
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     end
   end
+
+  def test_does_not_rekick_running_child
+    running = child!(state: :running, started_at: nil)
+    running.update_column(:updated_at, 10.minutes.ago)
+    assert_enqueued_with(job: ChronoForge::BranchMergeJob) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+    assert_no_enqueued_jobs(only: NoopChild)
+  end
 end
