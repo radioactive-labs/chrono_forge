@@ -444,6 +444,12 @@ class DurablyRepeatTest < ActiveJob::TestCase
     summaries = workflow.execution_logs.select { |l| l.metadata && l.metadata["fast_forwarded"] }
     assert_equal 1, summaries.size, "expired prefix collapses to one summary row"
     assert_operator summaries.first.metadata["fast_forwarded"].to_i, :>=, 1
+
+    # The boundary is preserved: skipping the expired prefix must still leave the
+    # first in-window tick to actually run its work (not skip everything).
+    assert_operator workflow.context.fetch("execution_count", 0), :>=, 1,
+      "the first in-window tick must execute its method after the fast-forward"
+    assert workflow.completed?, "workflow completes once the in-window tick satisfies the till condition"
   end
 
   def test_fast_forward_returns_input_when_nothing_expired

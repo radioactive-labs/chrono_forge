@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- Continuation jobs are now published only **after** the workflow lock is released. Every deferral primitive (`wait`, `wait_until`, `durably_execute` retry, `durably_repeat`, and the workflow-level retry) previously enqueued its continuation inline, while the enqueuing job still held the lock; an immediately-runnable (`delay == 0`) same-key continuation could be claimed by another worker before the lock was released, surfacing as a spurious `ConcurrentExecutionError` at lock acquisition. The continuation is now recorded during the run and flushed in the executor's `ensure` block after `release_lock`, closing the race.
+- `durably_repeat` catch-up is now O(1) for the skippable run instead of O(missed intervals). When a workflow resumes far behind schedule, the **expired prefix** (ticks older than `timeout`) is fast-forwarded in closed form to the first non-expired grid tick, rather than walking one zero-delay job per missed tick. **Behavior change:** the expired prefix now produces a single summary execution log (`error_class: "TimeoutError"`, `metadata["fast_forwarded"]` = number of ticks skipped) instead of one `"Execution timed out"` row per tick — update any dashboards or alerts that key off per-tick timeout rows. Ticks still inside their `timeout` window continue to execute as normal catch-up work.
 - Workflow-level retry no longer has a contradictory cap (`should_retry?` stopped at 3 while `RetryStrategy.max_attempts` was 5, making the array's `2m`/`10m` entries unreachable). The single `RetryPolicy` is now the sole decider.
 - Removed the dead `retry_method:` argument that `durably_execute` passed on reschedule but `perform` never bound.
 
