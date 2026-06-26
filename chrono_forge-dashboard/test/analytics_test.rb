@@ -76,6 +76,22 @@ class AnalyticsQueryTest < ActiveSupport::TestCase
     q = ChronoForge::Dashboard::AnalyticsQuery.new(window: "bogus")
     assert_equal ChronoForge::Dashboard::AnalyticsQuery::DEFAULT_WINDOW, q.window
   end
+
+  test "top_errors counts error classes in window, highest first, scoped by class" do
+    o = create_workflow(key: "oe", state: :failed, job_class: "OrderWorkflow")
+    p = create_workflow(key: "pe", state: :failed, job_class: "PayoutWorkflow")
+    ChronoForge::ErrorLog.create!(workflow: o, error_class: "Boom", error_message: "x")
+    ChronoForge::ErrorLog.create!(workflow: o, error_class: "Boom", error_message: "y")
+    ChronoForge::ErrorLog.create!(workflow: p, error_class: "Splat", error_message: "z")
+
+    all = ChronoForge::Dashboard::AnalyticsQuery.new(window: "7d").top_errors
+    assert_equal 2, all["Boom"]
+    assert_equal 1, all["Splat"]
+    assert_equal "Boom", all.keys.first # highest first
+
+    scoped = ChronoForge::Dashboard::AnalyticsQuery.new(window: "7d", job_class: "OrderWorkflow").top_errors
+    assert_equal({"Boom" => 2}, scoped)
+  end
 end
 
 class AnalyticsControllerTest < ActionDispatch::IntegrationTest
@@ -97,5 +113,21 @@ class AnalyticsControllerTest < ActionDispatch::IntegrationTest
     get "/chrono_forge/analytics", params: {class: "OrderWorkflow"}
     assert_response :success
     assert_match "OrderWorkflow", response.body
+  end
+
+  test "class-scoped analytics shows queue health and top errors" do
+    wf = create_workflow(key: "q1", state: :running, job_class: "OrderWorkflow")
+    ChronoForge::ErrorLog.create!(workflow: wf, error_class: "Boom", error_message: "x")
+    get "/chrono_forge/analytics", params: {class: "OrderWorkflow"}
+    assert_response :success
+    assert_match "Queue health", response.body
+    assert_match "Top error classes", response.body
+    assert_match "Boom", response.body
+  end
+
+  test "global analytics omits the per-class queue panel" do
+    get "/chrono_forge/analytics"
+    assert_response :success
+    refute_match "Queue health", response.body
   end
 end

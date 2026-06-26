@@ -53,4 +53,17 @@ class RepetitionsControllerTest < ActionDispatch::IntegrationTest
     assert_match "tombstone", response.body
     assert_match "TimeoutError", response.body
   end
+
+  test "shows how late a repetition started versus its scheduled time" do
+    wf = create_workflow(key: "rc2", state: :running)
+    ts = 1_717_000_000
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$digest$#{ts}",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1,
+      started_at: Time.zone.at(ts + 120), completed_at: Time.zone.at(ts + 125))
+
+    get "/chrono_forge/workflows/#{wf.id}/repetitions", params: {step: "digest"}
+    assert_response :success
+    assert_match "Late by", response.body
+    assert_match "2m 00s", response.body
+  end
 end

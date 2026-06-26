@@ -21,6 +21,7 @@
         <th class="px-4 py-2.5 font-medium">Scheduled</th>
         <th class="px-4 py-2.5 font-medium">Status</th>
         <th class="px-4 py-2.5 font-medium">Started</th>
+        <th class="px-4 py-2.5 text-right font-medium">Late by</th>
         <th class="px-4 py-2.5 text-right font-medium">Duration</th>
         <th class="px-4 py-2.5 text-right font-medium">Attempts</th>
         <th class="px-4 py-2.5 font-medium">Error</th>
@@ -40,6 +41,10 @@
             <% end %>
           </td>
           <td class="px-4 py-2.5 text-zinc-600"><%= cf_ago(run.started_at) %></td>
+          <% late = (ts && run.started_at) ? (run.started_at - Time.zone.at(ts)).to_i : nil %>
+          <td class="px-4 py-2.5 text-right font-mono text-xs <%= (late && late > 60) ? "text-amber-600" : "text-zinc-500" %>">
+            <%= late.nil? ? "—" : (late <= 0 ? "on time" : cf_secs(late)) %>
+          </td>
           <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= cf_duration(run.started_at, run.completed_at) %></td>
           <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500">×<%= run.attempts %></td>
           <td class="px-4 py-2.5 font-mono text-xs text-rose-600"><%= run.error_class || "—" %></td>

@@ -9,6 +9,14 @@ module ChronoForge
         @job_class = @query.job_class
         @buckets = @query.buckets
         @totals = @query.totals
+        @top_errors = @query.top_errors
+
+        # Current queue health for the class (capped, all-time) complements the
+        # windowed throughput above. Only shown per-class; the workflow list's
+        # stats strip already covers the global breakdown.
+        if @job_class
+          @queue = StatsQuery.new(base: ChronoForge::Workflow.where(job_class: @job_class))
+        end
       end
     end
   end

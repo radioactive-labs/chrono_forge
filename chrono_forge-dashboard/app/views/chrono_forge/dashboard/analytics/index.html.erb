@@ -45,6 +45,39 @@
   execution-log steps, which are dominated by normal <code class="font-mono">durably_repeat</code> catch-up retries.
 </p>
 
+<% if @queue %>
+  <section class="cf-card mb-5 p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Queue health <span class="normal-case text-zinc-400">(current)</span></h2>
+    <div class="flex flex-wrap gap-4">
+      <% @queue.counts.each do |state, count| %>
+        <div class="flex items-center gap-2 text-sm">
+          <%= cf_dot(state) %>
+          <span class="text-zinc-500"><%= state %></span>
+          <span class="font-mono font-medium tabular-nums"><%= cf_capped(count, @queue.cap) %></span>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<% if @top_errors.any? %>
+  <section class="cf-card mb-5 p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Top error classes <span class="normal-case text-zinc-400">(in window)</span></h2>
+    <% emax = @top_errors.values.max.to_f %>
+    <div class="space-y-2">
+      <% @top_errors.each do |klass, count| %>
+        <div class="flex items-center gap-3 text-sm">
+          <div class="w-64 shrink-0 truncate font-mono text-xs text-rose-600" title="<%= klass %>"><%= klass || "(unknown)" %></div>
+          <div class="flex h-4 min-w-0 flex-1 overflow-hidden rounded bg-zinc-100">
+            <div class="cf-bar bg-rose-300 <%= cf_bar_width(count, emax) %>"></div>
+          </div>
+          <div class="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-zinc-500"><%= number_with_delimiter(count) %></div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
 <section class="cf-card p-5">
   <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Daily throughput</h2>
   <% if @buckets.any? %>

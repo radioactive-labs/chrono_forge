@@ -44,6 +44,14 @@ module ChronoForge
       # terminal workflows), and average completed duration in seconds.
       def totals = data[:totals]
 
+      # The most frequent error classes in the window, highest first, as an
+      # ordered {error_class => count} hash. Scoped to the class when set.
+      def top_errors(limit: 8)
+        rel = ChronoForge::ErrorLog.where(created_at: @since..@now)
+        rel = rel.joins(:workflow).where(ChronoForge::Workflow.table_name => {job_class: @job_class}) if @job_class
+        rel.group(:error_class).order(Arel.sql("COUNT(*) DESC")).limit(limit).count
+      end
+
       private
 
       def data
