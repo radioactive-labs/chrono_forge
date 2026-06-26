@@ -1,6 +1,6 @@
-<%= form_with url: workflows_path, method: :get, class: "cf-filters" do |f| %>
-  <%= f.select :state, options_for_select([["All states", ""], *ChronoForge::Workflow.states.keys], params[:state]) %>
-  <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class" %>
-  <%= f.text_field :key, value: params[:key], placeholder: "Key" %>
-  <%= f.submit "Filter" %>
+<%= form_with url: workflows_path, method: :get, class: "mb-4 flex flex-wrap items-center gap-2" do |f| %>
+  <%= f.select :state, options_for_select([["All states", ""], *ChronoForge::Workflow.states.keys], params[:state]), {}, class: "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm" %>
+  <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
+  <%= f.text_field :key, value: params[:key], placeholder: "Key", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
+  <%= f.submit "Filter", class: "cf-btn" %>
 <% end %>

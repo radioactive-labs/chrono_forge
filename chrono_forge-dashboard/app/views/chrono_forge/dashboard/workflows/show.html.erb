@@ -1,16 +1,45 @@
-<h1 class="cf-title"><%= cf_badge(@workflow.state) %> <%= @workflow.key %></h1>
-<p class="cf-meta"><%= @workflow.job_class %> · locked_by=<%= @workflow.locked_by || "—" %></p>
-<div class="cf-actions">
-  <% if @workflow.retryable? %>
-    <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn" %>
-  <% end %>
-  <% if @workflow.running? %>
-    <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
-          form: { data: { confirm: "Force-unlocking a genuinely-running workflow can cause duplicate execution. Continue?" } }, class: "cf-btn cf-btn--danger" %>
+<div class="mb-6">
+  <div class="flex items-center gap-3">
+    <%= cf_badge(@workflow.state) %>
+    <h1 class="font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
+  </div>
+  <p class="mt-1 text-sm text-zinc-500">
+    <span class="font-mono"><%= @workflow.job_class %></span> · locked by <span class="font-mono"><%= @workflow.locked_by || "—" %></span>
+  </p>
+  <% if @workflow.retryable? || @workflow.running? %>
+    <div class="mt-3 flex gap-2">
+      <% if @workflow.retryable? %>
+        <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
+      <% end %>
+      <% if @workflow.running? %>
+        <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
+              form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
+      <% end %>
+    </div>
   <% end %>
 </div>
+
 <%= render "wait_callout", wait: @wait if @wait %>
-<section><h2>Timeline</h2><%= render "timeline", timeline: @timeline %></section>
-<% if @periodic.any? %><section><h2>Periodic tasks</h2><%= render "periodic", tasks: @periodic %></section><% end %>
-<section><h2>Context</h2><%= render "context_tree", context: @context %></section>
-<section><h2>Errors</h2><%= render "errors", errors: @errors %></section>
+
+<section class="cf-card mb-5 p-5">
+  <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</h2>
+  <%= render "timeline", timeline: @timeline %>
+</section>
+
+<% if @periodic.any? %>
+  <section class="cf-card mb-5 p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Periodic tasks</h2>
+    <%= render "periodic", tasks: @periodic %>
+  </section>
+<% end %>
+
+<div class="grid gap-5 md:grid-cols-2">
+  <section class="cf-card p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Context</h2>
+    <%= render "context_tree", context: @context %>
+  </section>
+  <section class="cf-card p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Errors</h2>
+    <%= render "errors", errors: @errors %>
+  </section>
+</div>

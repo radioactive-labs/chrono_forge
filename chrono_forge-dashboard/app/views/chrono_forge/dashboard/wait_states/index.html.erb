@@ -1,15 +1,27 @@
-<h1>Waiting workflows</h1>
-<table class="cf-table">
-  <thead><tr><th>Key</th><th>Condition</th><th>Waiting</th><th>Timeout</th></tr></thead>
-  <tbody>
-    <% @waits.each do |h| %>
-      <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
-      <tr class="<%= "cf-wait--long" if long %>">
-        <td><%= link_to h[:workflow].key, workflow_path(h[:workflow]) %></td>
-        <td><code><%= h[:wait].condition %></code></td>
-        <td><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>
-        <td><%= h[:wait].timeout_at || "—" %></td>
+<h1 class="mb-5 text-lg font-semibold tracking-tight">Waiting workflows</h1>
+<div class="cf-card overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+        <th class="px-4 py-2.5 font-medium">Key</th>
+        <th class="px-4 py-2.5 font-medium">Condition</th>
+        <th class="px-4 py-2.5 font-medium">Waiting</th>
+        <th class="px-4 py-2.5 text-right font-medium">Timeout</th>
       </tr>
-    <% end %>
-  </tbody>
-</table>
+    </thead>
+    <tbody class="divide-y divide-zinc-100">
+      <% @waits.each do |h| %>
+        <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
+        <tr class="<%= "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50">
+          <td class="px-4 py-2.5"><%= link_to h[:workflow].key, workflow_path(h[:workflow]), class: "font-mono hover:underline" %></td>
+          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:wait].condition %></td>
+          <td class="px-4 py-2.5 <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>"><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>
+          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= h[:wait].timeout_at || "—" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <% if @waits.none? %>
+    <p class="px-4 py-12 text-center text-sm text-zinc-500">No workflows are waiting.</p>
+  <% end %>
+</div>

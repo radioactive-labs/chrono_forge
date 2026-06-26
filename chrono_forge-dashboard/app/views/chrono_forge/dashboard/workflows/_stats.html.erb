@@ -1,5 +1,9 @@
-<div class="cf-stats">
+<div class="mb-4 flex flex-wrap gap-2">
   <% stats.each do |state, count| %>
-    <span class="cf-stat cf-stat--<%= state %>"><%= cf_badge(state) %> <%= count %></span>
+    <div class="cf-stat flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm">
+      <%= cf_dot(state) %>
+      <span class="text-zinc-500"><%= state %></span>
+      <span class="font-mono font-medium tabular-nums"><%= count %></span>
+    </div>
   <% end %>
 </div>

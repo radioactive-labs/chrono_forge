@@ -7,4 +7,15 @@ Rake::TestTask.new do |t|
   t.verbose = true
 end
 
+namespace :tailwind do
+  # Compile the engine's stylesheet from tailwind.css into the served
+  # dashboard.css. Re-run after changing tailwind.css or any view.
+  desc "Compile dashboard.css from tailwind.css"
+  task :build do
+    require "tailwindcss/ruby"
+    base = "app/assets/chrono_forge/dashboard"
+    sh "#{Tailwindcss::Ruby.executable} -i #{base}/tailwind.css -o #{base}/dashboard.css --minify"
+  end
+end
+
 task default: %i[test standard]

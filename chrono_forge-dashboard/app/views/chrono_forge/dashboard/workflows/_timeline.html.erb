@@ -1,18 +1,29 @@
 <ol class="cf-timeline">
-  <% timeline.entries.each do |e| %>
-    <li class="cf-step cf-step--<%= e.status %> <%= "cf-step--current" if timeline.current_position&.id == e.id %>">
-      <span class="cf-step__kind"><%= e.kind %></span>
-      <span class="cf-step__name"><%= e.name %></span>
-      <span class="cf-step__status"><%= e.status %></span>
-      <span class="cf-step__attempts">×<%= e.attempts %></span>
-      <% if e.error %><span class="cf-step__error"><%= e.error %></span><% end %>
-      <% if e.runs.any? %>
-        <ol class="cf-timeline cf-timeline--runs">
-          <% e.runs.each do |r| %>
-            <li class="cf-step cf-step--<%= r.status %>"><%= r.status %> ×<%= r.attempts %></li>
-          <% end %>
-        </ol>
-      <% end %>
+  <% entries = timeline.entries %>
+  <% entries.each_with_index do |e, i| %>
+    <% current = timeline.current_position&.id == e.id %>
+    <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">
+      <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white"></span>
+      <div class="<%= "-ml-2 rounded-md bg-amber-50 px-2 py-1 ring-1 ring-amber-200" if current %>">
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-400"><%= e.kind %></span>
+          <span class="font-mono text-sm font-medium text-zinc-900"><%= e.name %></span>
+          <span class="text-xs <%= cf_status_color(e.status) %>"><%= e.status %></span>
+          <span class="font-mono text-xs text-zinc-400">×<%= e.attempts %></span>
+          <% if e.error %><span class="font-mono text-xs text-rose-600"><%= e.error %></span><% end %>
+        </div>
+        <% if e.runs.any? %>
+          <ul class="mt-2 space-y-1 border-l border-zinc-200 pl-4">
+            <% e.runs.each do |r| %>
+              <li class="flex items-center gap-2 text-xs">
+                <span class="cf-dot cf-dot-<%= r.status %>"></span>
+                <span class="<%= cf_status_color(r.status) %>"><%= r.status %></span>
+                <span class="font-mono text-zinc-400">×<%= r.attempts %></span>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
     </li>
   <% end %>
 </ol>

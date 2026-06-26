@@ -15,7 +15,7 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match "ord-1", response.body
     assert_match "pay-1", response.body
-    assert_match "cf-badge--failed", response.body
+    assert_match "cf-pill-failed", response.body
   end
 
   test "filters by state" do

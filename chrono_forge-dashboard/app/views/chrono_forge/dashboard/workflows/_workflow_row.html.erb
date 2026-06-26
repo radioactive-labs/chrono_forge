@@ -1,7 +1,7 @@
-<tr>
-  <td><%= cf_badge(workflow.state) %></td>
-  <td><%= link_to workflow.key, workflow_path(workflow) %></td>
-  <td><%= workflow.job_class %></td>
-  <td><%= cf_time(workflow.started_at) %></td>
-  <td><%= cf_time(workflow.updated_at) %></td>
+<tr class="hover:bg-zinc-50">
+  <td class="px-4 py-2.5"><%= cf_badge(workflow.state) %></td>
+  <td class="px-4 py-2.5"><%= link_to workflow.key, workflow_path(workflow), class: "font-mono text-zinc-900 hover:underline" %></td>
+  <td class="px-4 py-2.5 font-mono text-xs text-zinc-500"><%= workflow.job_class %></td>
+  <td class="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-zinc-500"><%= cf_time(workflow.started_at) %></td>
+  <td class="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-zinc-500"><%= cf_time(workflow.updated_at) %></td>
 </tr>

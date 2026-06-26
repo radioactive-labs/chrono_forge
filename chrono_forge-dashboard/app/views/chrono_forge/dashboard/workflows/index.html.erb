@@ -1,16 +1,35 @@
-<%= render "stats", stats: @stats %>
-<%= button_to "Retry all failed", bulk_retry_workflows_path, method: :post,
-      form: { data: { confirm: "Re-enqueue every failed workflow?" } }, class: "cf-btn" %>
-<%= render "filters", query: @query %>
+<div class="mb-5 flex items-center justify-between">
+  <h1 class="text-lg font-semibold tracking-tight">Workflows</h1>
+  <%= button_to "Retry all failed", bulk_retry_workflows_path, method: :post,
+        form: {data: {confirm: "Re-enqueue every failed workflow?"}}, class: "cf-btn" %>
+</div>
+
 <div data-poll-region>
-  <table class="cf-table">
-    <thead><tr><th>State</th><th>Key</th><th>Class</th><th>Started</th><th>Updated</th></tr></thead>
-    <tbody>
-      <%= render partial: "workflow_row", collection: @workflows, as: :workflow %>
-    </tbody>
-  </table>
-  <nav class="cf-pager">
-    <% if @query.page > 1 %><%= link_to "‹ Prev", request.query_parameters.merge(page: @query.page - 1) %><% end %>
-    <% if @query.total_count > @query.page * @query.per %><%= link_to "Next ›", request.query_parameters.merge(page: @query.page + 1) %><% end %>
+  <%= render "stats", stats: @stats %>
+  <%= render "filters", query: @query %>
+
+  <div class="cf-card overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-2.5 font-medium">State</th>
+          <th class="px-4 py-2.5 font-medium">Key</th>
+          <th class="px-4 py-2.5 font-medium">Class</th>
+          <th class="px-4 py-2.5 text-right font-medium">Started</th>
+          <th class="px-4 py-2.5 text-right font-medium">Updated</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-100">
+        <%= render partial: "workflow_row", collection: @workflows, as: :workflow %>
+      </tbody>
+    </table>
+    <% if @workflows.none? %>
+      <p class="px-4 py-12 text-center text-sm text-zinc-500">No workflows match these filters.</p>
+    <% end %>
+  </div>
+
+  <nav class="mt-4 flex gap-4 text-sm">
+    <% if @query.page > 1 %><%= link_to "‹ Prev", request.query_parameters.merge(page: @query.page - 1), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
+    <% if @query.total_count > @query.page * @query.per %><%= link_to "Next ›", request.query_parameters.merge(page: @query.page + 1), class: "text-zinc-600 hover:text-zinc-900" %><% end %>
   </nav>
 </div>

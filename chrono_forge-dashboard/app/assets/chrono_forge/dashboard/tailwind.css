@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/*
+ * ChronoForge dashboard styles. Source for the compiled dashboard.css.
+ * Rebuild after editing this file or any view: `bundle exec rake tailwind:build`.
+ *
+ * Design rule: color means workflow state; all other chrome stays ink/zinc.
+ * System fonts only (no external fonts, CSP-friendly).
+ */
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@layer components {
+  /* State pills (the one place color is allowed) */
+  .cf-pill { @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-xs font-medium; }
+  .cf-pill-idle { @apply border-zinc-200 bg-zinc-100 text-zinc-600; }
+  .cf-pill-running { @apply border-sky-200 bg-sky-50 text-sky-700; }
+  .cf-pill-completed { @apply border-emerald-200 bg-emerald-50 text-emerald-700; }
+  .cf-pill-failed { @apply border-rose-200 bg-rose-50 text-rose-700; }
+  .cf-pill-stalled { @apply border-amber-200 bg-amber-50 text-amber-700; }
+
+  /* Pill-shaped state dot used in the stats strip + timeline */
+  .cf-dot { @apply inline-block h-2 w-2 rounded-full; }
+  .cf-dot-idle { @apply bg-zinc-400; }
+  .cf-dot-running { @apply bg-sky-500; }
+  .cf-dot-completed { @apply bg-emerald-500; }
+  .cf-dot-failed { @apply bg-rose-500; }
+  .cf-dot-stalled { @apply bg-amber-500; }
+  .cf-dot-pending { @apply bg-zinc-300; }
+
+  /* Buttons: ink chrome, not brand color */
+  .cf-btn { @apply inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15; }
+  .cf-btn-primary { @apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700; }
+  .cf-btn-danger { @apply border-rose-300 text-rose-700 hover:bg-rose-50; }
+
+  /* Surfaces */
+  .cf-card { @apply rounded-lg border border-zinc-200 bg-white shadow-sm; }
+
+  /* JS-rendered latency sparkline (needs an explicit box) */
+  .cf-sparkline { @apply block h-6 w-24; }
+}

@@ -7,6 +7,6 @@ class SmokeTest < ActionDispatch::IntegrationTest
   test "engine root renders" do
     get "/chrono_forge"
     assert_response :success
-    assert_match "cf-stats", response.body
+    assert_match "Workflows", response.body
   end
 end

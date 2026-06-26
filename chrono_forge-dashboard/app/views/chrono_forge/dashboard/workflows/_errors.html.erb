@@ -1,10 +1,21 @@
-<ul class="cf-errors">
-  <% errors.each do |err| %>
-    <li>
-      <strong><%= err.error_class %></strong> (attempt <%= err.attempt %>) — <%= err.error_message %>
-      <% if err.backtrace.present? %>
-        <details><summary>backtrace</summary><pre><%= err.backtrace %></pre></details>
-      <% end %>
-    </li>
-  <% end %>
-</ul>
+<% if errors.any? %>
+  <ul class="space-y-3">
+    <% errors.each do |err| %>
+      <li class="rounded-md border border-zinc-200 p-3">
+        <div class="flex items-baseline gap-2">
+          <span class="font-mono text-sm font-medium text-rose-600"><%= err.error_class %></span>
+          <span class="text-xs text-zinc-400">attempt <%= err.attempt %></span>
+        </div>
+        <p class="mt-1 text-sm text-zinc-700"><%= err.error_message %></p>
+        <% if err.backtrace.present? %>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-xs text-zinc-500">backtrace</summary>
+            <pre class="mt-1 overflow-x-auto rounded bg-zinc-50 p-2 font-mono text-xs text-zinc-600"><%= err.backtrace %></pre>
+          </details>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <p class="text-sm text-zinc-500">No errors recorded.</p>
+<% end %>

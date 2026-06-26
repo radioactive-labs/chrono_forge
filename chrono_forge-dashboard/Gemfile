@@ -4,3 +4,5 @@ gem "chrono_forge", path: ".."
 
 # Local preview server (see config.ru): bundle exec rackup -p 9876
 gem "webrick", "~> 1.9"
+
+gem "tailwindcss-ruby", "~> 4.3", group: :development

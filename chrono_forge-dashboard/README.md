@@ -97,4 +97,12 @@ end
 
 ## Frontend
 
-The dashboard is server-rendered. It serves one CSS file and one JS file directly from the engine. No npm, no build step, no host asset-pipeline configuration required. CSP-compatible.
+The dashboard is server-rendered. It serves one CSS file and one JS file directly from the engine. **The host needs no npm, no build step, and no asset-pipeline configuration** — the compiled stylesheet ships with the gem. The JS is dependency-free vanilla. CSP-compatible (no external hosts or inline handlers).
+
+Styles are written with [Tailwind CSS](https://tailwindcss.com) and precompiled into the shipped `dashboard.css`. Contributors editing views or styles rebuild it with the standalone compiler (no Node required):
+
+```bash
+bundle exec rake tailwind:build
+```
+
+Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
