@@ -148,11 +148,76 @@ module ChronoForge
             coordination_log.created_at + every
           end
 
+          next_execution_at = fast_forward_expired_prefix(coordination_log, next_execution_at, every, timeout)
+
           execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           nil
         end
 
         private
+
+        # Catch-up fast-forward. A tick `t` is expired (its work is skipped) iff
+        # `Time.current > t + timeout`, i.e. `t < now - timeout`. Rather than
+        # walking one zero-delay job per expired tick, jump straight to the first
+        # non-expired tick on the same grid in closed form.
+        #
+        # Anchoring the arithmetic on `next_execution_at` (already on the canonical
+        # grid: start_at / created_at+every / last_execution_at+every all land on
+        # it, because last_execution_at stores the *scheduled* time, not wall-clock)
+        # keeps the result exactly on the grid — no drift. This is exact for
+        # fixed-length intervals; calendar intervals like 1.month/1.year may land a
+        # tick off-grid over long gaps because n*every is added in one step (e.g.
+        # end-of-month clamping, DST) rather than applying `+ every` n times.
+        #
+        # Returns `next_execution_at` unchanged when nothing is expired. Otherwise
+        # advances the coordination log's last_execution_at so a replay recomputes
+        # the same first tick, and writes ONE summary ExecutionLog for the whole
+        # skipped prefix (no per-tick timeout rows).
+        def fast_forward_expired_prefix(coordination_log, next_execution_at, every, timeout)
+          cutoff = Time.current - timeout
+          return next_execution_at if next_execution_at >= cutoff
+
+          n = ((cutoff - next_execution_at) / every.to_f).ceil
+          first_valid = next_execution_at + (n * every)
+          last_skipped = first_valid - every
+
+          Rails.logger.info {
+            "ChronoForge:#{self.class}(#{@workflow.key}) durably_repeat fast-forwarded " \
+            "#{n} expired tick(s) to #{first_valid.iso8601}"
+          }
+
+          # Single summary row for the skipped prefix, on the last skipped grid
+          # tick. This never collides with the first_valid repetition row, but it
+          # CAN reuse a prior cycle's pending repetition log at the same tick
+          # (e.g. a tick that was scheduled-for-later then later fast-forwarded
+          # over). Write the metadata in the update! so the fast_forward summary
+          # fields are present whether the row is newly created or reused.
+          summary_step = "#{coordination_log.step_name}$#{last_skipped.to_i}"
+          summary_log = find_or_create_execution_log!(summary_step) do |log|
+            log.started_at = Time.current
+          end
+          summary_log.update!(
+            state: :failed,
+            error_class: "TimeoutError",
+            error_message: "Fast-forwarded #{n} expired tick(s)",
+            completed_at: Time.current,
+            metadata: (summary_log.metadata || {}).merge(
+              "fast_forwarded" => n,
+              "from" => next_execution_at.iso8601,
+              "to" => last_skipped.iso8601,
+              "scheduled_for" => last_skipped.iso8601,
+              "timeout_at" => (last_skipped + timeout).iso8601,
+              "parent_id" => coordination_log.id
+            )
+          )
+
+          # Record progress: a replay recomputes naive_next = last + every = first_valid.
+          coordination_log.update!(
+            metadata: coordination_log.metadata.merge("last_execution_at" => last_skipped.iso8601(6))
+          )
+
+          first_valid
+        end
 
         def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           step_name = "#{coordination_log.step_name}$#{next_execution_at.to_i}"
