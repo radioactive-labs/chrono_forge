@@ -38,7 +38,4 @@
 
   /* Surfaces */
   .cf-card { @apply rounded-lg border border-zinc-200 bg-white shadow-sm; }
-
-  /* JS-rendered latency sparkline (needs an explicit box) */
-  .cf-sparkline { @apply block h-6 w-24; }
 }

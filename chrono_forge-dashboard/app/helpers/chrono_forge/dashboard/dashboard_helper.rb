@@ -31,6 +31,13 @@ module ChronoForge
         (secs < 60) ? "#{secs}s" : "#{secs / 60}m #{(secs % 60).to_s.rjust(2, "0")}s"
       end
 
+      # Concise latency summary (avg + most recent) from a list of run seconds.
+      def cf_latency_summary(latencies)
+        return "—" if latencies.blank?
+        avg = (latencies.sum.to_f / latencies.size).round
+        "avg #{avg}s · last #{latencies.last}s"
+      end
+
       # Short, readable label for a parsed step kind.
       KIND_LABELS = {
         execute: "execute", wait: "wait", continue: "continue if",

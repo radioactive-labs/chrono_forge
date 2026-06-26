@@ -1,7 +1,7 @@
 <div class="mb-5 flex items-center justify-between">
   <h1 class="text-lg font-semibold tracking-tight">Workflows</h1>
-  <%= button_to "Retry all failed", bulk_retry_workflows_path, method: :post,
-        form: {data: {confirm: "Re-enqueue every failed workflow?"}}, class: "cf-btn" %>
+  <%= button_to "Retry failed & stalled", bulk_retry_workflows_path, method: :post,
+        form: {data: {confirm: "Re-enqueue every failed and stalled workflow?"}}, class: "cf-btn" %>
 </div>
 
 <div data-poll-region>

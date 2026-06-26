@@ -29,15 +29,6 @@
     });
   });
 
-  // Inline-SVG sparklines from data-values="1,2,3"
-  document.querySelectorAll("[data-sparkline]").forEach(function (el) {
-    var vals = (el.getAttribute("data-values") || "").split(",").map(Number).filter(function (n) { return !isNaN(n); });
-    if (!vals.length) return;
-    var max = Math.max.apply(null, vals), w = 100, h = 24, step = w / Math.max(vals.length - 1, 1);
-    var pts = vals.map(function (v, i) { return (i * step) + "," + (h - (max ? v / max * h : 0)); }).join(" ");
-    el.innerHTML = '<svg class="cf-sparkline" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" points="' + pts + '"/></svg>';
-  });
-
   // Polling refresh of the list/stats region
   var body = document.body, interval = parseInt(body.getAttribute("data-poll-interval") || "0", 10) * 1000;
   var region = document.querySelector("[data-poll-region]");

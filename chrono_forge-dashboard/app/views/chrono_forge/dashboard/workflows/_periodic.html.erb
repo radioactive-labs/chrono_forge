@@ -5,7 +5,7 @@
       <th class="py-2 pr-4 font-medium">Last run</th>
       <th class="py-2 pr-4 font-medium">Next run</th>
       <th class="py-2 pr-4 font-medium">Missed</th>
-      <th class="py-2 font-medium">Recent latency</th>
+      <th class="py-2 font-medium">Latency</th>
     </tr>
   </thead>
   <tbody class="divide-y divide-zinc-100">
@@ -15,7 +15,7 @@
         <td class="py-2 pr-4 font-mono text-xs text-zinc-500"><%= t.last_execution_at || "—" %></td>
         <td class="py-2 pr-4 font-mono text-xs text-zinc-500"><%= t.next_scheduled_at&.iso8601 || "—" %></td>
         <td class="py-2 pr-4 font-mono <%= "cf-periodic--timeout text-rose-600" if t.timed_out_count.positive? %>"><%= t.timed_out_count %></td>
-        <td class="py-2"><span class="inline-block text-sky-600" data-sparkline data-values="<%= t.latencies.join(",") %>"></span></td>
+        <td class="py-2 font-mono text-xs text-zinc-600" title="recent runs: <%= t.latencies.map { |l| "#{l}s" }.join(", ") %>"><%= cf_latency_summary(t.latencies) %></td>
       </tr>
     <% end %>
   </tbody>

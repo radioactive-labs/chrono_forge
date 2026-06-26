@@ -34,10 +34,11 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert wf.idle?
   end
 
-  test "bulk retry enqueues for all failed" do
+  test "bulk retry enqueues for all failed and stalled, not others" do
     create_workflow(key: "b1", state: :failed)
-    create_workflow(key: "b2", state: :failed)
+    create_workflow(key: "b2", state: :stalled)
     create_workflow(key: "b3", state: :completed)
+    create_workflow(key: "b4", state: :running)
     assert_enqueued_jobs 2 do
       post "/chrono_forge/workflows/bulk_retry"
     end

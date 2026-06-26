@@ -15,13 +15,17 @@ module ChronoForge
         redirect_to workflow_path(workflow), notice: "Unlocked #{workflow.key}."
       end
 
+      # Both failed and stalled workflows are retryable, so bulk retry covers
+      # both (matching the per-workflow Retry, which uses `retryable?`).
+      RETRYABLE_STATES = %i[failed stalled].map { |s| ChronoForge::Workflow.states[s] }.freeze
+
       def bulk_retry
         n = 0
-        ChronoForge::Workflow.where(state: ChronoForge::Workflow.states[:failed]).find_each do |wf|
+        ChronoForge::Workflow.where(state: RETRYABLE_STATES).find_each do |wf|
           wf.retry_later
           n += 1
         end
-        redirect_to workflows_path, notice: "Re-enqueued #{n} failed workflow(s)."
+        redirect_to workflows_path, notice: "Re-enqueued #{n} workflow(s)."
       end
 
       private
