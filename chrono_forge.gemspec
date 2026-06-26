@@ -46,4 +46,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "appraisal"
   spec.add_development_dependency "combustion"
   spec.add_development_dependency "chaotic_job"
+  # Lints the gem's own migration templates for safety (concurrent indexes,
+  # no blocking column rewrites) when the test suite runs them via Combustion.
+  spec.add_development_dependency "strong_migrations"
 end
