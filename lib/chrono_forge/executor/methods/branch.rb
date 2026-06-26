@@ -124,8 +124,19 @@ module ChronoForge
           end
           # On-conflict-ignore makes re-dispatch (crash recovery) idempotent.
           Workflow.insert_all(rows, unique_by: [:job_class, :key])
-          jobs = entries.map { |child_key, klass, kwargs| klass.new(child_key, **kwargs) }
-          ActiveJob.perform_all_later(jobs)
+
+          # Enqueue only children still :idle. On a crash-resume the boundary chunk
+          # is re-dispatched; its rows already exist (insert_all ignored them) and
+          # may already have run — re-enqueuing a completed/running child would only
+          # raise NotExecutableError and dead-letter. Freshly inserted rows are
+          # :idle (we enqueue after inserting, so no worker can have touched them),
+          # so first-time dispatch enqueues the whole batch.
+          keys = entries.map { |child_key, _klass, _kwargs| child_key }
+          idle = Workflow.where(key: keys, state: Workflow.states[:idle]).pluck(:key).to_set
+          jobs = entries.filter_map do |child_key, klass, kwargs|
+            klass.new(child_key, **kwargs) if idle.include?(child_key)
+          end
+          ActiveJob.perform_all_later(jobs) if jobs.any?
         end
 
         def validate_child_enqueue!(child_key, kwargs)
