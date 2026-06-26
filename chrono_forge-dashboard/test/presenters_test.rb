@@ -26,6 +26,17 @@ class PresentersTest < ActiveSupport::TestCase
     assert_equal 1, repeat.tombstones
   end
 
+  test "timeline attaches error logs to their step for inline rendering" do
+    wf = create_workflow(key: "te", state: :stalled)
+    log(wf, "durably_execute$charge", state: :failed, started_at: 1.minute.ago, error_class: "Boom")
+    ChronoForge::ErrorLog.create!(workflow: wf, step_name: "durably_execute$charge", attempt: 2,
+      error_class: "Boom", error_message: "kaboom", backtrace: "a.rb:1")
+
+    step = ChronoForge::Dashboard::TimelinePresenter.new(wf).entries.find { |e| e.name == "charge" }
+    assert_equal 1, step.errors.size
+    assert_equal "kaboom", step.errors.first.error_message
+  end
+
   test "current position is the failed step" do
     wf = create_workflow(key: "t2", state: :failed)
     log(wf, "durably_execute$a", state: :completed, started_at: 2.minutes.ago)

@@ -1,9 +1,9 @@
 module ChronoForge
   module Dashboard
     class TimelinePresenter
-      Entry = Struct.new(:id, :kind, :name, :status, :attempts,
+      Entry = Struct.new(:id, :kind, :name, :step_name, :status, :attempts,
         :started_at, :completed_at, :last_executed_at, :error_class, :error_message,
-        :iterations, :tombstones, :last_run_at)
+        :errors, :iterations, :tombstones, :last_run_at)
 
       # Per-iteration run logs of a durably_repeat step are excluded from the
       # timeline (they get their own paginated page) and summarized instead.
@@ -33,12 +33,14 @@ module ChronoForge
       end
 
       def build
+        errors_by_step = @workflow.error_logs.order(:attempt, :created_at).to_a.group_by(&:step_name)
         ordered_logs.map do |l|
           p = StepNameParser.parse(l.step_name)
-          entry = Entry.new(id: l.id, kind: p.kind, name: p.name, status: l.state,
-            attempts: l.attempts, started_at: l.started_at, completed_at: l.completed_at,
-            last_executed_at: l.last_executed_at, error_class: l.error_class,
-            error_message: l.error_message)
+          entry = Entry.new(id: l.id, kind: p.kind, name: p.name, step_name: l.step_name,
+            status: l.state, attempts: l.attempts, started_at: l.started_at,
+            completed_at: l.completed_at, last_executed_at: l.last_executed_at,
+            error_class: l.error_class, error_message: l.error_message,
+            errors: errors_by_step[l.step_name] || [])
           summarize_repetitions(entry, p.name) if p.kind == :repeat_coordination
           entry
         end

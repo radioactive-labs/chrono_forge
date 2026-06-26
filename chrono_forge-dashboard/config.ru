@@ -73,4 +73,57 @@ L.create!(workflow: wf5, step_name: "durably_execute$disburse_funds", attempt: 2
   error_class: "Net::ReadTimeout", error_message: "execution expired while calling disbursement API",
   backtrace: "app/services/disbursements.rb:88\napp/workflows/payout.rb:25")
 
+# Kitchen sink — exercises every step kind and state, all context field types,
+# multi-attempt inline errors with backtraces, and a periodic task with a late
+# run + a tombstone. Stalled on a failed charge so the failed step is current.
+ks = W.create!(key: "kitchensink-1", job_class: "KitchenSinkWorkflow", state: W.states[:stalled],
+  context: {
+    "amount" => 49999, "currency" => "USD", "fee_rate" => 0.029,
+    "expedited" => true, "gift_wrap" => false, "coupon_code" => nil,
+    "line_item_ids" => [101, 102, 103],
+    "customer" => {"id" => 77, "tier" => "gold", "vip" => true},
+    "tags" => ["priority", "international", "insured"],
+    "notes" => "Signature on delivery + gift receipt; flagged for manual fraud review (billing country mismatch)."
+  },
+  kwargs: {"order_id" => "ks-1", "max_attempts" => 5, "dry_run" => false, "channel" => "web"},
+  options: {}, started_at: 2.hours.ago, locked_at: 40.minutes.ago, locked_by: "worker-9")
+
+E.create!(workflow: ks, step_name: "durably_execute$validate_input", state: estate(:completed),
+  attempts: 1, started_at: 2.hours.ago, completed_at: 2.hours.ago + 2)
+E.create!(workflow: ks, step_name: "wait_until$inventory_available?", state: estate(:completed),
+  attempts: 3, started_at: 115.minutes.ago, completed_at: 108.minutes.ago,
+  last_executed_at: 108.minutes.ago, metadata: {"timeout_at" => 90.minutes.ago.iso8601})
+E.create!(workflow: ks, step_name: "durably_execute$reserve_stock", state: estate(:completed),
+  attempts: 1, started_at: 107.minutes.ago, completed_at: 107.minutes.ago + 3)
+
+# Periodic reconcile: coordination + runs (one on time, one late, one tombstone)
+E.create!(workflow: ks, step_name: "durably_repeat$reconcile_ledger", state: estate(:pending),
+  attempts: 4, started_at: 100.minutes.ago, metadata: {"last_execution_at" => 30.minutes.ago.iso8601})
+[[90.minutes.ago, 4], [60.minutes.ago, 135]].each do |sched, late|
+  ts = sched.to_i
+  E.create!(workflow: ks, step_name: "durably_repeat$reconcile_ledger$#{ts}", state: estate(:completed),
+    attempts: 1, started_at: Time.zone.at(ts + late), completed_at: Time.zone.at(ts + late + 3))
+end
+tomb = 30.minutes.ago.to_i
+E.create!(workflow: ks, step_name: "durably_repeat$reconcile_ledger$#{tomb}", state: estate(:failed),
+  attempts: 1, error_class: "TimeoutError", started_at: Time.zone.at(tomb + 30), completed_at: Time.zone.at(tomb + 30))
+
+# Event wait (continue_if) still pending — no timeout, waits on a webhook
+E.create!(workflow: ks, step_name: "continue_if$fraud_review_cleared", state: estate(:pending),
+  attempts: 1, started_at: 50.minutes.ago, last_executed_at: 50.minutes.ago, metadata: {})
+
+# Failed execute with two inline errors across attempts (the stall cause)
+E.create!(workflow: ks, step_name: "durably_execute$charge_payment", state: estate(:failed),
+  attempts: 3, started_at: 45.minutes.ago, error_class: "Stripe::RateLimitError")
+L.create!(workflow: ks, step_name: "durably_execute$charge_payment", attempt: 1,
+  error_class: "Stripe::CardError", error_message: "Your card was declined (insufficient_funds).",
+  backtrace: "app/services/payments.rb:42:in `charge'\napp/workflows/kitchen_sink.rb:31:in `block in perform'\nlib/chrono_forge/executor.rb:124:in `call'")
+L.create!(workflow: ks, step_name: "durably_execute$charge_payment", attempt: 2,
+  error_class: "Stripe::RateLimitError", error_message: "Too many requests; backing off before retry.",
+  backtrace: "app/services/payments.rb:51:in `charge'\napp/workflows/kitchen_sink.rb:31:in `block in perform'")
+
+# Unknown/custom step kind renders gracefully
+E.create!(workflow: ks, step_name: "legacy_custom_marker", state: estate(:completed),
+  attempts: 1, started_at: 44.minutes.ago, completed_at: 44.minutes.ago + 1)
+
 run Combustion::Application

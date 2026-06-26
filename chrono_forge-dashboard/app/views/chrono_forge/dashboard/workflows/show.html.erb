@@ -35,19 +35,27 @@
 
 <%= render "wait_callout", wait: @wait if @wait %>
 
-<% if @workflow.kwargs.present? %>
-  <section class="cf-card mb-5 p-5">
+<div class="mb-5 grid gap-5 md:grid-cols-2">
+  <section class="cf-card p-5">
     <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Arguments</h2>
-    <dl class="space-y-1.5">
-      <% @workflow.kwargs.each do |key, value| %>
-        <div class="flex items-baseline gap-2">
-          <dt class="font-mono text-sm text-zinc-900"><%= key %></dt>
-          <dd class="min-w-0 flex-1 truncate font-mono text-sm text-zinc-600"><%= truncate(value.inspect, length: 120) %></dd>
-        </div>
-      <% end %>
-    </dl>
+    <% if @workflow.kwargs.present? %>
+      <dl class="space-y-1.5">
+        <% @workflow.kwargs.each do |key, value| %>
+          <div class="flex items-baseline gap-2">
+            <dt class="font-mono text-sm text-zinc-900"><%= key %></dt>
+            <dd class="min-w-0 flex-1 truncate font-mono text-sm text-zinc-600"><%= truncate(value.inspect, length: 120) %></dd>
+          </div>
+        <% end %>
+      </dl>
+    <% else %>
+      <p class="text-sm text-zinc-500">No arguments.</p>
+    <% end %>
   </section>
-<% end %>
+  <section class="cf-card p-5">
+    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Context</h2>
+    <%= render "context_tree", context: @context %>
+  </section>
+</div>
 
 <section class="cf-card mb-5 p-5">
   <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</h2>
@@ -60,14 +68,3 @@
     <%= render "periodic", tasks: @periodic %>
   </section>
 <% end %>
-
-<div class="grid gap-5 md:grid-cols-2">
-  <section class="cf-card p-5">
-    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Context</h2>
-    <%= render "context_tree", context: @context %>
-  </section>
-  <section class="cf-card p-5">
-    <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Errors</h2>
-    <%= render "errors", errors: @errors %>
-  </section>
-</div>
