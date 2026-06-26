@@ -10,6 +10,11 @@ module ChronoForge
     # in :idle (indistinguishable from never-started, invisible to recovery scans).
     # Retry transient failures with backoff so the poll chain survives.
     retry_on StandardError, wait: :polynomially_longer, attempts: 25
+    # An empty branch_log_ids is a caller bug, not a transient fault — don't retry it.
+    # MUST be declared AFTER retry_on: ActiveSupport::Rescuable matches handlers in
+    # reverse registration order (last wins), not by specificity — so this overrides
+    # the broad retry_on StandardError above for ArgumentError specifically.
+    discard_on ArgumentError
 
     CAP = 5_000          # cap the pending count; beyond it we just pick max_interval
     FACTOR = 0.06        # seconds of delay per pending child
