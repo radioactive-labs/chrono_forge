@@ -60,13 +60,14 @@ module ChronoForge
         "cf-bar-#{(pct / 5).round * 5}"
       end
 
-      # A rate (0.0–1.0) as a percentage; "—" if nil. Small non-zero rates keep
-      # one decimal so a 0.0008% workflow-failure rate doesn't round to "0%".
+      # A rate (0.0–1.0) as a percentage; "—" if nil. Keeps tiny non-zero rates
+      # visible (a 0.0008% workflow-failure rate shows "<0.01%", never "0%").
       def cf_pct(rate)
         return "—" if rate.nil?
         pct = rate * 100
         return "0%" if pct.zero?
-        (pct >= 1 || pct.zero?) ? "#{pct.round}%" : "#{pct.round(2)}%"
+        return "<0.01%" if pct < 0.01
+        (pct < 1) ? "#{pct.round(2)}%" : "#{pct.round}%"
       end
 
       # Concise latency summary (avg + most recent) from a list of run seconds.

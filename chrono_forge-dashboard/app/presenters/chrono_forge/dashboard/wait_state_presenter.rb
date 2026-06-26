@@ -17,16 +17,13 @@ module ChronoForge
         def event_wait? = kind == :continue
       end
 
-      WAIT_KINDS = %i[wait continue].freeze
-
       def initialize(workflow) = @workflow = workflow
 
+      # Reuses the batch resolver so a single workflow and a page of them agree:
+      # it looks at the latest *pending wait/continue* log, ignoring durably_repeat
+      # run logs (which stamp started_at = now and would otherwise mask the wait).
       def active
-        return nil unless @workflow.idle?
-        log = @workflow.execution_logs.order(Arel.sql("started_at, id")).last
-        return nil unless log&.pending?
-        return nil unless WAIT_KINDS.include?(StepNameParser.parse(log.step_name).kind)
-        self.class.build(log)
+        self.class.active_map([@workflow])[@workflow.id]
       end
 
       # Active waits for a batch of workflows, in two queries instead of one per
