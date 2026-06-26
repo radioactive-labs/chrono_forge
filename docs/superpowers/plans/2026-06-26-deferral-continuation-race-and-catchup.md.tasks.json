@@ -1,0 +1,19 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-26-deferral-continuation-race-and-catchup.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Defer all continuation enqueues until after lock release",
+      "status": "completed",
+      "description": "**Goal:** No continuation job is published while the enqueuing job still holds the workflow lock; all 8 enqueue sites route through one recorded slot flushed in `ensure` after `release_lock`.\n\n**Files:** lib/chrono_forge/executor.rb; lib/chrono_forge/executor/methods/{wait,wait_until,durably_execute,durably_repeat}.rb; test/continuation_flush_test.rb (create)\n\n**Verify:** `bundle exec ruby -Itest test/continuation_flush_test.rb && bundle exec rake test`\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor.rb\", \"lib/chrono_forge/executor/methods/wait.rb\", \"lib/chrono_forge/executor/methods/wait_until.rb\", \"lib/chrono_forge/executor/methods/durably_execute.rb\", \"lib/chrono_forge/executor/methods/durably_repeat.rb\", \"test/continuation_flush_test.rb\"], \"verifyCommand\": \"bundle exec ruby -Itest test/continuation_flush_test.rb && bundle exec rake test\", \"acceptanceCriteria\": [\"continuations enqueued only after lock release\", \"per-site kwargs preserved\", \"flush no-ops without recorded continuation and is skipped when release_lock raises\", \"full suite green\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Closed-form fast-forward of the expired prefix in durably_repeat",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** When `durably_repeat` resumes behind schedule, jump past the expired prefix in O(1), advance the coordination log's `last_execution_at`, and write one summary `ExecutionLog` for the skip — instead of one timed-out row + one zero-delay job per missed tick.\n\n**Files:** lib/chrono_forge/executor/methods/durably_repeat.rb; test/durably_repeat_test.rb (add tests; update 2 timeout tests)\n\n**Verify:** `bundle exec ruby -Itest test/durably_repeat_test.rb && bundle exec rake test`\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/durably_repeat.rb\", \"test/durably_repeat_test.rb\"], \"verifyCommand\": \"bundle exec ruby -Itest test/durably_repeat_test.rb && bundle exec rake test\", \"acceptanceCriteria\": [\"fast_forward returns input when nothing expired\", \"lands on first non-expired grid tick (no drift)\", \"zero per-tick timeout rows + exactly one summary row\", \"coordination last_execution_at advanced for stable replay\", \"first in-window tick still executes\", \"full suite green\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-26"
+}
