@@ -14,6 +14,14 @@ module ChronoForge
 
     class InvalidStepName < NotExecutableError; end
 
+    # spawn/spawn_each called outside a branch block. NotExecutableError so it
+    # propagates (fail-fast on a programming error) rather than being retried.
+    class NotInBranchError < NotExecutableError; end
+
+    # A branch was opened but neither merged via merge_branches nor declared
+    # automerge: true. Raised at the completion gate. Fail-fast (not retried).
+    class UnmergedBranchError < NotExecutableError; end
+
     # "$" separates the segments of a step name (e.g. "durably_repeat$name$ts").
     # User-supplied names/methods must not contain it.
     STEP_NAME_DELIMITER = "$"
