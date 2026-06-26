@@ -63,10 +63,10 @@ end
 E.create!(workflow: wf4, step_name: "durably_repeat$send_digest$#{12.hours.ago.to_i}", state: estate(:failed),
   attempts: 1, error_class: "TimeoutError", started_at: 12.hours.ago, completed_at: 12.hours.ago)
 
-# Stalled — locked by a worker that died mid-step, with a last step + error
+# Stalled — a step exhausted its retries; the workflow halted and is unlocked
 wf5 = W.create!(key: "payout-3", job_class: "OrderWorkflow", state: W.states[:stalled],
   context: {"amount" => 8000}, kwargs: {"payout_id" => "payout-3"}, options: {},
-  started_at: 1.hour.ago, locked_at: 50.minutes.ago, locked_by: "worker-42")
+  started_at: 1.hour.ago)
 E.create!(workflow: wf5, step_name: "durably_execute$disburse_funds", state: estate(:pending),
   attempts: 2, started_at: 50.minutes.ago, last_executed_at: 50.minutes.ago)
 L.create!(workflow: wf5, step_name: "durably_execute$disburse_funds", attempt: 2,
@@ -86,7 +86,7 @@ ks = W.create!(key: "kitchensink-1", job_class: "KitchenSinkWorkflow", state: W.
     "notes" => "Signature on delivery + gift receipt; flagged for manual fraud review (billing country mismatch)."
   },
   kwargs: {"order_id" => "ks-1", "max_attempts" => 5, "dry_run" => false, "channel" => "web"},
-  options: {}, started_at: 2.hours.ago, locked_at: 40.minutes.ago, locked_by: "worker-9")
+  options: {}, started_at: 2.hours.ago)
 
 E.create!(workflow: ks, step_name: "durably_execute$validate_input", state: estate(:completed),
   attempts: 1, started_at: 2.hours.ago, completed_at: 2.hours.ago + 2)

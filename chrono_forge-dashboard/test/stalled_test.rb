@@ -7,8 +7,7 @@ class StalledTest < ActionDispatch::IntegrationTest
   teardown { ChronoForge::Dashboard.reset_configuration! }
 
   test "lists stalled workflows with diagnostic context" do
-    wf = create_workflow(key: "stuck-1", state: :stalled, job_class: "OrderWorkflow",
-      locked_by: "worker-7", locked_at: 1.hour.ago)
+    wf = create_workflow(key: "stuck-1", state: :stalled, job_class: "OrderWorkflow")
     wf.execution_logs.create!(step_name: "durably_execute$charge_card",
       state: ChronoForge::ExecutionLog.states[:failed], attempts: 3, started_at: 1.hour.ago)
     wf.error_logs.create!(step_name: "durably_execute$charge_card", attempt: 3,
@@ -17,7 +16,6 @@ class StalledTest < ActionDispatch::IntegrationTest
     get "/chrono_forge/stalled"
     assert_response :success
     assert_match "stuck-1", response.body
-    assert_match "worker-7", response.body
     assert_match "charge_card", response.body
     assert_match "PaymentDeclinedError", response.body
   end
@@ -37,10 +35,10 @@ class StalledTest < ActionDispatch::IntegrationTest
     assert_match(/No stalled workflows/i, response.body)
   end
 
-  test "offers retry and unlock actions per row" do
-    wf = create_workflow(key: "stuck-2", state: :stalled, locked_by: "w1")
+  test "offers retry per row (stalled workflows hold no lock to force-unlock)" do
+    wf = create_workflow(key: "stuck-2", state: :stalled)
     get "/chrono_forge/stalled"
     assert_match "/chrono_forge/workflows/#{wf.id}/retry", response.body
-    assert_match "/chrono_forge/workflows/#{wf.id}/unlock", response.body
+    refute_match "/chrono_forge/workflows/#{wf.id}/unlock", response.body
   end
 end

@@ -1,11 +1,13 @@
 <p class="mb-3 font-mono text-xs text-zinc-400"><%= number_to_human_size(context.byte_size) %></p>
 <% if context.nodes.any? %>
-  <dl class="space-y-1.5">
+  <dl class="space-y-3">
     <% context.nodes.each do |n| %>
-      <div class="flex items-baseline gap-2">
-        <dt class="font-mono text-sm text-zinc-900"><%= n[:key] %></dt>
-        <dd class="min-w-0 flex-1 truncate font-mono text-sm text-zinc-600"><%= truncate(n[:value].inspect, length: 120) %></dd>
-        <span class="shrink-0 font-mono text-[11px] text-zinc-400"><%= n[:type] %></span>
+      <div>
+        <div class="flex items-baseline justify-between gap-2">
+          <dt class="font-mono text-sm text-zinc-900"><%= n[:key] %></dt>
+          <span class="shrink-0 font-mono text-[11px] text-zinc-400"><%= n[:type] %></span>
+        </div>
+        <dd class="mt-0.5 break-words font-mono text-sm text-zinc-600"><%= truncate(n[:value].inspect, length: 200) %></dd>
       </div>
     <% end %>
   </dl>

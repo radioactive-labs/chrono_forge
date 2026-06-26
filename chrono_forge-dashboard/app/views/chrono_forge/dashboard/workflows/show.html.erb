@@ -51,11 +51,14 @@
   <section class="cf-card p-5">
     <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Arguments</h2>
     <% if @workflow.kwargs.present? %>
-      <dl class="space-y-1.5">
+      <dl class="space-y-3">
         <% @workflow.kwargs.each do |key, value| %>
-          <div class="flex items-baseline gap-2">
-            <dt class="font-mono text-sm text-zinc-900"><%= key %></dt>
-            <dd class="min-w-0 flex-1 truncate font-mono text-sm text-zinc-600"><%= truncate(value.inspect, length: 120) %></dd>
+          <div>
+            <div class="flex items-baseline justify-between gap-2">
+              <dt class="font-mono text-sm text-zinc-900"><%= key %></dt>
+              <span class="shrink-0 font-mono text-[11px] text-zinc-400"><%= value.class.name %></span>
+            </div>
+            <dd class="mt-0.5 break-words font-mono text-sm text-zinc-600"><%= truncate(value.inspect, length: 200) %></dd>
           </div>
         <% end %>
       </dl>

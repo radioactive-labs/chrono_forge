@@ -1,9 +1,7 @@
 <div class="mb-5 flex items-start justify-between gap-4">
   <div>
     <h1 class="text-lg font-semibold tracking-tight">Stalled workflows</h1>
-    <p class="mt-1 text-sm text-zinc-500">
-      Locked but no longer progressing — usually a worker died mid-step. Force-unlock to release the lock, or retry to re-enqueue.
-    </p>
+    <p class="mt-1 text-sm text-zinc-500">Stopped after a step ran out of retries. Fix the cause, then retry to pick up where it left off.</p>
   </div>
   <% if @rows.any? %>
     <%= button_to "Retry all stalled & failed", bulk_retry_workflows_path, method: :post,
@@ -18,7 +16,6 @@
         <th class="px-4 py-2.5 font-medium">Key</th>
         <th class="px-4 py-2.5 font-medium">Class</th>
         <th class="px-4 py-2.5 font-medium">Stalled for</th>
-        <th class="px-4 py-2.5 font-medium">Locked by</th>
         <th class="px-4 py-2.5 font-medium">Last step</th>
         <th class="px-4 py-2.5 font-medium">Last error</th>
         <th class="px-4 py-2.5 text-right font-medium">Actions</th>
@@ -30,7 +27,6 @@
           <td class="px-4 py-2.5"><%= link_to r.workflow.key, workflow_path(r.workflow), class: "font-mono hover:underline" %></td>
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= r.workflow.job_class %></td>
           <td class="px-4 py-2.5 text-zinc-600"><%= cf_ago(r.stalled_since) %></td>
-          <td class="px-4 py-2.5 font-mono text-xs text-zinc-500"><%= r.locked_by || "—" %></td>
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600">
             <% if r.last_step %><span class="text-zinc-400"><%= cf_kind_label(r.last_step.kind) %></span> <%= r.last_step.name %><% else %>—<% end %>
           </td>
@@ -43,11 +39,7 @@
             <% end %>
           </td>
           <td class="px-4 py-2.5 text-right whitespace-nowrap">
-            <div class="inline-flex gap-2">
-              <%= button_to "Retry", retry_workflow_path(r.workflow), method: :post, class: "cf-btn" %>
-              <%= button_to "Unlock", unlock_workflow_path(r.workflow), method: :post,
-                    form: {data: {confirm: "Force-unlocking can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
-            </div>
+            <%= button_to "Retry", retry_workflow_path(r.workflow), method: :post, class: "cf-btn" %>
           </td>
         </tr>
       <% end %>
