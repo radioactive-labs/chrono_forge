@@ -1,23 +1,13 @@
 <div class="mb-4 flex flex-wrap gap-2">
   <% base = request.query_parameters.except("before", "after") %>
   <% stats.each do |state, count| %>
-    <% if state == "stalled" %>
-      <%# Stalled gets its own triage page rather than a list filter. %>
-      <%= link_to stalled_path,
-            class: "cf-stat flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition #{controller_name == "stalled" ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50"}" do %>
-        <%= cf_dot(state) %>
-        <span class="text-zinc-500"><%= state %></span>
-        <span class="font-mono font-medium tabular-nums"><%= cf_capped(count, cap) %></span>
-      <% end %>
-    <% else %>
-      <% active = params[:state].to_s == state %>
-      <% target = active ? base.except("state") : base.merge(state: state) %>
-      <%= link_to workflows_path(target),
-            class: "cf-stat flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition #{active ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50"}" do %>
-        <%= cf_dot(state) %>
-        <span class="text-zinc-500"><%= state %></span>
-        <span class="font-mono font-medium tabular-nums"><%= cf_capped(count, cap) %></span>
-      <% end %>
+    <% active = params[:state].to_s == state %>
+    <% target = active ? base.except("state") : base.merge(state: state) %>
+    <%= link_to workflows_path(target),
+          class: "cf-stat flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition #{active ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50"}" do %>
+      <%= cf_dot(state) %>
+      <span class="text-zinc-500"><%= state %></span>
+      <span class="font-mono font-medium tabular-nums"><%= cf_capped(count, cap) %></span>
     <% end %>
   <% end %>
 </div>
