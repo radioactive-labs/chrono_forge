@@ -3,7 +3,7 @@ module ChronoForge
     class TimelinePresenter
       Entry = Struct.new(:id, :kind, :name, :step_name, :status, :attempts,
         :started_at, :completed_at, :last_executed_at, :error_class, :error_message,
-        :errors, :iterations, :tombstones, :last_run_at)
+        :metadata, :errors, :iterations, :tombstones, :last_run_at)
 
       # Per-iteration run logs of a durably_repeat step are excluded from the
       # timeline (they get their own paginated page) and summarized instead.
@@ -40,7 +40,7 @@ module ChronoForge
             status: l.state, attempts: l.attempts, started_at: l.started_at,
             completed_at: l.completed_at, last_executed_at: l.last_executed_at,
             error_class: l.error_class, error_message: l.error_message,
-            errors: errors_by_step[l.step_name] || [])
+            metadata: l.metadata, errors: errors_by_step[l.step_name] || [])
           summarize_repetitions(entry, p.name) if p.kind == :repeat_coordination
           entry
         end

@@ -8,6 +8,7 @@ module ChronoForge
         prefix, name, ts = step_name.to_s.split(DELIM, 3)
         case prefix
         when "durably_execute" then Parsed.new(kind: :execute, name: name, raw: step_name)
+        when "wait" then Parsed.new(kind: :sleep, name: name, raw: step_name)
         when "wait_until" then Parsed.new(kind: :wait, name: name, raw: step_name)
         when "continue_if" then Parsed.new(kind: :continue, name: name, raw: step_name)
         when "durably_repeat"

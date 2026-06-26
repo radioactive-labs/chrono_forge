@@ -15,6 +15,12 @@ class StepNameParserTest < ActiveSupport::TestCase
     assert_equal "paid?", P.parse("wait_until$paid?").name
   end
 
+  test "fixed wait (sleep) is distinct from wait_until" do
+    r = P.parse("wait$rate_limit_delay")
+    assert_equal :sleep, r.kind
+    assert_equal "rate_limit_delay", r.name
+  end
+
   test "continue_if" do
     assert_equal :continue, P.parse("continue_if$ready?").kind
     assert_equal "ready?", P.parse("continue_if$ready?").name

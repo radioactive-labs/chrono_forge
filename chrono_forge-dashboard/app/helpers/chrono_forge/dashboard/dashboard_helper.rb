@@ -79,13 +79,22 @@ module ChronoForge
 
       # Short, readable label for a parsed step kind.
       KIND_LABELS = {
-        execute: "execute", wait: "wait", continue: "continue if",
+        execute: "execute", sleep: "wait", wait: "wait until", continue: "continue if",
         repeat_coordination: "repeat", repeat_run: "run",
         branch: "branch", merge: "merge", unknown: "step"
       }.freeze
 
       def cf_kind_label(kind)
         KIND_LABELS.fetch(kind, kind.to_s)
+      end
+
+      # Human-friendly [label, value] pairs of a step's metadata for the timeline
+      # — surfaces things like a wait's resume time, a wait_until timeout, or a
+      # durably_repeat's last execution. Keys are humanized; values are stringified
+      # (the view truncates). Blank values are dropped.
+      def cf_meta_pairs(metadata)
+        return [] unless metadata.is_a?(Hash)
+        metadata.reject { |_, v| v.nil? || v == "" }.map { |k, v| [k.to_s.tr("_", " "), v.to_s] }
       end
 
       # Text color for an execution-log status (pending/completed/failed).

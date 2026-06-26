@@ -95,6 +95,10 @@ E.create!(workflow: ks, step_name: "wait_until$inventory_available?", state: est
   last_executed_at: 108.minutes.ago, metadata: {"timeout_at" => 90.minutes.ago.iso8601})
 E.create!(workflow: ks, step_name: "durably_execute$reserve_stock", state: estate(:completed),
   attempts: 1, started_at: 107.minutes.ago, completed_at: 107.minutes.ago + 3)
+# Fixed wait (sleep until a time) — carries its resume time in metadata
+E.create!(workflow: ks, step_name: "wait$settlement_window", state: estate(:completed),
+  attempts: 1, started_at: 106.minutes.ago, completed_at: 102.minutes.ago,
+  metadata: {"wait_until" => 102.minutes.ago.iso8601})
 
 # Periodic reconcile: coordination + runs (one on time, one late, one tombstone)
 E.create!(workflow: ks, step_name: "durably_repeat$reconcile_ledger", state: estate(:pending),
