@@ -11,7 +11,7 @@ ChronoForge handles long-running processes, manages state, and recovers from fai
 
 Workflows are **plain Ruby**. Ordinary `if`/`else`, loops, and early returns drive the flow. There's no declarative DSL to learn and no extra service to run, which makes ChronoForge a good fit for business processes whose shape depends on runtime state: conditional branches, iteration over data, and built-in periodic tasks (`durably_repeat`).
 
-> **In production:** ChronoForge runs financial workflows at **achieve by Petra**, an investment platform in the Petra Group.
+> **In production:** ChronoForge has run **over 3.5 million workflow executions** at **achieve by Petra**, an investment platform in the Petra Group — powering scheduled payments, investment rollovers, and reward-membership lifecycle management.
 
 ## 🧭 Why ChronoForge
 
