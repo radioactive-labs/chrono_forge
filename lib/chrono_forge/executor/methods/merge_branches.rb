@@ -7,6 +7,14 @@ module ChronoForge
         # lightweight BranchMergeJob and halts (the heavy parent is not replayed
         # per poll). Cadence clamps between min/max, scaled by pending.
         def merge_branches(*names, min_interval: 5.seconds, max_interval: 5.minutes)
+          names.each do |nm|
+            validate_step_name_segment!(nm)  # rejects "$"
+            if nm.to_s.include?(",")
+              raise InvalidStepName,
+                "branch name may not contain ',' (reserved merge separator): #{nm.inspect}"
+            end
+          end
+
           step_name = "merge$#{names.map(&:to_s).sort.join(",")}"
           log = find_or_create_execution_log!(step_name) { |l| l.started_at = Time.current }
 
@@ -20,7 +28,7 @@ module ChronoForge
           branch_log_ids = names.map { |nm| open_branch!(nm)[:log_id] }
 
           if branches_done?(branch_log_ids)
-            names.each { |nm| @open_branches.delete(nm.to_s) }
+            names.each { |nm| @open_branches&.delete(nm.to_s) }
             log.update!(state: :completed, completed_at: Time.current)
             return
           end

@@ -30,6 +30,36 @@ class MergeBranchesTest < ActiveJob::TestCase
     Object.send(:remove_const, :NoBranchMergeWorkflow) if defined?(NoBranchMergeWorkflow)
   end
 
+  def test_merge_branches_rejects_dollar_name
+    bad_dollar = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:a) { spawn :one, NoopChild }
+        merge_branches :"a$b"
+      end
+    end
+    Object.const_set(:DollarMergeWorkflow, bad_dollar)
+    DollarMergeWorkflow.perform_later("dm-1")
+    assert_raises(ChronoForge::Executor::InvalidStepName) { perform_all_jobs }
+  ensure
+    Object.send(:remove_const, :DollarMergeWorkflow) if defined?(DollarMergeWorkflow)
+  end
+
+  def test_merge_branches_rejects_comma_name
+    bad_comma = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:a) { spawn :one, NoopChild }
+        merge_branches :"a,b"
+      end
+    end
+    Object.const_set(:CommaMergeWorkflow, bad_comma)
+    CommaMergeWorkflow.perform_later("cm-1")
+    assert_raises(ChronoForge::Executor::InvalidStepName) { perform_all_jobs }
+  ensure
+    Object.send(:remove_const, :CommaMergeWorkflow) if defined?(CommaMergeWorkflow)
+  end
+
   def test_incomplete_child_keeps_parent_parked
     # StalledBranchWorkflow has branch :a (stalling child) and branch :b (noop).
     # The stalling child raises on every attempt and exhausts retries → failed.
