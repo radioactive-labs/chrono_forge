@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Release helper for the chrono_forge monorepo (core + dashboard gems).
+#
+#   bin/release <core|dashboard> <version> [--dry-run]
+#
+# One shot: bump the version, regenerate the gem's CHANGELOG from conventional
+# commits (git-cliff), commit, build + push the gem to RubyGems, tag, push the
+# commit and tag, and create the GitHub release.
+#
+# Release `core` BEFORE `dashboard` — the dashboard depends on core.
+# Tags: core → vX.Y.Z, dashboard → chrono_forge-dashboard-vX.Y.Z.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+die() { echo "error: $*" >&2; exit 1; }
+
+GEM="${1:-}"; VERSION="${2:-}"; DRY="${3:-}"
+if [ -z "$GEM" ] || [ -z "$VERSION" ]; then
+  awk 'NR>=2 && /^#/ {sub(/^# ?/,""); print; next} NR>=2 {exit}' "$0"; exit 1
+fi
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]] || die "version must be X.Y.Z (got '$VERSION')"
+
+case "$GEM" in
+  core)
+    NAME=chrono_forge
+    VERSION_FILE=lib/chrono_forge/version.rb
+    CHANGELOG=CHANGELOG.md
+    GEMSPEC=chrono_forge.gemspec
+    BUILD_DIR=.
+    TAG="v${VERSION}"
+    TAG_PATTERN='v[0-9]*'
+    SCOPE=(--exclude-path 'chrono_forge-dashboard/**')
+    ;;
+  dashboard)
+    NAME=chrono_forge-dashboard
+    VERSION_FILE=chrono_forge-dashboard/lib/chrono_forge/dashboard/version.rb
+    CHANGELOG=chrono_forge-dashboard/CHANGELOG.md
+    GEMSPEC=chrono_forge-dashboard/chrono_forge-dashboard.gemspec
+    BUILD_DIR=chrono_forge-dashboard
+    TAG="chrono_forge-dashboard-v${VERSION}"
+    TAG_PATTERN='chrono_forge-dashboard-v*'
+    SCOPE=(--include-path 'chrono_forge-dashboard/**')
+    ;;
+  *) die "unknown gem '$GEM' (use: core | dashboard)" ;;
+esac
+
+cliff() { git-cliff --config cliff.toml --tag-pattern "$TAG_PATTERN" "${SCOPE[@]}" "$@"; }
+
+# Preconditions --------------------------------------------------------------
+command -v git-cliff >/dev/null || die "git-cliff not installed (brew install git-cliff)"
+[ "$(git rev-parse --abbrev-ref HEAD)" = main ] || die "not on main"
+git fetch -q origin
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "main is not in sync with origin/main"
+[ -z "$(git status --porcelain --untracked-files=no)" ] || die "working tree has uncommitted tracked changes"
+! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists"
+
+echo ">> Releasing $NAME $VERSION  (tag $TAG)"
+
+if [ "$DRY" = "--dry-run" ]; then
+  echo "[dry-run] new CHANGELOG section that would be generated:"
+  cliff --tag "$TAG" --unreleased --strip all 2>/dev/null | sed 's/^/    /' || echo "    (no conventional commits since the last $NAME tag)"
+  exit 0
+fi
+
+[ -f "$HOME/.local/share/gem/credentials" ] || [ -f "$HOME/.gem/credentials" ] || [ -n "${GEM_HOST_API_KEY:-}" ] || die "no RubyGems credentials (gem signin)"
+gh auth status >/dev/null 2>&1 || die "gh is not authenticated (gh auth login)"
+
+# Revert working-tree edits if anything fails before the commit lands.
+committed=0
+SECTION="$(mktemp)"
+trap '[ "$committed" = 1 ] || { echo "release aborted — reverting edits" >&2; git checkout -- "$VERSION_FILE" "$CHANGELOG" 2>/dev/null || true; }; rm -f "$SECTION"' EXIT
+
+# 1. bump version + prepend this version's section (generated from commits).
+# We inject ONLY the new section above the latest entry rather than regenerating
+# the whole file: path-filtering confuses cliff's historical tag boundaries, so a
+# full -o regen would misattribute past releases. Existing entries are preserved.
+perl -i -pe "s/VERSION = \"[^\"]*\"/VERSION = \"$VERSION\"/" "$VERSION_FILE"
+cliff --tag "$TAG" --unreleased --strip all > "$SECTION" 2>/dev/null || true
+[ -s "$SECTION" ] || die "git-cliff found no entries since the last $NAME tag — nothing to release"
+awk -v sf="$SECTION" '
+  !done && /^## \[/ { while ((getline l < sf) > 0) print l; print ""; done=1 }
+  { print }
+  END { if (!done) while ((getline l < sf) > 0) print l }
+' "$CHANGELOG" > "$CHANGELOG.tmp" && mv "$CHANGELOG.tmp" "$CHANGELOG"
+
+# 2. build + push the gem (before the commit/tag go public)
+( cd "$BUILD_DIR" && gem build "$(basename "$GEMSPEC")" )
+GEMFILE="$BUILD_DIR/${NAME}-${VERSION}.gem"
+[ -f "$GEMFILE" ] || die "expected built gem $GEMFILE not found"
+gem push "$GEMFILE"
+rm -f "$GEMFILE"
+
+# 3. commit, tag, push (gem is live — from here we always finish)
+git add "$VERSION_FILE" "$CHANGELOG"
+git commit -q -m "chore(release): $NAME $VERSION"
+committed=1
+git tag -a "$TAG" -m "$NAME $VERSION"
+git push origin main "$TAG"
+
+# 4. GitHub release, notes = this version's section (drop the redundant heading)
+NOTES="$(mktemp)"
+sed '1{/^## \[/d}' "$SECTION" > "$NOTES"
+gh release create "$TAG" --title "$NAME $VERSION" --notes-file "$NOTES"
+rm -f "$NOTES"
+
+echo ">> Done: $NAME $VERSION — RubyGems, tag $TAG, GitHub release."
+[ "$GEM" = core ] && echo "   Next: bump the dashboard's chrono_forge floor if it should require $VERSION, then: bin/release dashboard <version>"
