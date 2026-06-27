@@ -159,15 +159,13 @@ module ChronoForge
         # Catch-up fast-forward. A tick `t` is expired (its work is skipped) iff
         # `Time.current > t + timeout`, i.e. `t < now - timeout`. Rather than
         # walking one zero-delay job per expired tick, jump straight to the first
-        # non-expired tick on the same grid in closed form.
+        # non-expired tick on the same grid (see #advance_to_first_valid_tick).
         #
         # Anchoring the arithmetic on `next_execution_at` (already on the canonical
         # grid: start_at / created_at+every / last_execution_at+every all land on
         # it, because last_execution_at stores the *scheduled* time, not wall-clock)
-        # keeps the result exactly on the grid — no drift. This is exact for
-        # fixed-length intervals; calendar intervals like 1.month/1.year may land a
-        # tick off-grid over long gaps because n*every is added in one step (e.g.
-        # end-of-month clamping, DST) rather than applying `+ every` n times.
+        # keeps the result exactly on the grid — no drift, for fixed AND calendar
+        # intervals.
         #
         # Returns `next_execution_at` unchanged when nothing is expired. Otherwise
         # advances the coordination log's last_execution_at so a replay recomputes
@@ -177,8 +175,7 @@ module ChronoForge
           cutoff = Time.current - timeout
           return next_execution_at if next_execution_at >= cutoff
 
-          n = ((cutoff - next_execution_at) / every.to_f).ceil
-          first_valid = next_execution_at + (n * every)
+          first_valid, n = advance_to_first_valid_tick(next_execution_at, every, cutoff)
           last_skipped = first_valid - every
 
           Rails.logger.info {
@@ -212,11 +209,55 @@ module ChronoForge
           )
 
           # Record progress: a replay recomputes naive_next = last + every = first_valid.
+          # Use .iso8601 (second precision) to match the existing last_execution_at
+          # format so resumed pre-existing workflows keep the same on-disk grid.
           coordination_log.update!(
-            metadata: coordination_log.metadata.merge("last_execution_at" => last_skipped.iso8601(6))
+            metadata: coordination_log.metadata.merge("last_execution_at" => last_skipped.iso8601)
           )
 
           first_valid
+        end
+
+        # Walk the canonical grid from `from` to the first tick at/after `cutoff`,
+        # returning [first_valid_tick, ticks_skipped].
+        #
+        # Fixed-length intervals (seconds … weeks) are associative, so we jump in
+        # closed form (`from + n*every`). A bounded correction loop then absorbs the
+        # rounding error a DST transition can introduce — a wall-clock "day" can be
+        # 23h or 25h — so the result lands exactly on the grid.
+        #
+        # Calendar intervals (months/years) are NOT associative: `from + n*every`
+        # can drift off the grid (Jan 31 + 3.months = Apr 30, but stepping +1.month
+        # three times lands on Apr 28 via end-of-month clamping). The count of
+        # missed calendar ticks is always small, so we step exactly along the grid.
+        def advance_to_first_valid_tick(from, every, cutoff)
+          tick = from
+          n = 0
+          if calendar_interval?(every)
+            while tick < cutoff
+              tick += every
+              n += 1
+            end
+          else
+            n = ((cutoff - from) / every.to_f).ceil
+            tick = from + (n * every)
+            while tick < cutoff # undershot (e.g. a 25h DST day)
+              tick += every
+              n += 1
+            end
+            while tick - every >= cutoff # overshot (e.g. a 23h DST day)
+              tick -= every
+              n -= 1
+            end
+          end
+          [tick, n]
+        end
+
+        # A calendar (variable-length) interval — months or years — for which
+        # `n * every` is not equivalent to applying `+ every` n times.
+        def calendar_interval?(every)
+          return false unless every.respond_to?(:parts)
+          (every.parts.keys & [:months, :years]).any?
         end
 
         def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)

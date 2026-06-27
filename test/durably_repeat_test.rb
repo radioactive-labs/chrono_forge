@@ -480,10 +480,10 @@ class DurablyRepeatTest < ActiveJob::TestCase
     job = KitchenSink.new
     job.instance_variable_set(:@workflow, workflow)
 
-    every   = 1.second
+    every = 1.second
     timeout = 1.second
     next_at = Time.current - 60.seconds
-    cutoff  = Time.current - timeout
+    cutoff = Time.current - timeout
 
     result = job.send(:fast_forward_expired_prefix, coordination, next_at, every, timeout)
 
@@ -494,13 +494,49 @@ class DurablyRepeatTest < ActiveJob::TestCase
 
     coordination.reload
     assert coordination.metadata["last_execution_at"], "last_execution_at must be set"
-    assert_in_delta (result - every).to_f,
-      Time.parse(coordination.metadata["last_execution_at"]).to_f, 0.001
+    # last_execution_at is stored at second precision (the existing on-disk format),
+    # which is all the second-granular grid (step names use .to_i) needs.
+    assert_equal (result - every).to_i,
+      Time.parse(coordination.metadata["last_execution_at"]).to_i
 
     summary = workflow.execution_logs.where("step_name LIKE ?", "durably_repeat$x$%").to_a
     assert_equal 1, summary.size, "exactly one summary row for the skipped prefix"
     assert_equal "TimeoutError", summary.first.error_class
     assert_operator summary.first.metadata["fast_forwarded"].to_i, :>=, 1
+  end
+
+  # Calendar intervals (months) must land EXACTLY on the stepwise grid, not on the
+  # closed-form `from + n*every` which drifts via end-of-month clamping. Anchored
+  # at a clamping date (Jan 31) under a frozen clock so the drift is deterministic.
+  def test_fast_forward_monthly_stays_on_grid_across_month_clamping
+    travel_to Time.zone.parse("2026-05-15 00:00:00 UTC") do
+      workflow = ChronoForge::Workflow.create!(
+        key: "ff_month_#{rand(10_000)}", job_class: "KitchenSink",
+        kwargs: {}, options: {}, context: {}, state: :idle
+      )
+      coordination = workflow.execution_logs.create!(
+        step_name: "durably_repeat$x", state: :pending, metadata: {}
+      )
+      job = KitchenSink.new
+      job.instance_variable_set(:@workflow, workflow)
+
+      from = Time.zone.parse("2026-01-31 00:00:00 UTC")
+      every = 1.month
+      timeout = 1.day
+
+      result = job.send(:fast_forward_expired_prefix, coordination, from, every, timeout)
+
+      # Stepwise grid from Jan 31: Feb 28 → Mar 28 → Apr 28 → May 28. cutoff is
+      # May 14, so May 28 is the first non-expired tick. The OLD closed-form
+      # (Jan 31 + 4.months) would clamp to May 31 — off the grid.
+      assert_equal Time.zone.parse("2026-05-28 00:00:00 UTC"), result,
+        "monthly fast-forward must stay on the stepwise grid, not closed-form May 31"
+
+      # Independent recompute of the grid confirms it matches.
+      expected = from
+      expected += every while expected < (Time.current - timeout)
+      assert_equal expected, result
+    end
   end
 
   private

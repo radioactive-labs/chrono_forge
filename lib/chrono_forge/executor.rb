@@ -165,13 +165,22 @@ module ChronoForge
         end
       ensure
         if lock_acquired # Only release lock if we acquired it
-          context.save!
-          self.class::LockStrategy.release_lock(job_id, workflow)
-          # Publish the continuation only now — after the lock is released — so a
-          # zero-delay, same-key continuation can't lose the acquire race against
-          # this still-locked job. If release_lock raised (this job overran and
-          # lost the lock), we never reach here and another job owns continuation.
-          flush_continuation!
+          # Release the lock and publish the continuation even if context.save!
+          # raises — otherwise a transient save failure would leave the lock held
+          # (until it goes stale) AND drop the continuation, stranding the workflow
+          # with nothing scheduled to resume it. On a save failure the continuation
+          # resumes from the last persisted context, which is exactly crash
+          # semantics (durable steps replay).
+          begin
+            context.save!
+          ensure
+            self.class::LockStrategy.release_lock(job_id, workflow)
+            # Publish the continuation only now — after the lock is released — so a
+            # zero-delay, same-key continuation can't lose the acquire race against
+            # this still-locked job. If release_lock raised (this job overran and
+            # lost the lock), we never reach here and another job owns continuation.
+            flush_continuation!
+          end
         end
       end
     end

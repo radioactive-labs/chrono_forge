@@ -67,6 +67,31 @@ class ContinuationFlushTest < ActiveJob::TestCase
       job.send(:flush_continuation!)
     end
   end
+
+  # If context.save! fails in the ensure block, the lock must STILL be released and
+  # the recorded continuation STILL published — otherwise a transient save failure
+  # would strand the workflow (lock held until stale, nothing scheduled to resume).
+  def test_lock_release_and_continuation_survive_context_save_failure
+    key = "save_fail_#{rand(100_000)}"
+
+    ChronoForge::Executor::Context.class_eval { alias_method :__orig_save!, :save! }
+    ChronoForge::Executor::Context.define_method(:save!) { raise "boom" }
+    begin
+      assert_raises(RuntimeError) { WaitContinuationJob.perform_now(key) }
+    ensure
+      ChronoForge::Executor::Context.class_eval do
+        alias_method :save!, :__orig_save!
+        remove_method :__orig_save!
+      end
+    end
+
+    wf = ChronoForge::Workflow.find_by(key: key)
+    assert wf, "workflow row should exist"
+    assert_nil wf.locked_by, "lock must be released even when context.save! raises"
+    assert_equal "idle", wf.state, "workflow must be returned to idle, not left running"
+    assert(enqueued_jobs.any? { |j| j.to_s.include?(key) },
+      "the continuation must still be published when context.save! raises")
+  end
 end
 
 class WaitContinuationJob < WorkflowJob
