@@ -196,4 +196,35 @@ class BranchMergeJobTest < ActiveJob::TestCase
     end
     assert_equal 2, @log.reload.metadata["poll"]["polls"]
   end
+
+  # Fencing: a poller whose token no longer matches the branch log's stored token
+  # has been superseded by a newer merge_branches pass. It must stop dead — no
+  # reschedule, no parent wake, no rekick — even though there is pending work.
+  def test_superseded_poller_with_stale_token_stops
+    @log.update!(metadata: {"poll_token" => "current"})
+    child!(state: :running) # would otherwise force a reschedule
+    assert_no_enqueued_jobs do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300, "stale")
+    end
+  end
+
+  # The current-token poller is the live chain and keeps polling.
+  def test_current_token_poller_proceeds
+    @log.update!(metadata: {"poll_token" => "tok"})
+    child!(state: :running)
+    assert_enqueued_with(job: ChronoForge::BranchMergeJob) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300, "tok")
+    end
+  end
+
+  # A superseded poller must never clobber the newer chain's token or write poll
+  # state — the stored token stays put and no "poll" key is written.
+  def test_superseded_poller_does_not_touch_metadata
+    @log.update!(metadata: {"poll_token" => "new"})
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300, "old")
+    meta = @log.reload.metadata
+    assert_equal "new", meta["poll_token"], "stale poller must not rotate the token"
+    assert_nil meta["poll"], "stale poller must not write poll state"
+  end
 end

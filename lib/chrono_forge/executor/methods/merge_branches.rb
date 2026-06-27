@@ -52,9 +52,20 @@ module ChronoForge
         end
 
         def enqueue_branch_merge_job(branch_log_ids, min_interval, max_interval)
+          # Mint a fresh fencing token and stamp it on each branch log under a row
+          # lock — the read-modify-write must not clobber a concurrent poll-state
+          # write from an in-flight poller. Rotating the token orphans any prior
+          # poller chain (its token no longer matches), so only the chain we enqueue
+          # below drives the merge. See BranchMergeJob#superseded?.
+          token = SecureRandom.uuid
+          ExecutionLog.where(id: branch_log_ids).find_each do |log|
+            log.with_lock do
+              log.update!(metadata: (log.metadata || {}).merge("poll_token" => token))
+            end
+          end
           BranchMergeJob.perform_later(
             @workflow.key, self.class.to_s, branch_log_ids,
-            min_interval.to_i, max_interval.to_i
+            min_interval.to_i, max_interval.to_i, token
           )
         end
       end

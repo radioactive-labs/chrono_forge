@@ -113,6 +113,22 @@ class MergeBranchesTest < ActiveJob::TestCase
     assert bad_child, "stalling child workflow should exist"
     assert bad_child.failed?, "stalling child should be in failed state"
   end
+
+  def test_merge_stamps_shared_fencing_token_on_branch_logs
+    TwoBranchWorkflow.perform_later("mb-token")
+    # Run only the parent's first pass: it dispatches children and halts at the
+    # merge after stamping the fencing token on the branch logs. The children and
+    # the poller stay queued (filtered out), so we observe the post-stamp state.
+    perform_enqueued_jobs(only: TwoBranchWorkflow)
+
+    parent = ChronoForge::Workflow.find_by(key: "mb-token")
+    tokens = parent.execution_logs
+      .where("step_name LIKE 'branch$%'")
+      .map { |l| l.metadata["poll_token"] }
+    assert_equal 2, tokens.size, "both branch logs present"
+    assert tokens.all?(&:present?), "each branch log carries a fencing token"
+    assert_equal 1, tokens.uniq.size, "all branches in the merge share one token"
+  end
 end
 
 # ---------------------------------------------------------------------------

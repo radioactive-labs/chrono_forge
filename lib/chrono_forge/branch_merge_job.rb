@@ -21,8 +21,15 @@ module ChronoForge
     REKICK_AFTER = 5.minutes
     REKICK_BATCH = 200   # bound per-run rekicks; later polls handle the rest
 
-    def perform(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval)
+    def perform(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token = nil)
       raise ArgumentError, "branch_log_ids must not be empty" if branch_log_ids.empty?
+
+      # Fencing: every merge_branches pass mints a fresh token and writes it onto
+      # the branch logs, so a poller from a superseded chain (parent replay /
+      # re-enqueue) holds a stale token. It stops quietly — no poll, no wake, no
+      # reschedule — leaving only the newest chain to drive the merge. (A nil token
+      # is a pre-upgrade job enqueued before fencing existed; it runs unfenced.)
+      return if superseded?(branch_log_ids, token)
 
       # Per-branch probe (kept as maps so we can persist each branch's own state,
       # not just the merge aggregate). Same query count as a plain sum/all?.
@@ -32,7 +39,7 @@ module ChronoForge
       sealed = sealed_by_branch.values.all?
 
       if sealed && pending.zero?
-        record_poll!(pending_by_branch, sealed_by_branch, next_poll_at: nil)
+        record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil)
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
@@ -40,12 +47,21 @@ module ChronoForge
       rekick_dropped_jobs(branch_log_ids)
 
       delay = (pending * FACTOR).clamp(min_interval, max_interval)
-      record_poll!(pending_by_branch, sealed_by_branch, next_poll_at: delay.seconds.from_now)
+      record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now)
       self.class.set(wait: delay.seconds)
-        .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval)
+        .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
 
     private
+
+    # A poller is superseded when its token no longer matches what's stored on the
+    # branch logs (a newer merge_branches pass rotated it). A plain read is enough
+    # for the early-out; the persisting write in record_poll! re-checks the token
+    # under a row lock so it can never clobber the newer chain.
+    def superseded?(branch_log_ids, token)
+      logs = ExecutionLog.where(id: branch_log_ids).to_a
+      logs.empty? || logs.any? { |log| log.metadata&.dig("poll_token") != token }
+    end
 
     # ActiveJob exposes no portable API to enumerate enqueued/scheduled jobs, so a
     # poller in the backend's scheduled set is invisible to a backend-agnostic
@@ -55,18 +71,25 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, next_poll_at:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
-        meta = log.metadata || {}
-        meta["poll"] = {
-          "last_polled_at" => now.iso8601,
-          "next_poll_at" => next_poll_at&.iso8601,
-          "pending" => pending_by_branch[log.id],
-          "sealed" => sealed_by_branch[log.id],
-          "polls" => meta.dig("poll", "polls").to_i + 1
-        }
-        log.update!(metadata: meta)
+        # Lock the row so this read-modify-write can't clobber a concurrent token
+        # rotation (merge_branches) or another poller's metadata write — both touch
+        # the same JSON column. Re-check the token under the lock and skip if we've
+        # been superseded mid-run, so a stale poller never overwrites the fence.
+        log.with_lock do
+          meta = log.metadata || {}
+          next unless meta["poll_token"] == token
+          meta["poll"] = {
+            "last_polled_at" => now.iso8601,
+            "next_poll_at" => next_poll_at&.iso8601,
+            "pending" => pending_by_branch[log.id],
+            "sealed" => sealed_by_branch[log.id],
+            "polls" => meta.dig("poll", "polls").to_i + 1
+          }
+          log.update!(metadata: meta)
+        end
       end
     end
 
