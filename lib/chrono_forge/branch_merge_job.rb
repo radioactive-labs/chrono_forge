@@ -42,16 +42,19 @@ module ChronoForge
     private
 
     # A child that was dispatched but never picked up (its job was dropped by the
-    # backend) sits in :idle forever — note branch children keep started_at nil
-    # their whole life (the executor only sets started_at when it CREATES the row,
-    # but branch children are pre-inserted), so :idle, not started_at, is the
-    # "never ran" signal. We only re-kick :idle children idle past REKICK_AFTER
-    # (a running child must never be re-dispatched; a failed/stalled child needs
-    # operator recovery). Re-enqueue of an :idle child a worker just grabbed is
-    # still safe — the lock guard rejects the duplicate. Capped per run.
+    # backend) sits :idle with started_at nil. setup_workflow! stamps started_at
+    # on a child's first execution, so a nil started_at precisely means "never
+    # ran" — that's what we rekick on. It correctly excludes a child that ran and
+    # is now parked on a wait/wait_until (also :idle, but started_at is set):
+    # rekicking that would re-evaluate the wait condition prematurely and pile up
+    # duplicate scheduled jobs. We also require the row to be stale past
+    # REKICK_AFTER (a freshly dispatched child just hasn't been grabbed yet) and
+    # keep the :idle guard (a running/failed/stalled child must never be
+    # re-dispatched). Re-enqueue of an :idle child a worker just grabbed is still
+    # safe — the lock guard rejects the duplicate. Capped per run.
     def rekick_dropped_jobs(branch_log_ids)
       branch_log_ids.each do |id|
-        Workflow.where(parent_execution_log_id: id, state: Workflow.states[:idle])
+        Workflow.where(parent_execution_log_id: id, state: Workflow.states[:idle], started_at: nil)
           .where("updated_at < ?", REKICK_AFTER.ago)
           .limit(REKICK_BATCH)
           .find_each do |child|

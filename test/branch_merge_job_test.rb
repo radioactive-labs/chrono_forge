@@ -98,6 +98,20 @@ class BranchMergeJobTest < ActiveJob::TestCase
     end
   end
 
+  # A child that ran and is now parked on a wait/wait_until is :idle with
+  # started_at SET — it has been picked up, just halted waiting. It must NOT be
+  # mistaken for a dropped (never-run) child and rekicked: that would re-check the
+  # wait condition prematurely and pile up duplicate scheduled jobs. The updated_at
+  # here is deliberately stale (10 min) to prove started_at — not staleness — is
+  # what spares it.
+  def test_does_not_rekick_waiting_child
+    waiting = child!(state: :idle, started_at: 20.minutes.ago)
+    waiting.update_column(:updated_at, 10.minutes.ago)
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
   # When more stale-idle children exist than REKICK_BATCH, exactly REKICK_BATCH
   # are re-enqueued in one poll; the rest are handled on the next pass.
   def test_rekick_is_capped_at_batch_size

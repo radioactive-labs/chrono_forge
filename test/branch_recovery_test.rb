@@ -242,4 +242,23 @@ class BranchRecoveryTest < ActiveJob::TestCase
       ChronoForge::Workflow.states[:stalled]
     ]).count, "no failed/stalled children"
   end
+
+  # setup_workflow! stamps started_at the first time a pre-inserted child runs.
+  # Branch children are inserted by the parent (insert_all) without started_at;
+  # this stamp is what lets the rekick poller tell "ran, now waiting" (started_at
+  # set) from "never picked up / dropped" (started_at nil).
+  def test_pre_inserted_child_records_started_at_on_first_run
+    row = ChronoForge::Workflow.create!(
+      key: "started-at-1", job_class: "NoopChild",
+      kwargs: {}, options: {}, context: {}, state: :idle, started_at: nil
+    )
+    assert_nil row.started_at
+
+    NoopChild.perform_later("started-at-1")
+    perform_all_jobs
+
+    row.reload
+    assert row.completed?, "child should complete"
+    assert_not_nil row.started_at, "started_at must be stamped on first execution"
+  end
 end

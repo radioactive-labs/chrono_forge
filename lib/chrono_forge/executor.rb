@@ -198,6 +198,15 @@ module ChronoForge
           workflow.kwargs = kwargs
           workflow.started_at = Time.current
         end
+
+      # Branch children are pre-inserted by their parent (dispatch_children's
+      # insert_all), so the creation block above never runs for them and their
+      # started_at stays nil. Stamp it the first time the child actually executes
+      # so started_at reliably means "has been picked up and run" — the
+      # BranchMergeJob rekick poller treats a nil started_at as a never-executed
+      # (dropped) child, and must not mistake a child that ran and is now parked
+      # on a wait (also :idle) for one that was never picked up.
+      @workflow.update_column(:started_at, Time.current) if @workflow.started_at.nil?
     end
 
     def setup_context!
