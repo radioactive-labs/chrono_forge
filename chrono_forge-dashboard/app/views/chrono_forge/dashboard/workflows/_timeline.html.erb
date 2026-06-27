@@ -49,7 +49,10 @@
             <% if e.last_run_at %>
               <span>· last run <%= cf_ago(e.last_run_at) %></span>
             <% end %>
-            <%= link_to "view repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name), class: "underline hover:text-zinc-900" %>
+          </div>
+          <div class="mt-2">
+            <%= link_to "repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name),
+                  class: "inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50" %>
           </div>
         <% end %>
       </div>
