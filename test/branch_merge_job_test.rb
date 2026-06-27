@@ -73,4 +73,65 @@ class BranchMergeJobTest < ActiveJob::TestCase
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [], 5, 300)
     end
   end
+
+  # A freshly-dispatched idle child has NOT exceeded REKICK_AFTER yet, so it
+  # must not be re-enqueued — only children stale past the threshold are
+  # presumed dropped.
+  def test_does_not_rekick_recent_idle_child
+    recent = child!(state: :idle, started_at: nil)
+    recent.update_column(:updated_at, 1.minute.ago)
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Failed/stalled children need operator recovery — a blind rekick must never
+  # touch them. Both are "incomplete" so pending > 0 and the poller does NOT
+  # early-return; it must still skip them when selecting idle candidates.
+  def test_does_not_rekick_failed_or_stalled_children
+    failed = child!(state: :failed, started_at: nil)
+    stalled = child!(state: :stalled, started_at: nil)
+    failed.update_column(:updated_at, 10.minutes.ago)
+    stalled.update_column(:updated_at, 10.minutes.ago)
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # When more stale-idle children exist than REKICK_BATCH, exactly REKICK_BATCH
+  # are re-enqueued in one poll; the rest are handled on the next pass.
+  def test_rekick_is_capped_at_batch_size
+    stale = 10.minutes.ago
+    rows = (ChronoForge::BranchMergeJob::REKICK_BATCH + 5).times.map do
+      {
+        key: "cap-#{SecureRandom.hex}",
+        job_class: "NoopChild",
+        parent_execution_log_id: @log.id,
+        state: ChronoForge::Workflow.states[:idle],
+        kwargs: {},
+        options: {},
+        context: {},
+        created_at: stale,
+        updated_at: stale
+      }
+    end
+    ChronoForge::Workflow.insert_all(rows)
+
+    assert_enqueued_jobs(ChronoForge::BranchMergeJob::REKICK_BATCH, only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # A rekicked child doesn't just get enqueued — it runs to :completed,
+  # closing the full recovery loop.
+  def test_rekicked_child_runs_to_completion
+    stuck = child!(state: :idle, started_at: nil)
+    stuck.update_column(:updated_at, 10.minutes.ago)
+
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    perform_enqueued_jobs(only: NoopChild)
+
+    assert stuck.reload.completed?, "rekicked child must run to completion"
+  end
 end
