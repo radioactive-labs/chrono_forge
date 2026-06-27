@@ -959,6 +959,18 @@ end
 > `.order(...)` raises. For non-AR enumerables, items are keyed by position, so
 > inserting or removing items mid-dispatch would shift keys and break idempotency.
 
+> **`spawn_each` AR sources must have stable membership.** Dispatch streams by
+> ascending primary key and resumes from the last key on crash-recovery, so a row
+> that enters the relation *below* the cursor after it has passed (e.g. a
+> `where(state: …)` scope whose rows mutate mid-dispatch) will never get a child.
+> Point `spawn_each` at a set that is fixed for the branch's lifetime — a frozen id
+> range, an append-only table, or `where(id: [...])` over a snapshot.
+
+> **`branch` blocks cannot be lexically nested within one workflow.** Opening a
+> `branch` inside another `branch` block raises `ArgumentError`; spawns belong to
+> exactly one branch. (A *spawned child workflow* may open its own branches — it
+> runs in its own executor — so cross-workflow nesting is fine.)
+
 ## 🚀 Development
 
 After checking out the repo, run:

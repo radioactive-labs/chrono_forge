@@ -46,13 +46,20 @@ module ChronoForge
 
       rekick_dropped_jobs(branch_log_ids)
 
-      delay = (pending * FACTOR).clamp(min_interval, max_interval)
+      delay = reschedule_delay(pending, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
 
     private
+
+    # Adaptive poll cadence: scale the wait with the number of pending children,
+    # clamped to [min_interval, max_interval]. min_interval <= max_interval is
+    # enforced up front in merge_branches, so the clamp can't raise here.
+    def reschedule_delay(pending, min_interval, max_interval)
+      (pending * FACTOR).clamp(min_interval, max_interval)
+    end
 
     # A poller is superseded when its token no longer matches what's stored on the
     # branch logs (a newer merge_branches pass rotated it). A plain read is enough
@@ -112,7 +119,18 @@ module ChronoForge
           .find_each do |child|
             # Intentionally uses the GUARDED perform_later (single-child path),
             # unlike the bulk perform_all_later bypass in dispatch_children.
+            #
+            # Rekick is best-effort recovery, so one bad child must never sink the
+            # poll: a raise here (e.g. cross-version kwarg drift failing the enqueue
+            # guard) would abort the whole run and — since it isn't a transient AR
+            # error — dead-letter the poller, orphaning every healthy sibling. Catch
+            # per child, log, and let the next poll retry it (it's still idle+stale).
             child.job_klass.perform_later(child.key, **child.kwargs.symbolize_keys)
+          rescue => e
+            Rails.logger.error do
+              "ChronoForge:BranchMergeJob rekick failed for child #{child.key}: " \
+              "#{e.class}: #{e.message}"
+            end
           end
       end
     end

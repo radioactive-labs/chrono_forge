@@ -53,10 +53,15 @@ module ChronoForge
         end
 
         # Dispatch one child per item of `source`, streamed. AR relations use
-        # keyset iteration (find_in_batches start:) for constant memory; any other
-        # enumerable uses an offset cursor. Items are keyed `name_{index}` by their
-        # sequential position, so the source must re-enumerate identically across
-        # replays. The block returns [WorkflowClass, kwargs] (or a bare class).
+        # keyset iteration (find_in_batches start:) for constant memory and are
+        # keyed by record id; any other enumerable uses an offset cursor and is
+        # keyed `name_{index}` by position. Either way the source must re-enumerate
+        # identically across replays. For AR sources that additionally means STABLE
+        # MEMBERSHIP: dispatch resumes from the last primary key on crash-recovery,
+        # so a row entering the relation below the cursor after it passed (e.g. a
+        # mutating `where(state:)` scope) never gets a child — point spawn_each at a
+        # set fixed for the branch's lifetime. The block returns [WorkflowClass,
+        # kwargs] (or a bare class).
         def spawn_each(name, source, of: 1000)
           cb = current_branch!
           validate_step_name_segment!(name)

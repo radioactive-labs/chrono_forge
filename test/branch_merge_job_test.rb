@@ -227,4 +227,18 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_equal "new", meta["poll_token"], "stale poller must not rotate the token"
     assert_nil meta["poll"], "stale poller must not write poll state"
   end
+
+  # Adaptive cadence: the reschedule delay scales with pending and clamps to
+  # [min_interval, max_interval].
+  def test_reschedule_delay_scales_and_clamps
+    job = ChronoForge::BranchMergeJob.new
+    factor = ChronoForge::BranchMergeJob::FACTOR
+
+    # Few pending → clamps up to min_interval.
+    assert_equal 5, job.send(:reschedule_delay, 1, 5, 300)
+    # Mid-range → scales linearly by FACTOR (100 * 0.06 = 6).
+    assert_in_delta 100 * factor, job.send(:reschedule_delay, 100, 5, 300), 0.001
+    # Huge pending → clamps down to max_interval.
+    assert_equal 300, job.send(:reschedule_delay, 1_000_000, 5, 300)
+  end
 end

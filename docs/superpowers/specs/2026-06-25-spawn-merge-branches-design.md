@@ -74,7 +74,7 @@ end
 | Branch tracking | An **in-memory registry** (`@open_branches`), rebuilt each replay pass: `branch` adds, `merge_branches` removes on completion, the completion gate inspects the remainder. Deterministic replay makes it exact — no persisted `merged`/`automerge` flags. |
 | Every branch must be joined | **No detached branches.** Any branch remaining in `@open_branches` at completion (neither `merge_branches`-d nor automerged) **raises `UnmergedBranchError`** (fail-fast on a forgotten join), rather than silently letting children run orphaned. `automerge: true` branches are joined inline at the block close and are absent from `@open_branches` by the time the completion gate runs. |
 | Spawn identity | Spawns are **named** (`spawn :reconcile, …`, `spawn_each :orders, …`). The name anchors the child key and the per-`spawn_each` cursor — stable across code reordering (unlike a positional ordinal). AR items are keyed `name_<record.id>` (primary key); plain enumerable items are keyed `name_{index}` (sequential index). |
-| Bulk source | `spawn_each` **streams** the source — `in_batches(of:, start: cursor)` for AR — never materialising the batch in memory. Scales to millions. |
+| Bulk source | `spawn_each` **streams** the source — `find_in_batches(batch_size: of, start: cursor)` for AR — never materialising the batch in memory. Scales to millions. |
 | Child class | **Returned from the block** (`[WorkflowClass, kwargs]`); one branch may fan out into mixed workflow types. |
 | Child key | Deterministic: `spawn` → `"#{parent.key}$#{branch}$#{spawn_name}"`; AR `spawn_each` item → `"#{parent.key}$#{branch}$#{spawn_name}_#{record.id}"`; enumerable item → `"#{parent.key}$#{branch}$#{spawn_name}_#{index}"`. Idempotency falls out of the unique-key constraint. |
 | Cursor | Per `spawn_each`, stored in the `branch$<name>` log's `metadata` keyed by **spawn name** as `{ pk: <keyset>, n: <count/index> }`; persisted **once per dispatched chunk** (bundled with that chunk's `insert_all`). |
@@ -183,7 +183,7 @@ not), since the `branch` method itself always executes even when its block is sk
   (`{ pk:, n: }`); `n` is a running count (AR) or the resume index (enumerable):
   - **AR relation:** rejects `source` if `source.order_values.present?` (raises
     `NotExecutableError` — iteration is by PK and an explicit order conflicts). Resumes via
-    `source.in_batches(of:, start: cursor.pk)`. Per batch, for each record: `klass, kw =
+    `source.find_in_batches(batch_size: of, start: cursor.pk)`. Per batch, for each record: `klass, kw =
     yield(record)`; build child rows (key
     `"#{parent.key}$#{branch}$#{name}_#{record.id}"`, `job_class`, `kwargs`,
     `parent_execution_log_id: branch_log.id`, `state: :idle`); `insert_all(…, unique_by:
@@ -277,7 +277,7 @@ The cursor is only meaningful if iteration is reproducible across replays:
 
 - **AR relation:** children are keyed by **primary key** (`name_<record.id>`), so the
   mapping from record to child key is stable regardless of enumeration order. Iteration is
-  driven by **primary-key keyset** (`in_batches(start:)`). `spawn_each` rejects a relation
+  driven by **primary-key keyset** (`find_in_batches(start:)`). `spawn_each` rejects a relation
   carrying an explicit `.order(...)` by checking `order_values.present?` up front (raises
   `NotExecutableError`) — relying on `find_in_batches`'s `error_on_ignore` is not
   sufficient because `find_in_batches(start:)` is inclusive and a crash-resume re-yields
@@ -320,7 +320,7 @@ Three layers — **what exists** (DB), **how far dispatch got** (cursor), **step
 A `branch :fulfillment` block's `spawn_each :orders` had committed 250k child rows + jobs
 with `metadata.cursors["orders"]` at `{ pk: <250,000th PK>, n: 250_000 }`; it was mid-chunk
 when the process died. The `branch$orders` log is still `pending` (not sealed), so workflow retry replays
-from the top. The block re-runs; `spawn_each` resumes `in_batches(start: cursor)` from PK
+from the top. The block re-runs; `spawn_each` resumes `find_in_batches(start: cursor)` from PK
 250,000 — re-touching ~50k rows, worst-case duplicate enqueue is the single in-flight
 chunk. The 250k already dispatched keep running the whole time. When the source is
 exhausted the block closes and the branch seals; `merge_branches`/automerge then polls to
@@ -363,7 +363,7 @@ irreducible for N sub-workflows, done in bounded chunks by one parent job.
   job enqueue batching is best-effort.
 
 Other caveats to verify in the plan:
-- `in_batches` `start:` semantics (inclusive boundary — the boundary record is re-yielded on
+- `find_in_batches` `start:` semantics (inclusive boundary — the boundary record is re-yielded on
   crash-resume; PK-keyed children dedup via `insert_all`-ignore) and the per-adapter
   bind-param limit for the `of:` chunk size (notably SQLite's `SQLITE_MAX_VARIABLE_NUMBER`).
 - The merge capped count must be index-only on `(parent_execution_log_id, state)`.

@@ -28,7 +28,11 @@ class AutomergeTest < ActiveJob::TestCase
   def test_unmerged_branch_raises
     UnmergedBranchWorkflow.perform_later("um-1")
     error = assert_raises(ChronoForge::Executor::UnmergedBranchError) { perform_all_jobs }
-    assert_match(/forgotten/, error.message)
+    # Assert the contract (an opened-but-unjoined branch is reported with a fix
+    # hint), not just that the branch name is echoed.
+    assert_match(/never merged/, error.message)
+    assert_match(/automerge: true/, error.message)
+    assert_match(/forgotten/, error.message, "should name the offending branch")
   end
 
   # The inline automerge halts inside `branch` until the branch is joined, so a

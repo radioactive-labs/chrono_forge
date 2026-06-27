@@ -53,4 +53,44 @@ class BranchTest < ActiveJob::TestCase
     assert_equal 0, inserts, "sealed branch must not re-dispatch children on replay"
     assert_equal 1, ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id).count
   end
+
+  # branch blocks may not be lexically nested within one workflow — spawns belong
+  # to exactly one branch. The guard runs before the block is yielded. (Unit test:
+  # the executor's generic rescue would otherwise swallow the ArgumentError.)
+  def test_lexically_nested_branch_raises
+    job = SingleSpawnWorkflow.new
+    job.instance_variable_set(:@current_branch, {name: "outer", log: nil})
+    error = assert_raises(ArgumentError) do
+      job.branch(:inner) { spawn :x, NoopChild }
+    end
+    assert_match(/nested/, error.message)
+  end
+
+  def test_branch_name_with_dollar_raises
+    workflow = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:"a$b") { spawn :one, NoopChild }
+      end
+    end
+    Object.const_set(:DollarBranchWorkflow, workflow)
+    DollarBranchWorkflow.perform_later("db-1")
+    assert_raises(ChronoForge::Executor::InvalidStepName) { perform_all_jobs }
+  ensure
+    Object.send(:remove_const, :DollarBranchWorkflow) if defined?(DollarBranchWorkflow)
+  end
+
+  def test_spawn_name_with_dollar_raises
+    workflow = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:ok) { spawn :"a$b", NoopChild }
+      end
+    end
+    Object.const_set(:DollarSpawnWorkflow, workflow)
+    DollarSpawnWorkflow.perform_later("ds-1")
+    assert_raises(ChronoForge::Executor::InvalidStepName) { perform_all_jobs }
+  ensure
+    Object.send(:remove_const, :DollarSpawnWorkflow) if defined?(DollarSpawnWorkflow)
+  end
 end

@@ -15,6 +15,15 @@ module ChronoForge
             end
           end
 
+          # Validate cadence here, in the parent, so a misconfiguration fails at the
+          # call site instead of deep inside the poller — where (pending * FACTOR)
+          # .clamp(min, max) would raise ArgumentError, a non-transient error that
+          # dead-letters BranchMergeJob and orphans the parent.
+          if min_interval > max_interval
+            raise ArgumentError,
+              "min_interval (#{min_interval}) must be <= max_interval (#{max_interval})"
+          end
+
           names = names.map(&:to_s).uniq
           step_name = "merge$#{names.sort.join(",")}"
           log = find_or_create_execution_log!(step_name) { |l| l.started_at = Time.current }

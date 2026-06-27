@@ -129,6 +129,37 @@ class MergeBranchesTest < ActiveJob::TestCase
     assert tokens.all?(&:present?), "each branch log carries a fencing token"
     assert_equal 1, tokens.uniq.size, "all branches in the merge share one token"
   end
+
+  # merge_branch (singular) is an alias of merge_branches and must join a branch.
+  def test_merge_branch_singular_alias_joins
+    wf = Class.new(WorkflowJob) do
+      prepend ChronoForge::Executor
+      def perform
+        branch(:a) { spawn :one, NoopChild }
+        merge_branch :a
+        context["done"] = true
+      end
+    end
+    Object.const_set(:SingularMergeWorkflow, wf)
+    SingularMergeWorkflow.perform_later("singular-1")
+    perform_all_jobs
+
+    parent = ChronoForge::Workflow.find_by(key: "singular-1")
+    assert parent.completed?, "merge_branch alias should drive the join to completion"
+    assert_equal true, parent.context["done"]
+    assert parent.execution_logs.find_by(step_name: "merge$a")&.completed?
+  ensure
+    Object.send(:remove_const, :SingularMergeWorkflow) if defined?(SingularMergeWorkflow)
+  end
+
+  # A min_interval > max_interval is rejected at the call site (in the parent), not
+  # deep in the poller where the clamp would raise and dead-letter BranchMergeJob.
+  def test_merge_branches_rejects_min_interval_greater_than_max
+    job = SingleSpawnWorkflow.new
+    assert_raises(ArgumentError) do
+      job.merge_branches(:a, min_interval: 10.seconds, max_interval: 5.seconds)
+    end
+  end
 end
 
 # ---------------------------------------------------------------------------
