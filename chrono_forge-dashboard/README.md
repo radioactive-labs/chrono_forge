@@ -89,15 +89,17 @@ All options go in the same `configure` block as auth:
 
 ```ruby
 ChronoForge::Dashboard.configure do |c|
-  c.polling_interval    = 5     # seconds; the workflow list auto-refreshes via JS. 0 to disable.
-  c.page_size           = 50    # workflows per page
-  c.long_wait_threshold = 3600  # seconds; wait-state ages above this are flagged
+  c.polling_interval         = 5                      # seconds; the default auto-refresh interval. 0 to disable.
+  c.polling_interval_options = [0, 5, 10, 30, 60, 300] # selectable intervals in the nav "refresh" control
+  c.page_size                = 50                     # workflows per page
+  c.long_wait_threshold      = 3600                   # seconds; wait-state ages above this are flagged
 end
 ```
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `polling_interval` | `5` | Seconds between list auto-refreshes. `0` disables polling. |
+| `polling_interval` | `5` | Seconds between auto-refreshes (the default). A viewer can override it with the nav "refresh" control (stored in a cookie). `0` disables. |
+| `polling_interval_options` | `[0, 5, 10, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
 

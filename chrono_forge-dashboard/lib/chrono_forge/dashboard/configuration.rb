@@ -13,13 +13,15 @@ module ChronoForge
     class Configuration
       attr_accessor :http_basic, :authentication
       attr_reader :auth_hook
-      attr_accessor :polling_interval, :page_size, :long_wait_threshold
+      attr_accessor :polling_interval, :polling_interval_options, :page_size, :long_wait_threshold
 
       def initialize
         @http_basic = nil
         @authentication = nil
         @auth_hook = nil
         @polling_interval = 5
+        # Selectable auto-refresh intervals (seconds; 0 = off) for the nav control.
+        @polling_interval_options = [0, 5, 10, 30, 60, 300]
         @page_size = 50
         @long_wait_threshold = 3600
       end

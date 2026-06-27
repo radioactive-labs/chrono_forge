@@ -37,6 +37,15 @@ class DashboardHelperTest < ActionView::TestCase
     assert_equal "5s", cf_poll_label(5)
     assert_equal "30s", cf_poll_label(30)
     assert_equal "1m", cf_poll_label(60)
+    assert_equal "5m", cf_poll_label(300)
+  end
+
+  test "cf_poll_options come from config" do
+    assert_equal [0, 5, 10, 30, 60, 300], cf_poll_options
+    ChronoForge::Dashboard.configure { |c| c.polling_interval_options = [0, 7] }
+    assert_equal [0, 7], cf_poll_options
+  ensure
+    ChronoForge::Dashboard.reset_configuration!
   end
 
   test "cf_capped: shows N+ at the cap" do

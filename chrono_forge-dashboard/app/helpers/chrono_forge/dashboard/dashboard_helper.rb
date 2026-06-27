@@ -40,10 +40,8 @@ module ChronoForge
       end
 
       # Auto-refresh interval in seconds (0 = off). A cookie-persisted nav control
-      # overrides the configured default per viewer.
-      POLL_OPTIONS = [0, 5, 15, 30, 60].freeze
-
-      def cf_poll_options = POLL_OPTIONS
+      # overrides the configured default per viewer; options come from config.
+      def cf_poll_options = ChronoForge::Dashboard.config.polling_interval_options
 
       def cf_poll_interval
         raw = cookies[:cf_poll_interval]
