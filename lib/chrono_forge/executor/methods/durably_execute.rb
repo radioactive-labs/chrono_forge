@@ -105,12 +105,10 @@ module ChronoForge
               bump_retry_count!(execution_log, policy_key)
             end
             if backoff
-              # Reschedule with the policy's backoff. The workflow replays on
-              # resume and skips completed steps, so the rescheduled run picks
-              # this step up again by its persisted execution log.
-              self.class
-                .set(wait: backoff)
-                .perform_later(@workflow.key)
+              # Reschedule with the policy's backoff (published after lock release).
+              # The workflow replays on resume and skips completed steps, so the
+              # rescheduled run picks this step up again by its execution log.
+              enqueue_continuation(wait: backoff)
 
               # Halt current execution
               halt_execution!

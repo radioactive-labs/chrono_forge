@@ -102,10 +102,8 @@ module ChronoForge
             last_executed_at: Time.current
           )
 
-          # Reschedule the job
-          self.class
-            .set(wait: duration)
-            .perform_later(@workflow.key)
+          # Record the reschedule; the executor publishes it after lock release.
+          enqueue_continuation(wait: duration)
 
           # Halt current execution
           halt_execution!

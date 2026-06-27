@@ -148,11 +148,106 @@ module ChronoForge
             coordination_log.created_at + every
           end
 
+          next_execution_at = fast_forward_expired_prefix(coordination_log, next_execution_at, every, timeout)
+
           execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           nil
         end
 
         private
+
+        # Catch-up fast-forward. A tick `t` is expired (its work is skipped) iff
+        # `Time.current > t + timeout`, i.e. `t < now - timeout`. Rather than
+        # walking one zero-delay job per expired tick, jump straight to the first
+        # non-expired tick on the same grid (see #advance_to_first_valid_tick).
+        #
+        # Anchoring the arithmetic on `next_execution_at` (already on the canonical
+        # grid: start_at / created_at+every / last_execution_at+every all land on
+        # it, because last_execution_at stores the *scheduled* time, not wall-clock)
+        # keeps the result exactly on the grid — no drift, for fixed AND calendar
+        # intervals.
+        #
+        # Returns `next_execution_at` unchanged when nothing is expired. Otherwise
+        # advances the coordination log's last_execution_at so a replay recomputes
+        # the same first tick, and writes ONE summary ExecutionLog for the whole
+        # skipped prefix (no per-tick timeout rows).
+        def fast_forward_expired_prefix(coordination_log, next_execution_at, every, timeout)
+          cutoff = Time.current - timeout
+          return next_execution_at if next_execution_at >= cutoff
+
+          first_valid, n = advance_to_first_valid_tick(next_execution_at, every, cutoff)
+          last_skipped = first_valid - every
+
+          Rails.logger.info {
+            "ChronoForge:#{self.class}(#{@workflow.key}) durably_repeat fast-forwarded " \
+            "#{n} expired tick(s) to #{first_valid.iso8601}"
+          }
+
+          # Single summary row for the skipped prefix, on the last skipped grid
+          # tick. This never collides with the first_valid repetition row, but it
+          # CAN reuse a prior cycle's pending repetition log at the same tick
+          # (e.g. a tick that was scheduled-for-later then later fast-forwarded
+          # over). Write the metadata in the update! so the fast_forward summary
+          # fields are present whether the row is newly created or reused.
+          summary_step = "#{coordination_log.step_name}$#{last_skipped.to_i}"
+          summary_log = find_or_create_execution_log!(summary_step) do |log|
+            log.started_at = Time.current
+          end
+          summary_log.update!(
+            state: :failed,
+            error_class: "TimeoutError",
+            error_message: "Fast-forwarded #{n} expired tick(s)",
+            completed_at: Time.current,
+            metadata: (summary_log.metadata || {}).merge(
+              "fast_forwarded" => n,
+              "from" => next_execution_at.iso8601,
+              "to" => last_skipped.iso8601,
+              "scheduled_for" => last_skipped.iso8601,
+              "timeout_at" => (last_skipped + timeout).iso8601,
+              "parent_id" => coordination_log.id
+            )
+          )
+
+          # Record progress: a replay recomputes naive_next = last + every = first_valid.
+          # Use .iso8601 (second precision) to match the existing last_execution_at
+          # format so resumed pre-existing workflows keep the same on-disk grid.
+          coordination_log.update!(
+            metadata: coordination_log.metadata.merge("last_execution_at" => last_skipped.iso8601)
+          )
+
+          first_valid
+        end
+
+        # Walk the canonical grid from `from` to the first tick at/after `cutoff`,
+        # returning [first_valid_tick, ticks_skipped].
+        #
+        # The split is at one day, which is exactly where ActiveSupport switches
+        # arithmetic:
+        #
+        # - Sub-day intervals (hours/minutes/seconds) are absolute (seconds-based):
+        #   `from + n*every` is mathematically exact, no DST or clamping. These are
+        #   also the only intervals whose missed-tick count can explode (1.second
+        #   dormant a year ≈ 31M ticks), so we MUST jump in closed form.
+        #
+        # - Day-and-larger intervals go through calendar arithmetic (a "day" across
+        #   DST is 23h/25h; months clamp at end-of-month), so `from + n*every` can
+        #   drift off the grid (Jan 31 + 3.months = Apr 30, but stepping +1.month
+        #   three times lands on Apr 28). Their count over any realistic dormancy is
+        #   small (daily over a decade ≈ 3650), so we step the grid exactly.
+        def advance_to_first_valid_tick(from, every, cutoff)
+          if every < 1.day
+            n = ((cutoff - from) / every.to_f).ceil
+            [from + (n * every), n]
+          else
+            tick = from
+            n = 0
+            while tick < cutoff
+              tick += every
+              n += 1
+            end
+            [tick, n]
+          end
+        end
 
         def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           step_name = "#{coordination_log.step_name}$#{next_execution_at.to_i}"
@@ -188,10 +283,8 @@ module ChronoForge
           # Calculate delay until execution time
           delay = [next_execution_at - Time.current, 0].max.seconds
 
-          # Schedule the workflow to run at the specified time
-          self.class
-            .set(wait: delay)
-            .perform_later(@workflow.key)
+          # Schedule the workflow to run at the specified time (published after release).
+          enqueue_continuation(wait: delay)
 
           # Halt current execution until scheduled time
           halt_execution!
@@ -230,10 +323,8 @@ module ChronoForge
             bump_retry_count!(repetition_log, policy_key)
           end
           if backoff
-            # Reschedule this same repetition with the policy's backoff
-            self.class
-              .set(wait: backoff)
-              .perform_later(@workflow.key)
+            # Reschedule this same repetition with the policy's backoff (after release).
+            enqueue_continuation(wait: backoff)
 
             # Halt current execution
             halt_execution!
@@ -283,10 +374,8 @@ module ChronoForge
           # Calculate delay until next execution
           delay = [next_execution_time - Time.current, 0].max.seconds
 
-          # Schedule the workflow to run for the next periodic execution
-          self.class
-            .set(wait: delay)
-            .perform_later(@workflow.key)
+          # Schedule the next periodic execution (published after lock release).
+          enqueue_continuation(wait: delay)
 
           # Halt current execution
           halt_execution!

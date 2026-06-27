@@ -123,11 +123,15 @@ class DurablyRepeatTest < ActiveJob::TestCase
 
     workflow = ChronoForge::Workflow.find_by(key: unique_key)
 
-    # Should have timeout failures
+    # Expired ticks are now fast-forwarded: no per-tick "Execution timed out"
+    # rows; the skipped prefix collapses to a single fast_forwarded summary row.
     timeout_logs = workflow.execution_logs.select { |log|
-      log.failed? && log.error_message == "Execution timed out"
+      log.error_message == "Execution timed out"
     }
-    assert_operator timeout_logs.size, :>, 0, "should have timeout failures"
+    assert_empty timeout_logs, "expired ticks should be fast-forwarded, not tombstoned per tick"
+
+    summaries = workflow.execution_logs.select { |log| log.metadata && log.metadata["fast_forwarded"] }
+    assert_operator summaries.size, :>=, 1, "should record a fast-forward summary row"
   end
 
   def test_durably_repeat_with_error_handling
@@ -366,11 +370,9 @@ class DurablyRepeatTest < ActiveJob::TestCase
     workflow.reload
     coordination_log.reload
 
-    # Find timeout logs
-    timeout_logs = workflow.execution_logs.select { |log|
-      log.failed? && log.error_message == "Execution timed out"
-    }
-    assert_operator timeout_logs.size, :>, 0, "should have timeout failures"
+    # Expired ticks are fast-forwarded into a single summary row, not per-tick rows.
+    summaries = workflow.execution_logs.select { |log| log.metadata && log.metadata["fast_forwarded"] }
+    assert_operator summaries.size, :>=, 1, "should record a fast-forward summary row"
 
     # Verify coordination log was updated despite timeout
     assert_not_equal initial_last_executed_at, coordination_log.last_executed_at,
@@ -425,6 +427,145 @@ class DurablyRepeatTest < ActiveJob::TestCase
 
     assert_not_equal initial_metadata["last_execution_at"], coordination_log.metadata["last_execution_at"],
       "coordination log last_execution_at should be updated after success"
+  end
+
+  def test_durably_repeat_catch_up_fast_forwards_expired_prefix
+    unique_key = "catchup_#{Time.now.to_i}_#{rand(10_000)}"
+
+    CatchUpJob.perform_later(unique_key, start_time: Time.current - 60.seconds)
+
+    perform_all_jobs_before(5.seconds)
+
+    workflow = ChronoForge::Workflow.find_by(key: unique_key)
+
+    timed_out = workflow.execution_logs.select { |l| l.error_message == "Execution timed out" }
+    assert_empty timed_out, "expired prefix must not create per-tick timeout rows"
+
+    summaries = workflow.execution_logs.select { |l| l.metadata && l.metadata["fast_forwarded"] }
+    assert_equal 1, summaries.size, "expired prefix collapses to one summary row"
+    assert_operator summaries.first.metadata["fast_forwarded"].to_i, :>=, 1
+
+    # The boundary is preserved: skipping the expired prefix must still leave the
+    # first in-window tick to actually run its work (not skip everything).
+    assert_operator workflow.context.fetch("execution_count", 0), :>=, 1,
+      "the first in-window tick must execute its method after the fast-forward"
+    assert workflow.completed?, "workflow completes once the in-window tick satisfies the till condition"
+  end
+
+  def test_fast_forward_returns_input_when_nothing_expired
+    workflow = ChronoForge::Workflow.create!(
+      key: "ff_noop_#{rand(10_000)}", job_class: "KitchenSink",
+      kwargs: {}, options: {}, context: {}, state: :idle
+    )
+    coordination = workflow.execution_logs.create!(
+      step_name: "durably_repeat$x", state: :pending, metadata: {}
+    )
+    job = KitchenSink.new
+    job.instance_variable_set(:@workflow, workflow)
+
+    next_at = Time.current + 5.seconds # future tick, not expired
+    result = job.send(:fast_forward_expired_prefix, coordination, next_at, 2.seconds, 1.hour)
+
+    assert_in_delta next_at.to_f, result.to_f, 0.001, "future tick must be returned unchanged"
+  end
+
+  def test_fast_forward_lands_on_first_non_expired_grid_tick
+    workflow = ChronoForge::Workflow.create!(
+      key: "ff_jump_#{rand(10_000)}", job_class: "KitchenSink",
+      kwargs: {}, options: {}, context: {}, state: :idle
+    )
+    coordination = workflow.execution_logs.create!(
+      step_name: "durably_repeat$x", state: :pending, metadata: {}
+    )
+    job = KitchenSink.new
+    job.instance_variable_set(:@workflow, workflow)
+
+    every = 1.second
+    timeout = 1.second
+    next_at = Time.current - 60.seconds
+    cutoff = Time.current - timeout
+
+    result = job.send(:fast_forward_expired_prefix, coordination, next_at, every, timeout)
+
+    n = ((result - next_at) / every.to_f).round
+    assert_in_delta next_at.to_f + n * every.to_f, result.to_f, 0.001, "result must stay on the grid"
+    assert_operator result, :>=, cutoff, "result must be the first non-expired tick"
+    assert_operator result - every, :<, cutoff, "the tick before result must still be expired"
+
+    coordination.reload
+    assert coordination.metadata["last_execution_at"], "last_execution_at must be set"
+    # last_execution_at is stored at second precision (the existing on-disk format),
+    # which is all the second-granular grid (step names use .to_i) needs.
+    assert_equal (result - every).to_i,
+      Time.parse(coordination.metadata["last_execution_at"]).to_i
+
+    summary = workflow.execution_logs.where("step_name LIKE ?", "durably_repeat$x$%").to_a
+    assert_equal 1, summary.size, "exactly one summary row for the skipped prefix"
+    assert_equal "TimeoutError", summary.first.error_class
+    assert_operator summary.first.metadata["fast_forwarded"].to_i, :>=, 1
+  end
+
+  # Calendar intervals (months) must land EXACTLY on the stepwise grid, not on the
+  # closed-form `from + n*every` which drifts via end-of-month clamping. Anchored
+  # at a clamping date (Jan 31) under a frozen clock so the drift is deterministic.
+  def test_fast_forward_monthly_stays_on_grid_across_month_clamping
+    travel_to Time.zone.parse("2026-05-15 00:00:00 UTC") do
+      workflow = ChronoForge::Workflow.create!(
+        key: "ff_month_#{rand(10_000)}", job_class: "KitchenSink",
+        kwargs: {}, options: {}, context: {}, state: :idle
+      )
+      coordination = workflow.execution_logs.create!(
+        step_name: "durably_repeat$x", state: :pending, metadata: {}
+      )
+      job = KitchenSink.new
+      job.instance_variable_set(:@workflow, workflow)
+
+      from = Time.zone.parse("2026-01-31 00:00:00 UTC")
+      every = 1.month
+      timeout = 1.day
+
+      result = job.send(:fast_forward_expired_prefix, coordination, from, every, timeout)
+
+      # Stepwise grid from Jan 31: Feb 28 → Mar 28 → Apr 28 → May 28. cutoff is
+      # May 14, so May 28 is the first non-expired tick. The OLD closed-form
+      # (Jan 31 + 4.months) would clamp to May 31 — off the grid.
+      assert_equal Time.zone.parse("2026-05-28 00:00:00 UTC"), result,
+        "monthly fast-forward must stay on the stepwise grid, not closed-form May 31"
+
+      # Independent recompute of the grid confirms it matches.
+      expected = from
+      expected += every while expected < (Time.current - timeout)
+      assert_equal expected, result
+    end
+  end
+
+  # Daily (>= 1.day) now takes the stepwise grid branch, not the closed-form jump.
+  # It must land exactly on the daily grid.
+  def test_fast_forward_daily_steps_the_grid
+    travel_to Time.zone.parse("2026-03-20 12:00:00 UTC") do
+      workflow = ChronoForge::Workflow.create!(
+        key: "ff_daily_#{rand(10_000)}", job_class: "KitchenSink",
+        kwargs: {}, options: {}, context: {}, state: :idle
+      )
+      coordination = workflow.execution_logs.create!(
+        step_name: "durably_repeat$x", state: :pending, metadata: {}
+      )
+      job = KitchenSink.new
+      job.instance_variable_set(:@workflow, workflow)
+
+      from = Time.zone.parse("2026-03-01 12:00:00 UTC")
+      every = 1.day
+      timeout = 1.day
+
+      result = job.send(:fast_forward_expired_prefix, coordination, from, every, timeout)
+
+      # cutoff = now - 1.day = Mar 19 12:00. Grid steps Mar 1, 2, … Mar 19 is the
+      # first tick at/after cutoff; Mar 18 is still expired.
+      assert_equal Time.zone.parse("2026-03-19 12:00:00 UTC"), result
+      expected = from
+      expected += every while expected < (Time.current - timeout)
+      assert_equal expected, result
+    end
   end
 
   private
@@ -770,5 +911,26 @@ class SuccessCoordinationJob < WorkflowJob
 
   def done?
     context.fetch(:execution_count, 0) >= 2
+  end
+end
+
+class CatchUpJob < WorkflowJob
+  prepend ChronoForge::Executor
+
+  def perform(start_time:)
+    context.set_once(:execution_count, 0)
+    start_obj = start_time.is_a?(String) ? Time.parse(start_time) : start_time
+    durably_repeat :catch_up_task, every: 1.second, till: :done?,
+      start_at: start_obj, timeout: 1.second
+  end
+
+  private
+
+  def catch_up_task(_scheduled = nil)
+    context[:execution_count] = context.fetch(:execution_count, 0) + 1
+  end
+
+  def done?
+    context.fetch(:execution_count, 0) >= 1
   end
 end
