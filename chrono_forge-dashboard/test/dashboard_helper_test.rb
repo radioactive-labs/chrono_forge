@@ -32,6 +32,13 @@ class DashboardHelperTest < ActionView::TestCase
     assert_equal "cf-bar-35", cf_bar_width(1, 3)   # 33.3% -> nearest 5
   end
 
+  test "cf_poll_label: off, seconds, minutes" do
+    assert_equal "off", cf_poll_label(0)
+    assert_equal "5s", cf_poll_label(5)
+    assert_equal "30s", cf_poll_label(30)
+    assert_equal "1m", cf_poll_label(60)
+  end
+
   test "cf_capped: shows N+ at the cap" do
     assert_equal "12", cf_capped(12, 5000)
     assert_equal "5000+", cf_capped(5000, 5000)

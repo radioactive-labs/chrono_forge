@@ -50,6 +50,15 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match(/title="[^"]*ago"/, response.body, "with the cookie, relative time moves to the hover title")
   end
 
+  test "auto-refresh interval is cookie-controlled" do
+    get "/chrono_forge/workflows"
+    assert_match "data-poll-select", response.body
+
+    cookies[:cf_poll_interval] = "30"
+    get "/chrono_forge/workflows"
+    assert_match 'data-poll-interval="30"', response.body
+  end
+
   test "plain idle workflow stays idle, not scheduled" do
     create_workflow(key: "idle-1", state: :idle)
     get "/chrono_forge/workflows"

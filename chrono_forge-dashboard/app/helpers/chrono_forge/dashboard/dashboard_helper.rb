@@ -39,6 +39,23 @@ module ChronoForge
         cookies[:cf_time_format] == "absolute"
       end
 
+      # Auto-refresh interval in seconds (0 = off). A cookie-persisted nav control
+      # overrides the configured default per viewer.
+      POLL_OPTIONS = [0, 5, 15, 30, 60].freeze
+
+      def cf_poll_options = POLL_OPTIONS
+
+      def cf_poll_interval
+        raw = cookies[:cf_poll_interval]
+        return raw.to_i if raw.present? && raw.match?(/\A\d+\z/)
+        ChronoForge::Dashboard.config.polling_interval.to_i
+      end
+
+      def cf_poll_label(secs)
+        return "off" if secs.zero?
+        (secs % 60 == 0) ? "#{secs / 60}m" : "#{secs}s"
+      end
+
       # A timestamp shown relative ("3 minutes ago") or absolute (raw ISO8601)
       # per the viewer's preference, with the other form available on hover.
       def cf_ago(t)

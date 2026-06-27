@@ -34,6 +34,14 @@
 
     // Auto-submit a filter control (e.g. the state select) on change.
     document.addEventListener("change", function (e) {
+      // Auto-refresh interval control: persist and reload so the server re-renders
+      // the body's data-poll-interval.
+      var poll = e.target.closest("[data-poll-select]");
+      if (poll) {
+        document.cookie = "cf_poll_interval=" + poll.value + ";path=/;max-age=31536000;samesite=lax";
+        window.location.reload();
+        return;
+      }
       var el = e.target.closest("[data-autosubmit]");
       if (el && el.form) el.form.requestSubmit();
     });
