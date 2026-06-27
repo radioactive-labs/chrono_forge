@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ChronoForge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <%= csrf_meta_tags %>
+  <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css?v=#{ChronoForge::Dashboard.asset_digest("dashboard.css")}" %>">
+</head>
+<body class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
+  <% if flash.any? %>
+    <div class="pointer-events-none fixed right-4 top-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      <% flash.each do |type, msg| %>
+        <div data-flash class="pointer-events-auto rounded-md border px-3 py-2 text-sm shadow-md transition-opacity duration-300 <%= type.to_s == "alert" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800" %>"><%= msg %></div>
+      <% end %>
+    </div>
+  <% end %>
+  <header class="border-b border-zinc-200 bg-white">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+      <a href="<%= root_path %>" class="flex items-center gap-2 font-semibold tracking-tight">
+        <span class="inline-block h-3.5 w-3.5 rounded-sm bg-zinc-900"></span>
+        ChronoForge
+      </a>
+      <nav class="flex items-center gap-5 text-sm">
+        <a href="<%= root_path %>" class="<%= controller_name == "workflows" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Workflows</a>
+        <a href="<%= wait_states_path %>" class="<%= controller_name == "wait_states" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Waiting</a>
+        <a href="<%= analytics_path %>" class="<%= controller_name == "analytics" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Analytics</a>
+      </nav>
+      <div class="ml-auto flex flex-wrap items-center gap-2">
+        <% current_poll = cf_poll_interval %>
+        <label class="flex items-center gap-1 text-xs text-zinc-400" title="Auto-refresh">
+          <span>refresh</span>
+          <select data-poll-select class="rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-700">
+            <% (cf_poll_options | [current_poll]).sort.each do |secs| %>
+              <option value="<%= secs %>" <%= "selected" if secs == current_poll %>><%= cf_poll_label(secs) %></option>
+            <% end %>
+          </select>
+        </label>
+        <div class="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 text-xs" title="Timestamp display">
+          <button type="button" data-time-set="relative" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "text-zinc-500 hover:text-zinc-900" : "bg-zinc-900 text-white" %>">relative</button>
+          <button type="button" data-time-set="absolute" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900" %>">absolute</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="mx-auto max-w-6xl px-4 py-6">
+    <%= yield %>
+  </main>
+  <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>
+</body>
+</html>

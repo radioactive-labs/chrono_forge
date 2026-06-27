@@ -1,0 +1,13 @@
+<div class="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5">
+  <div class="flex flex-wrap items-baseline gap-x-2 font-mono text-xs">
+    <span class="font-medium text-rose-600"><%= err.error_class %></span>
+    <% if err.attempt %><span class="text-zinc-400">attempt <%= err.attempt %></span><% end %>
+  </div>
+  <% if err.error_message.present? %><div class="mt-0.5 text-xs text-rose-700"><%= err.error_message %></div><% end %>
+  <% if err.backtrace.present? %>
+    <details class="mt-1">
+      <summary class="cursor-pointer text-[11px] text-zinc-500">backtrace</summary>
+      <pre class="mt-1 overflow-x-auto rounded bg-white p-2 font-mono text-[11px] text-zinc-600"><%= err.backtrace %></pre>
+    </details>
+  <% end %>
+</div>

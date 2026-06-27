@@ -1,0 +1,5 @@
+<div class="cf-wait-callout mb-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+  Waiting on <span class="font-mono"><%= wait.condition %></span>
+  for <%= distance_of_time_in_words(wait.waiting_since, Time.current) %>
+  · timeout <span class="font-mono"><%= wait.timeout_at || "—" %></span>
+</div>

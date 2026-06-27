@@ -60,6 +60,22 @@ A few deliberate choices behind that table:
 - **ActiveJob Integration**: Compatible with all ActiveJob backends, though database-backed processors (like Solid Queue) provide the most reliable experience for long-running workflows
 - **Retention & Cleanup**: A schedulable job to prune finished workflows and the unbounded logs that periodic tasks accumulate (see [Cleanup & Retention](#-cleanup--retention))
 
+## 🖥️ Dashboard
+
+ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
+
+[![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
+
+```ruby
+# Gemfile
+gem "chrono_forge-dashboard"
+
+# config/routes.rb
+mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
+```
+
+See [`chrono_forge-dashboard`](chrono_forge-dashboard/README.md) for setup, authentication, and [more screenshots](chrono_forge-dashboard/README.md#screenshots).
+
 ## 📦 Installation
 
 Add to your application's Gemfile:

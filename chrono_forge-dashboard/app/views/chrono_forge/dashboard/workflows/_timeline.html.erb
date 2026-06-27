@@ -1,0 +1,67 @@
+<ol class="cf-timeline">
+  <% entries = timeline.entries %>
+  <% entries.each_with_index do |e, i| %>
+    <% current = timeline.current_position&.id == e.id %>
+    <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">
+      <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white"></span>
+      <div class="<%= "-ml-2 rounded-md bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200" if current %>">
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-400"><%= cf_kind_label(e.kind) %></span>
+          <span class="font-mono text-sm font-medium text-zinc-900"><%= e.name %></span>
+          <span class="text-xs <%= cf_status_color(e.status) %>"><%= e.status %></span>
+          <span class="font-mono text-xs text-zinc-400">×<%= e.attempts %></span>
+          <% if e.started_at && e.completed_at %>
+            <span class="font-mono text-xs text-zinc-400">· <%= cf_duration(e.started_at, e.completed_at) %></span>
+          <% end %>
+        </div>
+        <% if e.started_at || e.last_executed_at %>
+          <div class="mt-0.5 font-mono text-[11px] text-zinc-400">
+            <% if e.started_at %>started <%= cf_ago(e.started_at) %><% end %>
+            <% if e.completed_at %> · finished <%= cf_ago(e.completed_at) %><% elsif e.last_executed_at %> · last run <%= cf_ago(e.last_executed_at) %><% end %>
+          </div>
+        <% end %>
+        <% pairs = cf_meta_pairs(e.metadata) %>
+        <% if pairs.any? %>
+          <dl class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px]">
+            <% pairs.each do |label, value| %>
+              <div class="min-w-0"><span class="text-zinc-400"><%= label %>:</span> <span class="text-zinc-600"><%= truncate(value, length: 80) %></span></div>
+            <% end %>
+          </dl>
+        <% end %>
+        <% if e.missing_error_id %>
+          <div class="mt-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 font-mono text-xs text-zinc-500">
+            error log #<%= e.missing_error_id %> is no longer available
+          </div>
+        <% end %>
+        <% if e.errors.any? %>
+          <%= render partial: "error_card", collection: e.errors, as: :err %>
+        <% elsif e.error_class %>
+          <div class="mt-1 font-mono text-xs text-rose-600">
+            <%= e.error_class %><% if e.error_message.present? %>: <span class="font-normal text-rose-500"><%= truncate(e.error_message, length: 160) %></span><% end %>
+          </div>
+        <% end %>
+        <% if e.kind == :repeat_coordination && e.iterations.to_i > 0 %>
+          <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
+            <span><%= pluralize(e.iterations, "iteration") %></span>
+            <% if e.skipped_ticks.to_i > 0 %>
+              <span class="text-amber-600">· <%= e.skipped_ticks %> catch-up tick<%= "s" unless e.skipped_ticks == 1 %> skipped</span>
+            <% end %>
+            <% if e.last_run_at %>
+              <span>· last run <%= cf_ago(e.last_run_at) %></span>
+            <% end %>
+          </div>
+          <div class="mt-2">
+            <%= link_to "repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name), class: cf_chip %>
+          </div>
+        <% end %>
+      </div>
+    </li>
+  <% end %>
+</ol>
+
+<% if timeline.orphan_errors.any? %>
+  <div class="mt-4 border-t border-zinc-100 pt-3">
+    <p class="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Other errors</p>
+    <%= render partial: "error_card", collection: timeline.orphan_errors, as: :err %>
+  </div>
+<% end %>

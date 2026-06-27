@@ -1,0 +1,73 @@
+<h1 class="mb-1 text-lg font-semibold tracking-tight">Waiting workflows</h1>
+<p class="mb-5 text-sm text-zinc-500">
+  Idle workflows parked on a condition. <span class="font-mono">wait_until</span> polls and times out;
+  <span class="font-mono">continue_if</span> waits on an external event with no timeout — so a signal that never
+  arrives sits here indefinitely.
+</p>
+
+<% if @oldest_event_by_class.any? %>
+  <section class="cf-card mb-5 border-amber-200 bg-amber-50/40 p-5">
+    <h2 class="mb-1 text-xs font-medium uppercase tracking-wide text-amber-700">Oldest unresolved event wait, by class</h2>
+    <p class="mb-3 text-xs text-zinc-500">A <span class="font-mono">continue_if</span> that never resolves is a silent stall. Oldest per class:</p>
+    <div class="divide-y divide-amber-100">
+      <% @oldest_event_by_class.each do |h| %>
+        <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
+        <div class="flex items-baseline justify-between gap-4 py-1.5">
+          <div class="min-w-0">
+            <span class="font-mono text-sm text-zinc-900"><%= h[:workflow].job_class %></span>
+            <span class="ml-2 font-mono text-xs text-zinc-500"><%= h[:wait].condition %></span>
+          </div>
+          <div class="flex shrink-0 items-baseline gap-3">
+            <span class="text-sm <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>">
+              <%= h[:wait].waiting_since ? "#{distance_of_time_in_words(h[:wait].waiting_since, Time.current)} waiting" : "—" %>
+            </span>
+            <%= link_to "open →", workflow_path(h[:workflow]), class: cf_chip %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<div class="cf-card overflow-hidden">
+  <div class="overflow-x-auto">
+  <table class="w-full min-w-[44rem] text-sm">
+    <thead>
+      <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+        <th class="px-4 py-2.5 font-medium">Key</th>
+        <th class="px-4 py-2.5 font-medium">Class</th>
+        <th class="px-4 py-2.5 font-medium">Kind</th>
+        <th class="px-4 py-2.5 font-medium">Condition</th>
+        <th class="px-4 py-2.5 font-medium">Waiting</th>
+        <th class="px-4 py-2.5 text-right font-medium">Timeout</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-zinc-100">
+      <% @waits.each do |h| %>
+        <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
+        <tr class="cursor-pointer <%= "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50" data-href="<%= workflow_path(h[:workflow]) %>">
+          <td class="px-4 py-2.5"><%= link_to h[:workflow].key, workflow_path(h[:workflow]), class: "font-mono hover:underline" %></td>
+          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:workflow].job_class %></td>
+          <td class="px-4 py-2.5 text-xs">
+            <% if h[:wait].event_wait? %>
+              <span class="font-medium text-amber-700">event</span>
+            <% else %>
+              <span class="text-zinc-500">poll</span>
+            <% end %>
+          </td>
+          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:wait].condition %></td>
+          <td class="px-4 py-2.5 <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>"><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>
+          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= h[:wait].event_wait? ? "none" : (h[:wait].timeout_at || "—") %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  </div>
+  <% if @waits.none? %>
+    <p class="px-4 py-12 text-center text-sm text-zinc-500">No workflows are waiting.</p>
+  <% end %>
+</div>
+
+<% if @capped %>
+  <p class="mt-3 text-xs text-zinc-400">Scanned the <%= @cap %> oldest idle workflows. Narrow with filters on the workflow list for more.</p>
+<% end %>

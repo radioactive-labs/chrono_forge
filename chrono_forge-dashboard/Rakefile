@@ -1,0 +1,34 @@
+require "rake/testtask"
+require "standard/rake"
+require "bundler/gem_tasks"
+
+Rake::TestTask.new do |t|
+  t.libs << "test"
+  t.test_files = FileList["test/**/*_test.rb"]
+  t.verbose = true
+end
+
+namespace :tailwind do
+  # Compile the engine's stylesheet from tailwind.css into the served
+  # dashboard.css. Re-run after changing tailwind.css or any view.
+  desc "Compile dashboard.css from tailwind.css"
+  task :build do
+    require "tailwindcss/ruby"
+    base = "app/assets/chrono_forge/dashboard"
+    sh "#{Tailwindcss::Ruby.executable} -i #{base}/tailwind.css -o #{base}/dashboard.css --minify"
+  end
+end
+
+# Ship a freshly compiled stylesheet: `rake build` (and `rake release`, which
+# depends on it) always recompiles dashboard.css before packaging the gem, so a
+# release can never ship stale CSS.
+Rake::Task["build"].enhance(["tailwind:build"])
+
+# Everything that must pass/run before cutting a release.
+desc "Compile assets, run tests and linter (pre-release gate)"
+task prepare: ["tailwind:build", :test, :standard]
+
+# Guard releases behind the test + lint gate.
+Rake::Task["release"].enhance(%i[test standard])
+
+task default: %i[test standard]

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Run the dashboard preview locally: compiles the stylesheet, then boots the
+# seeded Combustion app (config.ru) on http://localhost:$PORT/chrono_forge.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bundle exec rake tailwind:build
+echo "ChronoForge dashboard → http://localhost:${PORT:-9876}/chrono_forge"
+exec bundle exec rackup -p "${PORT:-9876}"
