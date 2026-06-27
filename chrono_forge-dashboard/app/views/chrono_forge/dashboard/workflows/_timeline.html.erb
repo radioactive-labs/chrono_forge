@@ -51,8 +51,7 @@
             <% end %>
           </div>
           <div class="mt-2">
-            <%= link_to "repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name),
-                  class: "inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50" %>
+            <%= link_to "repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name), class: cf_chip %>
           </div>
         <% end %>
       </div>

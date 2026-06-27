@@ -21,7 +21,7 @@
             <span class="text-sm <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>">
               <%= h[:wait].waiting_since ? "#{distance_of_time_in_words(h[:wait].waiting_since, Time.current)} waiting" : "—" %>
             </span>
-            <%= link_to "open →", workflow_path(h[:workflow]), class: "text-xs text-zinc-500 underline hover:text-zinc-900" %>
+            <%= link_to "open →", workflow_path(h[:workflow]), class: cf_chip %>
           </div>
         </div>
       <% end %>

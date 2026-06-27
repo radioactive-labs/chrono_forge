@@ -11,7 +11,7 @@
   </div>
   <% if @job_class %>
     <p class="mt-1.5 break-all font-mono text-base font-medium text-zinc-800"><%= @job_class %></p>
-    <%= link_to "‹ All classes", analytics_path(window: @query.window), class: "mt-0.5 inline-block text-sm text-zinc-500 hover:text-zinc-900" %>
+    <%= link_to "‹ All classes", analytics_path(window: @query.window), class: cf_chip("mt-1") %>
   <% else %>
     <p class="mt-1 text-sm text-zinc-500">Workflow outcomes over time. Counts are workflows, not execution-log steps.</p>
   <% end %>

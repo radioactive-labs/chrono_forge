@@ -13,6 +13,13 @@ module ChronoForge
         tag.span(state, class: "cf-pill cf-pill-#{state}")
       end
 
+      # Shared "chip" treatment for inline nav/action links (metrics, details,
+      # repetitions, open, pagination, back) — a subtle bordered button, never an
+      # underlined text link. Pass extra utility classes (margins, truncation).
+      def cf_chip(extra = nil)
+        ["inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50", extra].compact.join(" ")
+      end
+
       # State badge, upgraded to "scheduled" for an idle workflow parked on a
       # wait whose wake time is still in the future — so genuinely-scheduled work
       # doesn't read as "stuck idle".

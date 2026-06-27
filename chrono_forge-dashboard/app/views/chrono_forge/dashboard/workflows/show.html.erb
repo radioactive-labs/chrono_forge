@@ -1,4 +1,4 @@
-<%= link_to "‹ Workflows", workflows_path, class: "mb-4 inline-block text-sm text-zinc-500 hover:text-zinc-900" %>
+<%= link_to "‹ Workflows", workflows_path, class: cf_chip("mb-4") %>
 
 <div class="mb-6">
   <div class="flex flex-wrap items-start justify-between gap-3">
@@ -7,8 +7,7 @@
       <h1 class="mt-1.5 break-all font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
       <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
         <span class="break-all font-mono"><%= @workflow.job_class %></span>
-        <%= link_to "metrics →", analytics_path(class: @workflow.job_class),
-              class: "inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50" %>
+        <%= link_to "metrics →", analytics_path(class: @workflow.job_class), class: cf_chip %>
       </p>
     </div>
     <% if @workflow.retryable? || @workflow.running? || @workflow.idle? %>

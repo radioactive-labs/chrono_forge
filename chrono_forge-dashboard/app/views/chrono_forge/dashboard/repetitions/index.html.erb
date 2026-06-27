@@ -1,4 +1,4 @@
-<%= link_to "‹ #{@workflow.key}", workflow_path(@workflow), class: "mb-4 inline-block text-sm text-zinc-500 hover:text-zinc-900" %>
+<%= link_to "‹ #{@workflow.key}", workflow_path(@workflow), class: cf_chip("mb-4 max-w-full truncate") %>
 
 <div class="mb-5">
   <h1 class="text-lg font-semibold tracking-tight">
@@ -64,6 +64,6 @@
 
 <% base_params = request.query_parameters.except("before", "after") %>
 <nav class="mt-4 flex items-center justify-between text-sm">
-  <% if @query.has_prev? %><%= link_to "‹ Newer", base_params.merge(after: @query.prev_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% else %><span></span><% end %>
-  <% if @query.has_next? %><%= link_to "Older ›", base_params.merge(before: @query.next_cursor), class: "text-zinc-600 hover:text-zinc-900" %><% else %><span></span><% end %>
+  <% if @query.has_prev? %><%= link_to "‹ Newer", base_params.merge(after: @query.prev_cursor), class: cf_chip %><% else %><span></span><% end %>
+  <% if @query.has_next? %><%= link_to "Older ›", base_params.merge(before: @query.next_cursor), class: cf_chip %><% else %><span></span><% end %>
 </nav>
