@@ -1,16 +1,11 @@
 <%= link_to "‹ Workflows", workflows_path, class: "mb-4 inline-block text-sm text-zinc-500 hover:text-zinc-900" %>
 
 <div class="mb-6">
-  <div class="flex items-start justify-between gap-4">
-    <div>
-      <div class="flex items-center gap-3">
-        <%= cf_state_badge(@workflow, @wait) %>
-        <h1 class="font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
-      </div>
-      <p class="mt-1 text-sm text-zinc-500">
-        <span class="font-mono"><%= @workflow.job_class %></span> · locked by <span class="font-mono"><%= @workflow.locked_by || "—" %></span>
-        · <%= link_to "metrics →", analytics_path(class: @workflow.job_class), class: "text-zinc-500 underline hover:text-zinc-900" %>
-      </p>
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <%= cf_state_badge(@workflow, @wait) %>
+      <h1 class="mt-1.5 break-all font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
+      <p class="mt-1 break-all font-mono text-sm text-zinc-500"><%= @workflow.job_class %></p>
     </div>
     <% if @workflow.retryable? || @workflow.running? %>
       <div class="flex shrink-0 gap-2">
@@ -25,12 +20,18 @@
     <% end %>
   </div>
 
-  <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+  <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Created</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.created_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Started</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.started_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Completed</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.completed_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono text-zinc-700"><%= cf_duration(@workflow.started_at, @workflow.completed_at || @workflow.updated_at) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked by</dt><dd class="break-all font-mono text-zinc-700"><%= @workflow.locked_by || "—" %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked at</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.locked_at) %></dd></div>
   </dl>
+
+  <div class="mt-4">
+    <%= link_to analytics_path(class: @workflow.job_class), class: "cf-btn" do %><%= @workflow.job_class %> metrics →<% end %>
+  </div>
 </div>
 
 <%= render "wait_callout", wait: @wait if @wait %>
