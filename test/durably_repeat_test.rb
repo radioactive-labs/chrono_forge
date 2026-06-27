@@ -539,6 +539,35 @@ class DurablyRepeatTest < ActiveJob::TestCase
     end
   end
 
+  # Daily (>= 1.day) now takes the stepwise grid branch, not the closed-form jump.
+  # It must land exactly on the daily grid.
+  def test_fast_forward_daily_steps_the_grid
+    travel_to Time.zone.parse("2026-03-20 12:00:00 UTC") do
+      workflow = ChronoForge::Workflow.create!(
+        key: "ff_daily_#{rand(10_000)}", job_class: "KitchenSink",
+        kwargs: {}, options: {}, context: {}, state: :idle
+      )
+      coordination = workflow.execution_logs.create!(
+        step_name: "durably_repeat$x", state: :pending, metadata: {}
+      )
+      job = KitchenSink.new
+      job.instance_variable_set(:@workflow, workflow)
+
+      from = Time.zone.parse("2026-03-01 12:00:00 UTC")
+      every = 1.day
+      timeout = 1.day
+
+      result = job.send(:fast_forward_expired_prefix, coordination, from, every, timeout)
+
+      # cutoff = now - 1.day = Mar 19 12:00. Grid steps Mar 1, 2, … Mar 19 is the
+      # first tick at/after cutoff; Mar 18 is still expired.
+      assert_equal Time.zone.parse("2026-03-19 12:00:00 UTC"), result
+      expected = from
+      expected += every while expected < (Time.current - timeout)
+      assert_equal expected, result
+    end
+  end
+
   private
 
   def perform_jobs_until_completion(workflow, max_cycles: 10)

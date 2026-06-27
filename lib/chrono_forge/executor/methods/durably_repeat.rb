@@ -221,43 +221,32 @@ module ChronoForge
         # Walk the canonical grid from `from` to the first tick at/after `cutoff`,
         # returning [first_valid_tick, ticks_skipped].
         #
-        # Fixed-length intervals (seconds … weeks) are associative, so we jump in
-        # closed form (`from + n*every`). A bounded correction loop then absorbs the
-        # rounding error a DST transition can introduce — a wall-clock "day" can be
-        # 23h or 25h — so the result lands exactly on the grid.
+        # The split is at one day, which is exactly where ActiveSupport switches
+        # arithmetic:
         #
-        # Calendar intervals (months/years) are NOT associative: `from + n*every`
-        # can drift off the grid (Jan 31 + 3.months = Apr 30, but stepping +1.month
-        # three times lands on Apr 28 via end-of-month clamping). The count of
-        # missed calendar ticks is always small, so we step exactly along the grid.
+        # - Sub-day intervals (hours/minutes/seconds) are absolute (seconds-based):
+        #   `from + n*every` is mathematically exact, no DST or clamping. These are
+        #   also the only intervals whose missed-tick count can explode (1.second
+        #   dormant a year ≈ 31M ticks), so we MUST jump in closed form.
+        #
+        # - Day-and-larger intervals go through calendar arithmetic (a "day" across
+        #   DST is 23h/25h; months clamp at end-of-month), so `from + n*every` can
+        #   drift off the grid (Jan 31 + 3.months = Apr 30, but stepping +1.month
+        #   three times lands on Apr 28). Their count over any realistic dormancy is
+        #   small (daily over a decade ≈ 3650), so we step the grid exactly.
         def advance_to_first_valid_tick(from, every, cutoff)
-          tick = from
-          n = 0
-          if calendar_interval?(every)
+          if every < 1.day
+            n = ((cutoff - from) / every.to_f).ceil
+            [from + (n * every), n]
+          else
+            tick = from
+            n = 0
             while tick < cutoff
               tick += every
               n += 1
             end
-          else
-            n = ((cutoff - from) / every.to_f).ceil
-            tick = from + (n * every)
-            while tick < cutoff # undershot (e.g. a 25h DST day)
-              tick += every
-              n += 1
-            end
-            while tick - every >= cutoff # overshot (e.g. a 23h DST day)
-              tick -= every
-              n -= 1
-            end
+            [tick, n]
           end
-          [tick, n]
-        end
-
-        # A calendar (variable-length) interval — months or years — for which
-        # `n * every` is not equivalent to applying `+ every` n times.
-        def calendar_interval?(every)
-          return false unless every.respond_to?(:parts)
-          (every.parts.keys & [:months, :years]).any?
         end
 
         def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
