@@ -12,12 +12,16 @@ class DashboardHelperTest < ActionView::TestCase
     assert_equal "100%", cf_pct(1.0)
   end
 
-  test "cf_secs: nil, sub-minute, and zero-padded minutes" do
+  test "cf_secs: scales to the two most-significant units" do
     assert_equal "—", cf_secs(nil)
     assert_equal "0s", cf_secs(0)
     assert_equal "45s", cf_secs(45)
     assert_equal "1m 04s", cf_secs(64)
     assert_equal "2m 00s", cf_secs(120)
+    assert_equal "1h 02m", cf_secs(3720)        # 1h 2m
+    assert_equal "3h 00m", cf_secs(10800)       # exactly 3h
+    assert_equal "1d 21h", cf_secs(162768)      # the "2712m 48s" case
+    assert_equal "2d 00h", cf_secs(172800)      # exactly 2d
   end
 
   test "cf_bar_width: zero-max guard and 5% quantization" do

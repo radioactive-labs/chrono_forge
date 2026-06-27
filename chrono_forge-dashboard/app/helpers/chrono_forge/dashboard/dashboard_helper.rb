@@ -55,11 +55,15 @@ module ChronoForge
         cf_secs((to - from).to_i)
       end
 
-      # Human duration from a number of seconds (e.g. "1m 04s"); "—" if nil.
+      # Human duration from a number of seconds, scaled to the two most-significant
+      # units (e.g. "45s", "1m 04s", "3h 12m", "2d 21h"); "—" if nil.
       def cf_secs(secs)
         return "—" if secs.nil?
         secs = secs.to_i
-        (secs < 60) ? "#{secs}s" : "#{secs / 60}m #{(secs % 60).to_s.rjust(2, "0")}s"
+        return "#{secs}s" if secs < 60
+        return "#{secs / 60}m #{(secs % 60).to_s.rjust(2, "0")}s" if secs < 3600
+        return "#{secs / 3600}h #{(secs % 3600 / 60).to_s.rjust(2, "0")}m" if secs < 86400
+        "#{secs / 86400}d #{(secs % 86400 / 3600).to_s.rjust(2, "0")}h"
       end
 
       # Class name for a stacked-bar segment, width quantized to 5% steps so it
