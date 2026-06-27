@@ -1,4 +1,5 @@
-<%= link_to "‹ Workflows", workflows_path, class: cf_chip("mb-4") %>
+<%= link_to "‹ Workflows", workflows_path, class: cf_chip("mb-2") %>
+<%= render "parent_breadcrumb", parent_log: @parent_log if @parent_log %>
 
 <div class="mb-6">
   <div class="flex flex-wrap items-start justify-between gap-3">
@@ -49,6 +50,8 @@
     <%= render "periodic", tasks: @periodic, workflow: @workflow %>
   </section>
 <% end %>
+
+<%= render "branches", branches: @branches, workflow: @workflow if @branches.any? %>
 
 <div class="grid gap-5 md:grid-cols-2">
   <section class="cf-card p-5">

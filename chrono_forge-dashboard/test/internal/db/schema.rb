@@ -10,9 +10,11 @@ ActiveRecord::Schema.define do
     t.string :locked_by
     t.datetime :started_at
     t.datetime :completed_at
+    t.bigint :parent_execution_log_id
     t.timestamps
     t.index :key, unique: true
     t.index %i[state completed_at]
+    t.index %i[parent_execution_log_id state]
   end
 
   create_table :chrono_forge_execution_logs do |t|

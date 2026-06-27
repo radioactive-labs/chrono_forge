@@ -10,6 +10,9 @@ ChronoForge::Dashboard::Engine.routes.draw do
     collection do
       post :bulk_retry, to: "actions#bulk_retry"
     end
+    resources :branches, only: :show, controller: "branch_children" do
+      member { post :bulk_retry, to: "actions#bulk_retry_branch" }
+    end
   end
   resources :wait_states, only: :index
   get "analytics", to: "analytics#index", as: :analytics

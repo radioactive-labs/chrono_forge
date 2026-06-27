@@ -127,9 +127,11 @@ module ChronoForge
       # — surfaces things like a wait's resume time, a wait_until timeout, or a
       # durably_repeat's last execution. Keys are humanized; values are stringified
       # (the view truncates). Blank values are dropped.
-      # Internal references shown elsewhere (the linked error is rendered inline),
-      # so they'd just be noise in the metadata line.
-      META_SKIP = %w[error_log_id].freeze
+      # Internal bookkeeping surfaced elsewhere (the linked error is rendered
+      # inline; branch poll state + spawn cursors show in the Branches panel), so
+      # they'd just be noise in the timeline's metadata line. poll_token is the
+      # merge poller's fencing token — pure plumbing, never user-facing.
+      META_SKIP = %w[error_log_id poll poll_token cursors].freeze
 
       def cf_meta_pairs(metadata)
         return [] unless metadata.is_a?(Hash)

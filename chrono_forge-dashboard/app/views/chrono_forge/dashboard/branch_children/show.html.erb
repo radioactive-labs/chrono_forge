@@ -1,0 +1,58 @@
+<%= link_to "‹ #{@workflow.key}", workflow_path(@workflow), class: cf_chip("mb-4 max-w-full truncate") %>
+
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div class="min-w-0">
+    <h1 class="text-lg font-semibold tracking-tight">Branch <span class="break-all font-mono"><%= @branch.name %></span></h1>
+    <p class="mt-1 break-all text-sm text-zinc-500">children of <span class="font-mono"><%= @workflow.key %></span></p>
+  </div>
+  <%= button_to "Retry all blocked", bulk_retry_workflow_branch_path(@workflow, @branch_log), method: :post,
+        form: {data: {confirm: "Re-enqueue every failed/stalled child of this branch?"}}, class: "cf-btn cf-btn-primary shrink-0" %>
+</div>
+
+<div data-poll-region>
+  <% current = params.key?(:state) ? params[:state].to_s : "blocked" %>
+  <% blocked = @stats["failed"].to_i + @stats["stalled"].to_i %>
+  <% chip = ->(label, state, count, active) {
+       link_to workflow_branch_path(@workflow, @branch_log, state: state),
+         class: "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition #{active ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50"}" do
+         safe_join([tag.span(label, class: "text-zinc-500"),
+           (count ? tag.span(cf_capped(count, @stats_cap), class: "font-mono font-medium tabular-nums") : "".html_safe)])
+       end
+     } %>
+  <div class="mb-4 flex flex-wrap gap-2">
+    <%= chip.call("blocked", "blocked", blocked, current == "blocked") %>
+    <%= chip.call("all", "", nil, current == "") %>
+    <% ChronoForge::Workflow.states.keys.each do |s| %>
+      <%= chip.call(s, s, @stats[s], current == s) %>
+    <% end %>
+  </div>
+
+  <div class="cf-card overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[40rem] text-sm">
+        <thead>
+          <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-4 py-2.5 font-medium">Class</th>
+            <th class="px-4 py-2.5 font-medium">Key</th>
+            <th class="px-4 py-2.5 font-medium">State</th>
+            <th class="px-4 py-2.5 text-right font-medium">Started</th>
+            <th class="px-4 py-2.5 text-right font-medium">Next run</th>
+            <th class="px-4 py-2.5 text-right font-medium">Updated</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-100">
+          <%= render partial: "chrono_forge/dashboard/workflows/workflow_row", collection: @children, as: :workflow, locals: {waits: @waits} %>
+        </tbody>
+      </table>
+    </div>
+    <% if @children.none? %>
+      <p class="px-4 py-12 text-center text-sm text-zinc-500">No children match this filter.</p>
+    <% end %>
+  </div>
+
+  <% base_params = request.query_parameters.except("before", "after") %>
+  <nav class="mt-4 flex items-center justify-between text-sm">
+    <% if @query.has_prev? %><%= link_to "‹ Newer", base_params.merge(after: @query.prev_cursor), class: cf_chip %><% else %><span></span><% end %>
+    <% if @query.has_next? %><%= link_to "Older ›", base_params.merge(before: @query.next_cursor), class: cf_chip %><% else %><span></span><% end %>
+  </nav>
+</div>

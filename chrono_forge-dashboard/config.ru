@@ -153,4 +153,22 @@ L.create!(workflow: ks, step_name: "durably_execute$charge_payment", attempt: 2,
 E.create!(workflow: ks, step_name: "legacy_custom_marker", state: estate(:completed),
   attempts: 1, started_at: 44.minutes.ago, completed_at: 44.minutes.ago + 1)
 
+# Fan-out parent parked on a branch merge with blocked children (branches feature)
+fo = W.create!(key: "batch-7", job_class: "OrderProcessingWorkflow", state: W.states[:idle],
+  context: {"batch_id" => 7}, kwargs: {"batch_id" => 7}, options: {}, started_at: 30.minutes.ago)
+fo_branch = E.create!(workflow: fo, step_name: "branch$fulfillment", state: estate(:completed),
+  attempts: 1, started_at: 30.minutes.ago, completed_at: 29.minutes.ago,
+  # Poll state stamped by BranchMergeJob; next_poll_at long past = dropped poller.
+  metadata: {"poll" => {"last_polled_at" => 65.minutes.ago.iso8601, "next_poll_at" => 60.minutes.ago.iso8601,
+                        "pending" => 2, "sealed" => true, "polls" => 9}})
+E.create!(workflow: fo, step_name: "merge$fulfillment", state: estate(:pending), attempts: 1, started_at: 29.minutes.ago)
+4.times do |i|
+  W.create!(key: "batch-7$fulfillment$order_#{i}", job_class: "OrderWorkflow", state: W.states[:completed],
+    context: {}, kwargs: {}, options: {}, started_at: 29.minutes.ago, completed_at: 28.minutes.ago, parent_execution_log_id: fo_branch.id)
+end
+W.create!(key: "batch-7$fulfillment$order_98", job_class: "OrderWorkflow", state: W.states[:failed],
+  context: {"reason" => "card_declined"}, kwargs: {}, options: {}, started_at: 28.minutes.ago, parent_execution_log_id: fo_branch.id)
+W.create!(key: "batch-7$fulfillment$order_99", job_class: "OrderWorkflow", state: W.states[:stalled],
+  context: {}, kwargs: {}, options: {}, started_at: 28.minutes.ago, parent_execution_log_id: fo_branch.id)
+
 run Combustion::Application

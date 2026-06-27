@@ -15,6 +15,8 @@ module ChronoForge
         when "wait" then Parsed.new(kind: :sleep, name: name, raw: step_name)
         when "wait_until" then Parsed.new(kind: :wait, name: name, raw: step_name)
         when "continue_if" then Parsed.new(kind: :continue, name: name, raw: step_name)
+        when "branch" then Parsed.new(kind: :branch, name: name, raw: step_name)
+        when "merge" then Parsed.new(kind: :merge, name: name, raw: step_name)
         when "durably_repeat"
           if ts
             Parsed.new(kind: :repeat_run, name: name, timestamp: Integer(ts, exception: false), raw: step_name)

@@ -1,0 +1,9 @@
+<% parent = parent_log.workflow %>
+<% branch_name = ChronoForge::Dashboard::StepNameParser.parse(parent_log.step_name).name %>
+<div class="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+  <%= link_to parent.key, workflow_path(parent), class: "max-w-[16rem] truncate font-mono hover:text-zinc-900 hover:underline" %>
+  <span class="text-zinc-300">›</span>
+  <%= link_to "branch #{branch_name}", workflow_branch_path(parent, parent_log), class: "font-mono hover:text-zinc-900 hover:underline" %>
+  <span class="text-zinc-300">›</span>
+  <span class="text-zinc-400">this child</span>
+</div>

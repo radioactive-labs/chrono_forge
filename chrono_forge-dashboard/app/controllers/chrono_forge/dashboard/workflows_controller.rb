@@ -16,6 +16,8 @@ module ChronoForge
         @context = ContextPresenter.new(@workflow)
         @wait = WaitStatePresenter.new(@workflow).active
         @periodic = PeriodicHealthPresenter.new(@workflow).tasks
+        @branches = BranchesPresenter.new(@workflow)
+        @parent_log = @workflow.parent_execution_log
       end
 
       private

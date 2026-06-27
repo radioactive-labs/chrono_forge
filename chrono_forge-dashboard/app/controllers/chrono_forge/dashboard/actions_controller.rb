@@ -38,6 +38,18 @@ module ChronoForge
         redirect_to workflows_path, notice: "Re-enqueued #{n} workflow(s)."
       end
 
+      # Retry every blocked (failed/stalled) child of one branch.
+      def bulk_retry_branch
+        parent = ChronoForge::Workflow.find(params[:workflow_id])
+        branch_log = parent.execution_logs.find(params[:id])
+        n = 0
+        branch_log.spawned_workflows.where(state: RETRYABLE_STATES).find_each do |wf|
+          wf.retry_later
+          n += 1
+        end
+        redirect_to workflow_branch_path(parent, branch_log), notice: "Re-enqueued #{n} child workflow(s)."
+      end
+
       private
 
       def workflow = @workflow ||= ChronoForge::Workflow.find(params[:id])

@@ -66,9 +66,17 @@ module ChronoForge
         end
       end
 
+      # "blocked" is a virtual filter (failed + stalled) used by the branch
+      # children triage view to default to the actionable subset.
+      BLOCKED_STATES = %i[failed stalled].map { |s| ChronoForge::Workflow.states[s] }.freeze
+
       def filtered
         s = @base
-        s = s.where(state: ChronoForge::Workflow.states[@state]) if @state && ChronoForge::Workflow.states.key?(@state)
+        if @state == "blocked"
+          s = s.where(state: BLOCKED_STATES)
+        elsif @state && ChronoForge::Workflow.states.key?(@state)
+          s = s.where(state: ChronoForge::Workflow.states[@state])
+        end
         s = s.where(job_class: @job_class) if @job_class
         # Prefix match (not substring) so it can use the `key` index instead of
         # full-scanning; LIKE wildcards in the input are escaped to literals.
