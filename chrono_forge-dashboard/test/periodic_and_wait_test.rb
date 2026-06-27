@@ -81,6 +81,22 @@ class PeriodicAndWaitTest < ActionDispatch::IntegrationTest
     assert_equal 1, health.first.timed_out_count
   end
 
+  test "periodic health counts a fast-forward summary as its N missed ticks" do
+    wf = create_workflow(key: "pff")
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1, started_at: 1.day.ago,
+      metadata: {"last_execution_at" => 2.hours.ago.iso8601})
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync$1717000000",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 1, error_class: "TimeoutError",
+      started_at: 3.hours.ago, completed_at: 3.hours.ago) # legacy per-tick → 1
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync$1717003600",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 1, error_class: "TimeoutError",
+      started_at: 2.hours.ago, completed_at: 2.hours.ago,
+      metadata: {"fast_forwarded" => 30}) # collapsed → 30
+    health = ChronoForge::Dashboard::PeriodicHealthPresenter.new(wf).tasks
+    assert_equal 31, health.first.timed_out_count
+  end
+
   test "periodic health reports the next scheduled run" do
     wf = create_workflow(key: "p2")
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$sync",

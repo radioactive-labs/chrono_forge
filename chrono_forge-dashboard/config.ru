@@ -76,6 +76,15 @@ E.create!(workflow: wf4, step_name: "durably_repeat$send_digest", state: estate(
 end
 E.create!(workflow: wf4, step_name: "durably_repeat$send_digest$#{12.hours.ago.to_i}", state: estate(:failed),
   attempts: 1, error_class: "TimeoutError", started_at: 12.hours.ago, completed_at: 12.hours.ago)
+# Fast-forward catch-up: one summary row collapsing a long downtime gap into N
+# skipped ticks (instead of N per-tick tombstones).
+ff_from = 20.hours.ago
+ff_to = 13.hours.ago
+E.create!(workflow: wf4, step_name: "durably_repeat$send_digest$#{ff_to.to_i}", state: estate(:failed),
+  attempts: 1, error_class: "TimeoutError", error_message: "Fast-forwarded 84 expired tick(s)",
+  started_at: 13.hours.ago, completed_at: 13.hours.ago,
+  metadata: {"fast_forwarded" => 84, "from" => ff_from.iso8601, "to" => ff_to.iso8601,
+             "scheduled_for" => ff_to.iso8601})
 
 # Stalled — a step exhausted its retries; the workflow halted and is unlocked
 wf5 = W.create!(key: "payout-3", job_class: "OrderWorkflow", state: W.states[:stalled],

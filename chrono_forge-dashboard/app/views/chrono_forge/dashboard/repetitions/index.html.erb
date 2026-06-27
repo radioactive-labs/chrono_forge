@@ -6,11 +6,11 @@
   </h1>
   <p class="mt-1 text-sm text-zinc-500">
     <%= number_with_delimiter(@summary[:iterations]) %> iterations
-    <% if @summary[:tombstones] > 0 %>· <span class="text-amber-600"><%= number_with_delimiter(@summary[:tombstones]) %> catch-up tombstone<%= "s" unless @summary[:tombstones] == 1 %></span><% end %>
+    <% if @summary[:skipped_ticks] > 0 %>· <span class="text-amber-600"><%= number_with_delimiter(@summary[:skipped_ticks]) %> catch-up tick<%= "s" unless @summary[:skipped_ticks] == 1 %> skipped</span><% end %>
     <% if @summary[:last_run_at] %>· last run <%= cf_ago(@summary[:last_run_at]) %><% end %>
   </p>
   <p class="mt-1 text-xs text-zinc-400">
-    Tombstones are expired/retried repetitions the engine marks failed and steps past — normal <code class="font-mono">durably_repeat</code> mechanics, not workflow errors.
+    Skipped ticks are expired repetitions the engine steps past — normal <code class="font-mono">durably_repeat</code> catch-up, not workflow errors. They appear as a per-tick <span class="text-amber-700">tombstone</span> or, after a long gap, a single <span class="text-amber-700">caught&nbsp;up&nbsp;×N</span> summary row.
   </p>
 </div>
 
@@ -31,11 +31,14 @@
     <tbody class="divide-y divide-zinc-100">
       <% @runs.each do |run| %>
         <% ts = ChronoForge::Dashboard::StepNameParser.parse(run.step_name).timestamp %>
-        <% tombstone = run.failed? %>
-        <tr class="<%= "bg-amber-50" if tombstone %>">
+        <% ff = run.failed? ? run.metadata&.dig("fast_forwarded") : nil %>
+        <% tombstone = run.failed? && ff.nil? %>
+        <tr class="<%= "bg-amber-50" if run.failed? %>">
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= ts ? cf_ago(Time.zone.at(ts)) : "—" %></td>
           <td class="px-4 py-2.5 text-xs">
-            <% if tombstone %>
+            <% if ff %>
+              <span class="font-medium text-amber-700" title="fast-forwarded <%= ff %> expired tick(s): <%= run.metadata["from"] %> → <%= run.metadata["to"] %>">caught up ×<%= ff %></span>
+            <% elsif tombstone %>
               <span class="font-medium text-amber-700">tombstone</span>
             <% else %>
               <span class="<%= cf_status_color(run.state) %>"><%= run.state %></span>
@@ -48,7 +51,7 @@
           </td>
           <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= cf_duration(run.started_at, run.completed_at) %></td>
           <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500">×<%= run.attempts %></td>
-          <td class="px-4 py-2.5 font-mono text-xs text-rose-600"><%= run.error_class || "—" %></td>
+          <td class="px-4 py-2.5 font-mono text-xs text-rose-600"><%= ff ? "—" : (run.error_class || "—") %></td>
         </tr>
       <% end %>
     </tbody>

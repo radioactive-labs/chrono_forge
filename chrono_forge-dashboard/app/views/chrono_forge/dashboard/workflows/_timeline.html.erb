@@ -43,8 +43,8 @@
         <% if e.kind == :repeat_coordination && e.iterations.to_i > 0 %>
           <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
             <span><%= pluralize(e.iterations, "iteration") %></span>
-            <% if e.tombstones.to_i > 0 %>
-              <span class="text-amber-600">· <%= e.tombstones %> catch-up tombstone<%= "s" unless e.tombstones == 1 %></span>
+            <% if e.skipped_ticks.to_i > 0 %>
+              <span class="text-amber-600">· <%= e.skipped_ticks %> catch-up tick<%= "s" unless e.skipped_ticks == 1 %> skipped</span>
             <% end %>
             <% if e.last_run_at %>
               <span>· last run <%= cf_ago(e.last_run_at) %></span>

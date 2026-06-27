@@ -8,6 +8,8 @@ module ChronoForge
       Task = Struct.new(:name, :last_execution_at, :next_scheduled_at, :timed_out_count, :latencies)
 
       RECENT = 20
+      # Bound the metadata scan used to count missed ticks (see #missed_ticks).
+      SCAN_CAP = 1_000
 
       def initialize(workflow) = @workflow = workflow
 
@@ -18,7 +20,7 @@ module ChronoForge
             name: name,
             last_execution_at: parse_time(coord.metadata&.dig("last_execution_at")),
             next_scheduled_at: next_scheduled(name),
-            timed_out_count: runs(name).where(error_class: "TimeoutError").count,
+            timed_out_count: missed_ticks(name),
             latencies: recent_latencies(name)
           )
         end
@@ -36,6 +38,15 @@ module ChronoForge
 
       def runs(name)
         @workflow.execution_logs.where("step_name LIKE ?", "durably_repeat#{d}#{name}#{d}%")
+      end
+
+      # Missed (timed-out) ticks. A fast-forward catch-up collapses N expired ticks
+      # into one TimeoutError row tagged fast_forwarded:N, so count it as N; a plain
+      # per-tick timeout counts as 1. Bounded metadata scan.
+      def missed_ticks(name)
+        runs(name).where(error_class: "TimeoutError")
+          .limit(SCAN_CAP).pluck(:metadata)
+          .sum { |m| [m&.dig("fast_forwarded").to_i, 1].max }
       end
 
       # Next run = the furthest-out not-yet-completed scheduled repetition. Pending

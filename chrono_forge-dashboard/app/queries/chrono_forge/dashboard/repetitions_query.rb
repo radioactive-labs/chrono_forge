@@ -13,6 +13,9 @@ module ChronoForge
     class RepetitionsQuery
       DEFAULT_PER = 50
       MAX_PER = 200
+      # Bound the metadata scan used to count fast-forwarded ticks (see #summary):
+      # a pre-upgrade step may carry a long history of legacy per-tick rows.
+      CATCHUP_SCAN_CAP = 1_000
 
       def initialize(workflow:, step:, before: nil, after: nil, per: DEFAULT_PER)
         @workflow = workflow
@@ -45,13 +48,21 @@ module ChronoForge
       # Cheap roll-up (counts + last run) without loading run rows. Grouping by
       # the `state` enum yields string-label keys ("completed"/"failed"), not
       # integers.
+      #
+      # `tombstones` is the number of catch-up *rows* (cheap group count).
+      # `skipped_ticks` is the true number of skipped ticks: a fast-forward
+      # summary row collapses N expired ticks into one failed row tagged
+      # `fast_forwarded: N`, so it counts as N, while a legacy per-tick tombstone
+      # counts as 1. They diverge only once a fast-forward has happened.
       def summary
         @summary ||= begin
           by_state = scope.group(:state).count
+          failed = by_state["failed"].to_i
           {
             iterations: by_state.values.sum,
             completed: by_state["completed"].to_i,
-            tombstones: by_state["failed"].to_i,
+            tombstones: failed,
+            skipped_ticks: failed.zero? ? 0 : skipped_tick_count,
             last_run_at: scope.maximum(:started_at)
           }
         end
@@ -65,6 +76,15 @@ module ChronoForge
       end
 
       private
+
+      # Sum the skipped ticks across catch-up rows: each fast-forward summary row
+      # contributes its `fast_forwarded` count; a legacy per-tick row contributes
+      # 1. Bounded scan (only failed rows, capped) since metadata must be read.
+      def skipped_tick_count
+        scope.where(state: ChronoForge::ExecutionLog.states[:failed])
+          .limit(CATCHUP_SCAN_CAP).pluck(:metadata)
+          .sum { |m| [m&.dig("fast_forwarded").to_i, 1].max }
+      end
 
       def load
         return if @loaded

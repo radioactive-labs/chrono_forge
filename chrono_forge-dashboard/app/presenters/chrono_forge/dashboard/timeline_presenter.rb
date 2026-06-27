@@ -3,7 +3,7 @@ module ChronoForge
     class TimelinePresenter
       Entry = Struct.new(:id, :kind, :name, :step_name, :status, :attempts,
         :started_at, :completed_at, :last_executed_at, :error_class, :error_message,
-        :metadata, :errors, :missing_error_id, :iterations, :tombstones, :last_run_at)
+        :metadata, :errors, :missing_error_id, :iterations, :tombstones, :skipped_ticks, :last_run_at)
 
       # Per-iteration run logs of a durably_repeat step are excluded from the
       # timeline (they get their own paginated page) and summarized instead.
@@ -82,6 +82,7 @@ module ChronoForge
         s = RepetitionsQuery.new(workflow: @workflow, step: name).summary
         entry.iterations = s[:iterations]
         entry.tombstones = s[:tombstones]
+        entry.skipped_ticks = s[:skipped_ticks]
         entry.last_run_at = s[:last_run_at]
       end
     end

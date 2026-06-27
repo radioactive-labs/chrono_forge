@@ -19,6 +19,20 @@ class RepetitionsQueryTest < ActiveSupport::TestCase
     assert_equal 3, s[:iterations]
     assert_equal 2, s[:completed]
     assert_equal 1, s[:tombstones]
+    assert_equal 1, s[:skipped_ticks] # one failed row, no fast-forward → 1 tick
+  end
+
+  test "a fast-forward summary row counts as its N skipped ticks" do
+    wf = create_workflow(key: "rff")
+    run_log(wf, "sync", 1_717_000_000, state: :completed)
+    run_log(wf, "sync", 1_717_000_600, state: :failed) # legacy per-tick tombstone → 1
+    run_log(wf, "sync", 1_717_001_200, state: :failed, # fast-forward summary → 42
+      metadata: {"fast_forwarded" => 42, "from" => "x", "to" => "y"})
+
+    s = ChronoForge::Dashboard::RepetitionsQuery.new(workflow: wf, step: "sync").summary
+    assert_equal 3, s[:iterations]
+    assert_equal 2, s[:tombstones]     # two failed *rows*
+    assert_equal 43, s[:skipped_ticks] # 1 (legacy) + 42 (collapsed) ticks
   end
 
   test "keyset paginates the runs newest id first" do
@@ -52,6 +66,20 @@ class RepetitionsControllerTest < ActionDispatch::IntegrationTest
     assert_match "Repetitions", response.body
     assert_match "tombstone", response.body
     assert_match "TimeoutError", response.body
+  end
+
+  test "renders a fast-forward summary row as a caught-up collapse, not an error" do
+    wf = create_workflow(key: "rcff", state: :running)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$digest$1717001200",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 1, error_class: "TimeoutError",
+      error_message: "Fast-forwarded 84 expired tick(s)", started_at: Time.zone.at(1_717_001_200),
+      metadata: {"fast_forwarded" => 84, "from" => "2024-05-29T00:00:00Z", "to" => "2024-05-29T20:00:00Z"})
+
+    get "/chrono_forge/workflows/#{wf.id}/repetitions", params: {step: "digest"}
+    assert_response :success
+    assert_match "caught up ×84", response.body
+    assert_match "84 catch-up ticks skipped", response.body
+    refute_match "TimeoutError", response.body # the marker error is suppressed for summary rows
   end
 
   test "shows how late a repetition started versus its scheduled time" do
