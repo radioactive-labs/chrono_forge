@@ -15,6 +15,12 @@ module ChronoForge
         end
 
         def event_wait? = kind == :continue
+
+        # The scheduled wake time as a Time, or nil for event waits / no timeout.
+        def next_run_at
+          return nil unless kind == :wait && timeout_at
+          timeout_at.is_a?(Time) ? timeout_at : Time.zone.parse(timeout_at.to_s)
+        end
       end
 
       def initialize(workflow) = @workflow = workflow
