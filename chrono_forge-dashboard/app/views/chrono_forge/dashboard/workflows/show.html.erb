@@ -11,8 +11,11 @@
               class: "inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50" %>
       </p>
     </div>
-    <% if @workflow.retryable? || @workflow.running? %>
+    <% if @workflow.retryable? || @workflow.running? || @workflow.idle? %>
       <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <% if @workflow.idle? %>
+          <%= button_to "Resume", resume_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
+        <% end %>
         <% if @workflow.retryable? %>
           <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
         <% end %>

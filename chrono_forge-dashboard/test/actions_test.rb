@@ -28,6 +28,23 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_match "fixed", response.body
   end
 
+  test "resume re-enqueues an idle (parked) workflow" do
+    wf = create_workflow(key: "rs1", state: :idle)
+    assert_enqueued_jobs 1 do
+      post "/chrono_forge/workflows/#{wf.id}/resume"
+    end
+    assert_response :redirect
+  end
+
+  test "resume rejects a non-idle workflow" do
+    wf = create_workflow(key: "rs2", state: :completed)
+    assert_no_enqueued_jobs do
+      post "/chrono_forge/workflows/#{wf.id}/resume"
+    end
+    follow_redirect!
+    assert_match(/only idle/i, response.body)
+  end
+
   test "unlock clears the lock and idles" do
     wf = create_workflow(key: "u1", state: :running, locked_at: Time.current, locked_by: "job-1")
     post "/chrono_forge/workflows/#{wf.id}/unlock"

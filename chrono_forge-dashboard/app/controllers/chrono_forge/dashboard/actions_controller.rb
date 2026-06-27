@@ -15,6 +15,16 @@ module ChronoForge
         redirect_to workflow_path(workflow), notice: "Unlocked #{workflow.key}."
       end
 
+      # Re-enqueue an idle (parked) workflow so the executor picks it up again.
+      # This is the recovery for a dropped poll/wake — a wait_until or merge whose
+      # poller job was lost, or a continue_if whose event has since arrived: the
+      # replay re-checks the condition and re-arms the poll if still unmet.
+      def resume
+        return redirect_to(workflow_path(workflow), alert: "Only idle workflows can be resumed.") unless workflow.idle?
+        workflow.job_klass.perform_later(workflow.key)
+        redirect_to workflow_path(workflow), notice: "Re-enqueued #{workflow.key}."
+      end
+
       # Both failed and stalled workflows are retryable, so bulk retry covers
       # both (matching the per-workflow Retry, which uses `retryable?`).
       RETRYABLE_STATES = %i[failed stalled].map { |s| ChronoForge::Workflow.states[s] }.freeze

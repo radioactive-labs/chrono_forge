@@ -3,6 +3,7 @@ ChronoForge::Dashboard::Engine.routes.draw do
   resources :workflows, only: %i[index show] do
     member do
       post :retry, to: "actions#retry"
+      post :resume, to: "actions#resume"
       post :unlock, to: "actions#unlock"
       get :repetitions, to: "repetitions#index"
     end
