@@ -52,6 +52,149 @@ class BranchRecoveryTest < ActiveJob::TestCase
     assert_equal 0, bad, "no child should be failed/stalled from a spurious re-run"
   end
 
+  # AR path, mid-stream: glitch fires AFTER the first batch's advance_cursor! so the
+  # cursor is persisted with start: <users[of-1].id>. On resume, spawn_each picks up
+  # from that non-nil PK — it does NOT restart from scratch. The boundary record is
+  # re-yielded (inclusive keyset) but insert_all dedups its identical key, so we
+  # still end up with exactly 25 distinct children and zero failed/stalled.
+  def test_ar_path_resumes_mid_stream_from_nonnil_cursor
+    branch_rb = ChronoForge::Executor::Methods::Branch
+      .instance_method(:spawn_each).source_location[0]
+
+    ar_cursor_line = File.readlines(branch_rb)
+      .each_with_index
+      .find { |line, _| line.include?("advance_cursor!") && line.include?("pk:") }
+      .then { |_line, idx| idx + 1 }
+
+    run_scenario(
+      SpawnEachWorkflow.new("ar-mid", of: 10),
+      glitch: ["after", "#{branch_rb}:#{ar_cursor_line}"]
+    )
+
+    parent = ChronoForge::Workflow.find_by(key: "ar-mid")
+    assert parent.completed?, "workflow should complete after mid-stream AR cursor resume"
+
+    branch_log = parent.execution_logs.find_by(step_name: "branch$grp")
+    children = ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id)
+
+    assert_equal 25, children.count, "exactly 25 children after mid-stream AR resume (no extras)"
+    assert_equal 25, children.distinct.count(:key), "no duplicate child keys"
+
+    bad = children.where(state: [
+      ChronoForge::Workflow.states[:failed],
+      ChronoForge::Workflow.states[:stalled]
+    ]).count
+    assert_equal 0, bad, "no child should be failed/stalled after mid-stream AR resume"
+  end
+
+  # Enumerable path, mid-stream: glitch fires AFTER the first batch's advance_cursor!
+  # (n: n line). The cursor is persisted at n=of, so resume calls source.drop(n) and
+  # skips the already-dispatched items — no overlap, no gap, no dupes.
+  def test_enumerable_path_resumes_mid_stream
+    branch_rb = ChronoForge::Executor::Methods::Branch
+      .instance_method(:spawn_each).source_location[0]
+
+    enum_cursor_line = File.readlines(branch_rb)
+      .each_with_index
+      .find { |line, _| line.include?("advance_cursor!") && line.include?("n: n") }
+      .then { |_line, idx| idx + 1 }
+
+    items = (1..25).to_a
+    run_scenario(
+      EnumSpawnWorkflow.new("enum-mid", items: items, of: 10),
+      glitch: ["after", "#{branch_rb}:#{enum_cursor_line}"]
+    )
+
+    parent = ChronoForge::Workflow.find_by(key: "enum-mid")
+    assert parent.completed?, "workflow should complete after mid-stream enumerable resume"
+
+    branch_log = parent.execution_logs.find_by(step_name: "branch$grp")
+    children = ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id)
+
+    assert_equal 25, children.count, "exactly 25 children after mid-stream enum resume (no extras)"
+    assert_equal 25, children.distinct.count(:key), "no duplicate child keys"
+
+    bad = children.where(state: [
+      ChronoForge::Workflow.states[:failed],
+      ChronoForge::Workflow.states[:stalled]
+    ]).count
+    assert_equal 0, bad, "no child should be failed/stalled after mid-stream enum resume"
+  end
+
+  # Enumerable path, from-scratch: glitch fires BEFORE the first advance_cursor! in
+  # the enum branch — n is never persisted. On resume drop(0) re-yields the whole
+  # stream, producing identical things_{n} keys; insert_all dedups them so no
+  # duplicates exist and all 25 children complete cleanly.
+  def test_enumerable_path_resumes_from_scratch_dedups
+    branch_rb = ChronoForge::Executor::Methods::Branch
+      .instance_method(:spawn_each).source_location[0]
+
+    enum_cursor_line = File.readlines(branch_rb)
+      .each_with_index
+      .find { |line, _| line.include?("advance_cursor!") && line.include?("n: n") }
+      .then { |_line, idx| idx + 1 }
+
+    items = (1..25).to_a
+    run_scenario(
+      EnumSpawnWorkflow.new("enum-scratch", items: items, of: 10),
+      glitch: ["before", "#{branch_rb}:#{enum_cursor_line}"]
+    )
+
+    parent = ChronoForge::Workflow.find_by(key: "enum-scratch")
+    assert parent.completed?, "workflow should complete after from-scratch enum resume"
+
+    branch_log = parent.execution_logs.find_by(step_name: "branch$grp")
+    children = ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id)
+
+    assert_equal 25, children.count, "exactly 25 children after from-scratch enum resume (no dupes)"
+    assert_equal 25, children.distinct.count(:key), "no duplicate child keys"
+
+    bad = children.where(state: [
+      ChronoForge::Workflow.states[:failed],
+      ChronoForge::Workflow.states[:stalled]
+    ]).count
+    assert_equal 0, bad, "no child should be failed/stalled after from-scratch enum resume"
+  end
+
+  # Finest-grained gap: crash AFTER insert_all commits child rows (:idle) but BEFORE
+  # perform_all_later enqueues them. On resume the branch re-dispatches: insert_all
+  # ignores the existing idle rows; the idle-filter finds them still :idle and
+  # enqueues them. Every child inserted-but-never-enqueued still runs to :completed.
+  def test_resumes_when_crash_between_insert_and_enqueue
+    branch_rb = ChronoForge::Executor::Methods::Branch
+      .instance_method(:spawn_each).source_location[0]
+
+    perform_all_later_line = File.readlines(branch_rb)
+      .each_with_index
+      .find { |line, _| line.include?("ActiveJob.perform_all_later") }
+      .then { |_line, idx| idx + 1 }
+
+    run_scenario(
+      SpawnEachWorkflow.new("gap-1", of: 10),
+      glitch: ["before", "#{branch_rb}:#{perform_all_later_line}"]
+    )
+
+    parent = ChronoForge::Workflow.find_by(key: "gap-1")
+    assert parent.completed?, "workflow should complete after insert/enqueue gap resume"
+
+    branch_log = parent.execution_logs.find_by(step_name: "branch$grp")
+    children = ChronoForge::Workflow.where(parent_execution_log_id: branch_log.id)
+
+    assert_equal 25, children.count, "exactly 25 children after insert/enqueue gap resume"
+    assert_equal 25, children.distinct.count(:key), "no duplicate child keys"
+
+    bad = children.where(state: [
+      ChronoForge::Workflow.states[:failed],
+      ChronoForge::Workflow.states[:stalled]
+    ]).count
+    assert_equal 0, bad, "no child should be failed/stalled after insert/enqueue gap"
+
+    # Key property: children inserted but never enqueued (still :idle at crash time)
+    # must be picked up and run to :completed on resume — none should be stuck :idle.
+    stuck_idle = children.where(state: ChronoForge::Workflow.states[:idle]).count
+    assert_equal 0, stuck_idle, "no child should remain :idle — all must be run after insert/enqueue gap"
+  end
+
   # Focused unit test of the dispatch filter: a child already :completed must NOT
   # be re-enqueued when its chunk is re-dispatched on resume. We pre-seed a
   # completed child whose key the re-yielded stream will produce, then re-run
