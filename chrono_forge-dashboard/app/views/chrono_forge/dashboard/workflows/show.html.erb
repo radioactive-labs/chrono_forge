@@ -5,18 +5,23 @@
     <div class="min-w-0">
       <%= cf_state_badge(@workflow, @wait) %>
       <h1 class="mt-1.5 break-all font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
-      <p class="mt-1 break-all font-mono text-sm text-zinc-500"><%= @workflow.job_class %></p>
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
+        <span class="break-all font-mono"><%= @workflow.job_class %></span>
+        <%= link_to "metrics →", analytics_path(class: @workflow.job_class),
+              class: "inline-flex items-center rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50" %>
+      </p>
     </div>
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <%= link_to "Metrics →", analytics_path(class: @workflow.job_class), class: "cf-btn" %>
-      <% if @workflow.retryable? %>
-        <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
-      <% end %>
-      <% if @workflow.running? %>
-        <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
-              form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
-      <% end %>
-    </div>
+    <% if @workflow.retryable? || @workflow.running? %>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <% if @workflow.retryable? %>
+          <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
+        <% end %>
+        <% if @workflow.running? %>
+          <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
+                form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
+        <% end %>
+      </div>
+    <% end %>
   </div>
 
   <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
