@@ -148,4 +148,52 @@ class BranchMergeJobTest < ActiveJob::TestCase
 
     assert stuck.reload.completed?, "rekicked child must run to completion"
   end
+
+  # Each poll stamps its observable state onto the target branch log's metadata so
+  # a dashboard can surface in-flight merges (ActiveJob can't be queried for the
+  # scheduled poller). While work remains, next_poll_at is set.
+  def test_records_poll_state_on_branch_log
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    poll = @log.reload.metadata["poll"]
+    assert poll, "poll state should be recorded on the branch log"
+    assert_equal 1, poll["pending"]
+    assert_equal true, poll["sealed"]
+    assert poll["last_polled_at"], "last_polled_at should be recorded"
+    assert poll["next_poll_at"], "next_poll_at should be set while still polling"
+    assert_equal 1, poll["polls"]
+  end
+
+  # The poll state must not clobber spawn_each's cursors — both live in the same
+  # branch-log metadata under separate keys.
+  def test_poll_state_preserves_existing_branch_metadata
+    @log.update!(metadata: {"cursors" => {"items" => {"pk" => 42}}})
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    meta = @log.reload.metadata
+    assert_equal 42, meta.dig("cursors", "items", "pk"), "spawn_each cursors must be preserved"
+    assert meta["poll"], "poll state should be added alongside cursors"
+  end
+
+  # On the wake (done) poll, pending is 0 and there is no next poll scheduled.
+  def test_records_final_poll_with_no_next_when_complete
+    child!(state: :completed)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    poll = @log.reload.metadata["poll"]
+    assert_equal 0, poll["pending"]
+    assert_equal true, poll["sealed"]
+    assert_nil poll["next_poll_at"], "no next poll once the merge is done"
+  end
+
+  # The poll counter accumulates across successive polls.
+  def test_poll_count_increments_across_polls
+    child!(state: :running)
+    2.times do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+    assert_equal 2, @log.reload.metadata["poll"]["polls"]
+  end
 end

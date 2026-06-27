@@ -24,22 +24,51 @@ module ChronoForge
     def perform(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval)
       raise ArgumentError, "branch_log_ids must not be empty" if branch_log_ids.empty?
 
-      pending = branch_log_ids.sum { |id| BranchProbe.incomplete(id).limit(CAP).count }
-      sealed = branch_log_ids.all? { |id| BranchProbe.sealed?(id) }
+      # Per-branch probe (kept as maps so we can persist each branch's own state,
+      # not just the merge aggregate). Same query count as a plain sum/all?.
+      pending_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.incomplete(id).limit(CAP).count] }
+      sealed_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.sealed?(id)] }
+      pending = pending_by_branch.values.sum
+      sealed = sealed_by_branch.values.all?
 
       if sealed && pending.zero?
+        record_poll!(pending_by_branch, sealed_by_branch, next_poll_at: nil)
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
 
       rekick_dropped_jobs(branch_log_ids)
 
-      delay = [[pending * FACTOR, min_interval].max, max_interval].min
+      delay = (pending * FACTOR).clamp(min_interval, max_interval)
+      record_poll!(pending_by_branch, sealed_by_branch, next_poll_at: delay.seconds.from_now)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval)
     end
 
     private
+
+    # ActiveJob exposes no portable API to enumerate enqueued/scheduled jobs, so a
+    # poller in the backend's scheduled set is invisible to a backend-agnostic
+    # dashboard. We make the durable log the source of truth instead: each poll
+    # stamps its observable state onto every target branch log's metadata, so the
+    # dashboard can list in-flight merges (and a next_poll_at long in the past with
+    # work still pending is the signal that the poller was dropped). This is purely
+    # observational — replay and correctness never read it. It writes a "poll"
+    # sub-key, leaving spawn_each's "cursors" metadata untouched.
+    def record_poll!(pending_by_branch, sealed_by_branch, next_poll_at:)
+      now = Time.current
+      ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
+        meta = log.metadata || {}
+        meta["poll"] = {
+          "last_polled_at" => now.iso8601,
+          "next_poll_at" => next_poll_at&.iso8601,
+          "pending" => pending_by_branch[log.id],
+          "sealed" => sealed_by_branch[log.id],
+          "polls" => meta.dig("poll", "polls").to_i + 1
+        }
+        log.update!(metadata: meta)
+      end
+    end
 
     # A child that was dispatched but never picked up (its job was dropped by the
     # backend) sits :idle with started_at nil. setup_workflow! stamps started_at

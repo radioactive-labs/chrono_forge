@@ -60,8 +60,8 @@ module ChronoForge
         def spawn_each(name, source, of: 1000)
           cb = current_branch!
           validate_step_name_segment!(name)
-          cursor = (cb[:log].metadata&.dig("cursors", name.to_s)) || {}
-          n = (cursor["n"] || 0)
+          cursor = cb[:log].metadata&.dig("cursors", name.to_s) || {}
+          n = cursor["n"] || 0
 
           if source.is_a?(ActiveRecord::Relation)
             # spawn_each iterates by primary key (find_in_batches) so the stream

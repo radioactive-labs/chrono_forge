@@ -23,7 +23,10 @@ class SpawnEachTest < ActiveJob::TestCase
   end
 
   def test_spawn_each_honors_class_from_block
-    klass = Class.new(WorkflowJob) { prepend ChronoForge::Executor; def perform(**) = nil }
+    klass = Class.new(WorkflowJob) {
+      prepend ChronoForge::Executor
+      def perform(**) = nil
+    }
     Object.const_set(:AltChild, klass)
     job = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
