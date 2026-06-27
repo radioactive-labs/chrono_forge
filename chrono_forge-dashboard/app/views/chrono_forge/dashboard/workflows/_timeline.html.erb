@@ -16,9 +16,8 @@
         </div>
         <% if e.started_at || e.last_executed_at %>
           <div class="mt-0.5 font-mono text-[11px] text-zinc-400">
-            <% if e.started_at %><span title="<%= e.started_at.iso8601 %>">started <%= time_ago_in_words(e.started_at) %> ago</span><% end %>
-            <% if e.completed_at %><span title="<%= e.completed_at.iso8601 %>"> · finished <%= time_ago_in_words(e.completed_at) %> ago</span>
-            <% elsif e.last_executed_at %><span title="<%= e.last_executed_at.iso8601 %>"> · last run <%= time_ago_in_words(e.last_executed_at) %> ago</span><% end %>
+            <% if e.started_at %>started <%= cf_ago(e.started_at) %><% end %>
+            <% if e.completed_at %> · finished <%= cf_ago(e.completed_at) %><% elsif e.last_executed_at %> · last run <%= cf_ago(e.last_executed_at) %><% end %>
           </div>
         <% end %>
         <% pairs = cf_meta_pairs(e.metadata) %>
@@ -48,7 +47,7 @@
               <span class="text-amber-600">· <%= e.tombstones %> catch-up tombstone<%= "s" unless e.tombstones == 1 %></span>
             <% end %>
             <% if e.last_run_at %>
-              <span title="<%= e.last_run_at.iso8601 %>">· last run <%= time_ago_in_words(e.last_run_at) %> ago</span>
+              <span>· last run <%= cf_ago(e.last_run_at) %></span>
             <% end %>
             <%= link_to "view repetitions →", repetitions_workflow_path(timeline.workflow, step: e.name), class: "underline hover:text-zinc-900" %>
           </div>

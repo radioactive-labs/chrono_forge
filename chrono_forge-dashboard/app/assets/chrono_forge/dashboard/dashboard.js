@@ -10,6 +10,14 @@
     window.__chronoForgeDashboard = true;
 
     document.addEventListener("click", function (e) {
+      // Timestamp display toggle (relative vs absolute), persisted in a cookie.
+      var timeSet = e.target.closest("[data-time-set]");
+      if (timeSet) {
+        document.cookie = "cf_time_format=" + timeSet.getAttribute("data-time-set") +
+          ";path=/;max-age=31536000;samesite=lax";
+        window.location.reload();
+        return;
+      }
       // Collapsible context tree
       var key = e.target.closest(".cf-context__key");
       if (key && key.closest("[data-collapsible]")) {

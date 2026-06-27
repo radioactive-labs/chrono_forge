@@ -39,6 +39,17 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match "cf-pill-scheduled", response.body
   end
 
+  test "time format: relative by default, absolute via cookie" do
+    create_workflow(key: "tf", state: :completed, started_at: 2.hours.ago)
+
+    get "/chrono_forge/workflows"
+    assert_match(/>[^<]*ago<\/span>/, response.body, "relative time is shown as text by default")
+
+    cookies[:cf_time_format] = "absolute"
+    get "/chrono_forge/workflows"
+    assert_match(/title="[^"]*ago"/, response.body, "with the cookie, relative time moves to the hover title")
+  end
+
   test "plain idle workflow stays idle, not scheduled" do
     create_workflow(key: "idle-1", state: :idle)
     get "/chrono_forge/workflows"

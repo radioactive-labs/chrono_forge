@@ -15,7 +15,7 @@
     </div>
   <% end %>
   <header class="border-b border-zinc-200 bg-white">
-    <div class="mx-auto flex h-14 max-w-6xl items-center gap-8 px-4">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
       <a href="<%= root_path %>" class="flex items-center gap-2 font-semibold tracking-tight">
         <span class="inline-block h-3.5 w-3.5 rounded-sm bg-zinc-900"></span>
         ChronoForge
@@ -25,6 +25,10 @@
         <a href="<%= wait_states_path %>" class="<%= controller_name == "wait_states" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Waiting</a>
         <a href="<%= analytics_path %>" class="<%= controller_name == "analytics" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Analytics</a>
       </nav>
+      <div class="ml-auto flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 text-xs" title="Timestamp display">
+        <button type="button" data-time-set="relative" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "text-zinc-500 hover:text-zinc-900" : "bg-zinc-900 text-white" %>">relative</button>
+        <button type="button" data-time-set="absolute" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900" %>">absolute</button>
+      </div>
     </div>
   </header>
   <main class="mx-auto max-w-6xl px-4 py-6">

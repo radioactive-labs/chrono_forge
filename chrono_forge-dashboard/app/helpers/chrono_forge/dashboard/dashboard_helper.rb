@@ -34,10 +34,19 @@ module ChronoForge
         (count >= cap) ? "#{cap}+" : count.to_s
       end
 
-      # Relative time with the absolute timestamp on hover.
+      # Whether the viewer prefers absolute timestamps (cookie-persisted nav toggle).
+      def cf_absolute_time?
+        cookies[:cf_time_format] == "absolute"
+      end
+
+      # A timestamp shown relative ("3 minutes ago") or absolute (raw ISO8601)
+      # per the viewer's preference, with the other form available on hover.
       def cf_ago(t)
         return "—" unless t
-        tag.span("#{time_ago_in_words(t)} ago", title: t.iso8601, class: "cursor-help")
+        rel = "#{time_ago_in_words(t)} ago"
+        abs = t.iso8601
+        shown, hover = cf_absolute_time? ? [abs, rel] : [rel, abs]
+        tag.span(shown, title: hover, class: "cursor-help")
       end
 
       # Human duration between two times (e.g. "1m 04s"); "—" if unfinished.
