@@ -66,7 +66,15 @@
         .then(function (html) {
           var doc = new DOMParser().parseFromString(html, "text/html");
           var fresh = doc.querySelector("[data-poll-region]");
-          if (fresh) region.innerHTML = fresh.innerHTML;
+          if (!fresh) return;
+          // Preserve horizontal scroll of any scroll containers across the swap,
+          // so polling doesn't yank a table back while it's being scrolled.
+          var scrolls = Array.prototype.map.call(
+            region.querySelectorAll(".overflow-x-auto"), function (el) { return el.scrollLeft; });
+          region.innerHTML = fresh.innerHTML;
+          region.querySelectorAll(".overflow-x-auto").forEach(function (el, i) {
+            if (scrolls[i]) el.scrollLeft = scrolls[i];
+          });
         }).catch(function () {});
     }, interval);
   }

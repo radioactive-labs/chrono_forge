@@ -7,17 +7,16 @@
       <h1 class="mt-1.5 break-all font-mono text-xl font-semibold tracking-tight"><%= @workflow.key %></h1>
       <p class="mt-1 break-all font-mono text-sm text-zinc-500"><%= @workflow.job_class %></p>
     </div>
-    <% if @workflow.retryable? || @workflow.running? %>
-      <div class="flex shrink-0 gap-2">
-        <% if @workflow.retryable? %>
-          <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
-        <% end %>
-        <% if @workflow.running? %>
-          <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
-                form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
-        <% end %>
-      </div>
-    <% end %>
+    <div class="flex shrink-0 flex-wrap items-center gap-2">
+      <%= link_to "Metrics →", analytics_path(class: @workflow.job_class), class: "cf-btn" %>
+      <% if @workflow.retryable? %>
+        <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
+      <% end %>
+      <% if @workflow.running? %>
+        <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
+              form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
+      <% end %>
+    </div>
   </div>
 
   <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
@@ -28,10 +27,6 @@
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked by</dt><dd class="break-all font-mono text-zinc-700"><%= @workflow.locked_by || "—" %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked at</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.locked_at) %></dd></div>
   </dl>
-
-  <div class="mt-4">
-    <%= link_to analytics_path(class: @workflow.job_class), class: "cf-btn" do %><%= @workflow.job_class %> metrics →<% end %>
-  </div>
 </div>
 
 <%= render "wait_callout", wait: @wait if @wait %>
