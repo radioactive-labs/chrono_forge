@@ -29,6 +29,11 @@
             <% end %>
           </dl>
         <% end %>
+        <% if e.missing_error_id %>
+          <div class="mt-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 font-mono text-xs text-zinc-500">
+            error log #<%= e.missing_error_id %> is no longer available
+          </div>
+        <% end %>
         <% if e.errors.any? %>
           <%= render partial: "error_card", collection: e.errors, as: :err %>
         <% elsif e.error_class %>

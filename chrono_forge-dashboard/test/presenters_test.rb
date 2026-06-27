@@ -50,6 +50,15 @@ class PresentersTest < ActiveSupport::TestCase
     assert_empty tl.orphan_errors, "the error is shown on the marker, so not an orphan"
   end
 
+  test "a failure marker whose error log is gone notes the missing id" do
+    wf = create_workflow(key: "gone-err", state: :failed)
+    log(wf, "$workflow_failure$999999", state: :completed, started_at: 1.minute.ago, completed_at: 1.minute.ago)
+
+    marker = ChronoForge::Dashboard::TimelinePresenter.new(wf).entries.find { |e| e.kind == :lifecycle }
+    assert_empty marker.errors
+    assert_equal 999999, marker.missing_error_id
+  end
+
   test "an error log attached to no step is surfaced as an orphan" do
     wf = create_workflow(key: "orphan-err", state: :failed)
     log(wf, "durably_execute$charge", state: :pending, started_at: 1.minute.ago)
