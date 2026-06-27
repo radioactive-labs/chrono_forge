@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*", "app/**/*", "config/**/*", "MIT-LICENSE", "README.md", "CHANGELOG.md"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "chrono_forge", ">= 0.9.0"
+  spec.add_dependency "chrono_forge", ">= 0.10.0"
   spec.add_dependency "railties", ">= 7.1"
   spec.add_dependency "actionpack", ">= 7.1"
 
