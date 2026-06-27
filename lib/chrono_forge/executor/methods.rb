@@ -6,6 +6,8 @@ module ChronoForge
       include Methods::ContinueIf
       include Methods::DurablyExecute
       include Methods::DurablyRepeat
+      include Methods::Branch
+      include Methods::MergeBranches
       include Methods::WorkflowStates
     end
   end

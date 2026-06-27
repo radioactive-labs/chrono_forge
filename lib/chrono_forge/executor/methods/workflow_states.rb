@@ -48,6 +48,8 @@ module ChronoForge
         # - Safe to call multiple times without side effects
         #
         def complete_workflow!
+          enforce_branch_joins!
+
           # Create an execution log for workflow completion
           execution_log = find_or_create_execution_log!("$workflow_completion$") do |log|
             log.started_at = Time.current
@@ -78,6 +80,20 @@ module ChronoForge
             )
             raise
           end
+        end
+
+        # Every branch must be joined: automerge branches join inline at their
+        # block's close (removing themselves from @open_branches); explicitly
+        # awaited branches are removed by merge_branches. Anything still in
+        # @open_branches here was opened but never joined — fail fast.
+        def enforce_branch_joins!
+          leftover = (@open_branches || {}).keys
+          return if leftover.empty?
+
+          raise UnmergedBranchError,
+            "branch(es) #{leftover.join(", ")} were opened but never merged. " \
+            "Add `merge_branches #{leftover.map { |n| ":#{n}" }.join(", ")}` " \
+            "or open with `branch(..., automerge: true)`."
         end
 
         # Marks a workflow as failed due to an unrecoverable error.

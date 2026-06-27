@@ -1,0 +1,67 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-26-branches-spawn-merge.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Schema — parent_execution_log_id column + index",
+      "status": "completed",
+      "description": "Add nullable parent_execution_log_id (FK type matching pk) to chrono_forge_workflows + composite (parent_execution_log_id, state) index, via an additive migration wired into the generators and applied to the test DB.\n\n```json:metadata\n{\"files\": [\"lib/generators/chrono_forge/templates/add_chrono_forge_parent_execution_log.rb\", \"lib/generators/chrono_forge/migration_actions.rb\", \"test/internal/db/migrate/20260626000001_add_chrono_forge_parent_execution_log.rb\", \"test/schema_test.rb\", \"test/generators_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/schema_test.rb\", \"acceptanceCriteria\": [\"parent_execution_log_id column exists\", \"(parent_execution_log_id, state) index exists\", \"migration in MIGRATIONS + generators_test\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Model associations",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "Workflow belongs_to :parent_execution_log (optional); ExecutionLog has_many :spawned_workflows (fk parent_execution_log_id, dependent: :nullify).\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/workflow.rb\", \"lib/chrono_forge/execution_log.rb\", \"test/branch_associations_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_associations_test.rb\", \"acceptanceCriteria\": [\"parent_execution_log association\", \"spawned_workflows association\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: branch block + spawn (single)",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "branch(name, automerge:) durable step with in-memory @open_branches registry, eager dispatch, seal-on-close, SKIP-BLOCK-WHEN-SEALED. spawn(name, klass, **kwargs) single child. spawn outside branch raises NotInBranchError. Error classes + Methods include (create empty MergeBranches stub).\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/branch.rb\", \"lib/chrono_forge/executor.rb\", \"lib/chrono_forge/executor/methods.rb\", \"lib/chrono_forge/executor/methods/merge_branches.rb\", \"test/branch_test.rb\", \"test/internal/app/jobs/noop_child.rb\", \"test/internal/app/jobs/single_spawn_workflow.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_test.rb\", \"acceptanceCriteria\": [\"spawn creates linked child + seals branch\", \"spawn outside branch raises\", \"sealed branch skips block on replay\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: spawn_each streaming dispatch",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "spawn_each(name, source, of:) — AR keyset (find_in_batches start:, error_on_ignore: true) or enumerable (offset/drop), one child per item keyed name_{index}, class from block, cursor {pk,n} on branch log metadata.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/branch.rb\", \"test/spawn_each_test.rb\", \"test/internal/app/jobs/spawn_each_workflow.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/spawn_each_test.rb\", \"acceptanceCriteria\": [\"one indexed child per item\", \"class from block (mixed)\", \"raises on conflicting AR order\", \"cursor persisted\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: BranchMergeJob poller",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "ChronoForge::BranchMergeJob (plain ActiveJob): capped-count probe per branch (limit CAP), wake parent when all sealed + pending 0, else re-kick never-started children (started_at nil older than REKICK_AFTER) and reschedule clamp(pending*FACTOR, min, max).\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/branch_merge_job.rb\", \"test/branch_merge_job_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_merge_job_test.rb\", \"acceptanceCriteria\": [\"wakes parent when complete\", \"reschedules when incomplete\", \"capped count\", \"re-kicks never-started child\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: merge_branches / merge_branch join",
+      "status": "completed",
+      "blockedBy": [3, 5],
+      "description": "merge_branches(*names, min_interval:, max_interval:) + alias merge_branch — immediate done-check, else enqueue BranchMergeJob + halt; remove joined names from @open_branches on completion; raise ArgumentError for unopened name. Shared helpers branches_done?/enqueue_branch_merge_job/open_branch!.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/merge_branches.rb\", \"test/merge_branches_test.rb\", \"test/internal/app/jobs/two_branch_workflow.rb\", \"test/internal/app/jobs/stalled_child_branch_workflow.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/merge_branches_test.rb\", \"acceptanceCriteria\": [\"parent resumes after branches complete\", \"halts+enqueues poller while incomplete\", \"unopened name raises\", \"Option A: stalled child parks parent until recovered\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Completion gate — automerge + raise on unmerged",
+      "status": "completed",
+      "blockedBy": [4, 6],
+      "description": "enforce_branch_joins! at start of complete_workflow!: raise UnmergedBranchError for leftover non-automerge branches; for leftover automerge branches not done, enqueue BranchMergeJob + halt; else seal. Early-return when @open_branches empty.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/executor/methods/workflow_states.rb\", \"test/automerge_test.rb\", \"test/internal/app/jobs/unmerged_branch_workflow.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/automerge_test.rb\", \"acceptanceCriteria\": [\"automerge blocks completion until children done\", \"unmerged branch raises\", \"already-merged branch no-op at gate\", \"empty @open_branches early-returns\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Crash-recovery + scale regression tests",
+      "status": "completed",
+      "blockedBy": [7],
+      "description": "Prove cursor-resume (glitch mid-dispatch -> resume from metadata.cursors, exactly N children, no dupes) and bulk dispatch (insert_all issues ceil(N/of) INSERTs, not N). Do NOT assert bulk enqueue (test adapter falls back to per-job).\n\n```json:metadata\n{\"files\": [\"test/branch_recovery_test.rb\", \"test/branch_scale_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_scale_test.rb test/branch_recovery_test.rb\", \"acceptanceCriteria\": [\"cursor resume: exactly N children, no dupes\", \"dispatch uses ceil(N/of) bulk inserts\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: activejob >= 7.1 floor + README",
+      "status": "completed",
+      "description": "Pin activejob >= 7.1 (perform_all_later) in gemspec; document Branches in README with worked example + 3 caveats (every branch joined or UnmergedBranchError; parent not replayed per poll; source stable during dispatch).\n\n```json:metadata\n{\"files\": [\"chrono_forge.gemspec\", \"README.md\"], \"verifyCommand\": \"bundle exec rake test\", \"acceptanceCriteria\": [\"activejob >= 7.1 floor\", \"README branches section + caveats\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-26T00:00:00Z"
+}

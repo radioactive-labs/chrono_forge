@@ -93,6 +93,12 @@ module ChronoForge
         ids = batch.ids
         next if ids.empty?
 
+        # Branch children point at their parent's branch$ execution log via
+        # parent_execution_log_id. Bulk delete bypasses the dependent: :nullify callback,
+        # so nullify explicitly to avoid dangling references when a parent is reclaimed.
+        Workflow.where(parent_execution_log_id: ExecutionLog.where(workflow_id: ids).select(:id))
+          .update_all(parent_execution_log_id: nil)
+
         # Delete dependent rows in bulk rather than relying on row-by-row
         # dependent: :destroy callbacks.
         result[:execution_logs] += ExecutionLog.where(workflow_id: ids).delete_all

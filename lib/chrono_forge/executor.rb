@@ -14,6 +14,18 @@ module ChronoForge
 
     class InvalidStepName < NotExecutableError; end
 
+    # spawn/spawn_each called outside a branch block. NotExecutableError so it
+    # propagates (fail-fast on a programming error) rather than being retried.
+    class NotInBranchError < NotExecutableError; end
+
+    # A branch was opened but neither merged via merge_branches nor declared
+    # automerge: true. Raised at the completion gate. Fail-fast (not retried).
+    class UnmergedBranchError < NotExecutableError; end
+
+    # merge_branches given a name that was never opened as a branch this pass.
+    # NotExecutableError so it propagates (fail-fast) instead of being retried.
+    class UnknownBranchError < NotExecutableError; end
+
     # "$" separates the segments of a step name (e.g. "durably_repeat$name$ts").
     # User-supplied names/methods must not contain it.
     STEP_NAME_DELIMITER = "$"
@@ -198,6 +210,15 @@ module ChronoForge
           workflow.kwargs = kwargs
           workflow.started_at = Time.current
         end
+
+      # Branch children are pre-inserted by their parent (dispatch_children's
+      # insert_all), so the creation block above never runs for them and their
+      # started_at stays nil. Stamp it the first time the child actually executes
+      # so started_at reliably means "has been picked up and run" — the
+      # BranchMergeJob rekick poller treats a nil started_at as a never-executed
+      # (dropped) child, and must not mistake a child that ran and is now parked
+      # on a wait (also :idle) for one that was never picked up.
+      @workflow.update_column(:started_at, Time.current) if @workflow.started_at.nil?
     end
 
     def setup_context!

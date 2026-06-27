@@ -18,6 +18,7 @@ module ChronoForge
         install_chrono_forge
         add_chrono_forge_workflow_state_index
         add_chrono_forge_error_log_step_context
+        add_chrono_forge_parent_execution_log
       ].freeze
 
       def copy_chrono_forge_migrations

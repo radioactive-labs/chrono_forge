@@ -879,6 +879,98 @@ production:
     schedule: every day at 3am
 ```
 
+## 🌿 Branches: parallel sub-workflows
+
+`branch` / `spawn` / `spawn_each` / `merge_branches` let a workflow fan out into
+child workflows that run concurrently, then join them when their results are
+needed.
+
+### Model
+
+- **`branch :name do … end`** opens a named branch (a durable step). Inside the
+  block, `spawn` and `spawn_each` create and immediately enqueue child workflows —
+  children start running as soon as the branch block is entered.
+- **`spawn :name, WorkflowClass, **kwargs`** — enqueues one child workflow.
+- **`spawn_each :name, source do |item| [WorkflowClass, kwargs] end`** — enqueues
+  one child per item. The block returns the class and kwargs, so one branch can
+  fan out into mixed workflow types. Sources are iterated in constant memory;
+  ActiveRecord relations are streamed by primary key — pass them **without** an
+  explicit `.order`.
+- **`automerge: true`** — joins the branch **inline at the block's close**.
+  Execution does not continue past the `branch` call until every child has
+  completed. Use it for "dispatch this group and wait right here."
+- **`merge_branches :a, :b`** (or the singular alias `merge_branch :a`) — the
+  separate join point. Open branches without `automerge`, do other work while the
+  children run, then join when you need their results. `merge_branches` blocks
+  until all named branches are complete.
+
+### Worked example
+
+```ruby
+class FulfillmentWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(cycle_id:)
+    # automerge: the branch is joined inline, right where the block closes —
+    # `perform` does not continue past it until every child has completed.
+    branch :reconcile, automerge: true do
+      spawn :eu, ReconcileWorkflow, region: "EU"
+      spawn_each :orders, Order.pending do |order|
+        order.priority? ? [PriorityOrderWorkflow, { order_id: order.id }]
+                        : [OrderWorkflow, { order_id: order.id }]
+      end
+    end
+
+    # For branches you want to run concurrently and join later, omit automerge
+    # and use merge_branches:
+    branch :invoices do
+      spawn_each :unpaid, Invoice.unpaid do |inv|
+        [InvoiceWorkflow, { invoice_id: inv.id }]
+      end
+    end
+    branch :shipments do
+      spawn_each :ready, Shipment.ready do |s|
+        [ShipmentWorkflow, { shipment_id: s.id }]
+      end
+    end
+    do_other_work                        # runs while :invoices and :shipments dispatch/run
+    merge_branches :invoices, :shipments # join both here
+
+    durably_execute :finalize
+  end
+end
+```
+
+### Caveats
+
+> **Every branch must be joined.** A branch opened and never joined raises
+> `ChronoForge::Executor::UnmergedBranchError` when the workflow tries to
+> complete — fail-fast, no silently-orphaned children. Use either
+> `automerge: true` or a matching `merge_branches` call.
+
+> **The parent isn't replayed while waiting.** A lightweight
+> `ChronoForge::BranchMergeJob` polls for child completion; the parent workflow
+> only runs again once the branch is fully done. Polling cadence adapts to how
+> many children remain.
+
+> **`spawn_each` sources must re-enumerate deterministically across replays.**
+> ActiveRecord relations are streamed by primary key (children are keyed by
+> record id, so crash-resume is idempotent); a relation carrying an explicit
+> `.order(...)` raises. For non-AR enumerables, items are keyed by position, so
+> inserting or removing items mid-dispatch would shift keys and break idempotency.
+
+> **`spawn_each` AR sources must have stable membership.** Dispatch streams by
+> ascending primary key and resumes from the last key on crash-recovery, so a row
+> that enters the relation *below* the cursor after it has passed (e.g. a
+> `where(state: …)` scope whose rows mutate mid-dispatch) will never get a child.
+> Point `spawn_each` at a set that is fixed for the branch's lifetime — a frozen id
+> range, an append-only table, or `where(id: [...])` over a snapshot.
+
+> **`branch` blocks cannot be lexically nested within one workflow.** Opening a
+> `branch` inside another `branch` block raises `ArgumentError`; spawns belong to
+> exactly one branch. (A *spawned child workflow* may open its own branches — it
+> runs in its own executor — so cross-workflow nesting is fine.)
+
 ## 🚀 Development
 
 After checking out the repo, run:
