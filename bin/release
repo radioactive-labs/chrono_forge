@@ -66,6 +66,16 @@ fi
 [ -f "$HOME/.local/share/gem/credentials" ] || [ -f "$HOME/.gem/credentials" ] || [ -n "${GEM_HOST_API_KEY:-}" ] || die "no RubyGems credentials (gem signin)"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated (gh auth login)"
 
+# The dashboard serves a compiled Tailwind stylesheet (dashboard.css, built from
+# tailwind.css). Recompile it and verify the committed copy is already current —
+# otherwise the gem would ship CSS that doesn't match the source/views. We check
+# rather than auto-commit so git and the published gem can never drift apart.
+if [ "$GEM" = dashboard ]; then
+  CSS="$BUILD_DIR/app/assets/chrono_forge/dashboard/dashboard.css"
+  ( cd "$BUILD_DIR" && bundle exec rake tailwind:build ) || die "tailwind:build failed"
+  [ -z "$(git status --porcelain -- "$CSS")" ] || die "dashboard.css is stale — recompiling it produced changes. Run 'cd $BUILD_DIR && bundle exec rake tailwind:build', commit the result, then re-release."
+fi
+
 # Revert working-tree edits if anything fails before the commit lands.
 committed=0
 SECTION="$(mktemp)"
