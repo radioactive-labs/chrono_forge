@@ -30,14 +30,16 @@ There is a real trade-off. Because the flow is ordinary code, ChronoForge can sh
 
 ### How it compares
 
-|                              | ChronoForge          | GenevaDrive        | AcidicJob       | Temporal        |
-| ---------------------------- | -------------------- | ------------------ | --------------- | --------------- |
-| Programming model            | procedural (plain Ruby) | declarative DSL | declarative DSL | procedural (via SDK) |
-| Built-in periodic tasks      | ✓ `durably_repeat`   | ✗                  | ✗               | ✓               |
-| Parallel sub-workflows       | ✓ `branch` / `spawn` | ✗                  | ✗               | ✓               |
-| Pending-step visibility      | ✗ (procedural)       | ✓                  | ✓               | ✗ (procedural)  |
-| Extra infrastructure         | none (DB + ActiveJob)| none               | none            | server required |
-| License                      | MIT                  | LGPL / commercial  | MIT             | MIT             |
+|                              | ChronoForge          | AJ Continuations           | GenevaDrive        | AcidicJob       | Temporal        |
+| ---------------------------- | -------------------- | -------------------------- | ------------------ | --------------- | --------------- |
+| Programming model            | procedural (plain Ruby) | procedural (`step` blocks) | declarative DSL | declarative DSL | procedural (via SDK) |
+| Built-in periodic tasks      | ✓ `durably_repeat`   | ✗                          | ✗                  | ✗               | ✓               |
+| Parallel sub-workflows       | ✓ `branch` / `spawn` | ✗                          | ✗                  | ✗               | ✓               |
+| Pending-step visibility      | ✗ (procedural)       | ✗ (procedural)             | ✓                  | ✓               | ✗ (procedural)  |
+| Web dashboard                | ✓ (free gem)         | job-level (Mission Control)| paid only          | ✗               | ✓               |
+| Extra infrastructure         | none (DB + ActiveJob)| none (built into Rails)    | none               | none            | server required |
+| Rails support                | 7.1+                 | 8.1+                       | 7.2+               | 7.1+            | any (Ruby SDK)  |
+| License                      | MIT                  | MIT                        | LGPL / commercial  | MIT             | MIT             |
 
 <sub>Comparison reflects each project's documented features as of mid-2026, to the best of our knowledge; corrections welcome via PR.</sub>
 
@@ -47,7 +49,9 @@ A few deliberate choices behind that table:
 - **No extra infrastructure.** ChronoForge is a gem over your existing database and ActiveJob backend. There's no separate server or daemon to operate, unlike Temporal.
 - **Large-scale fan-out is built in.** `branch` with `spawn`/`spawn_each` fans a workflow out into child workflows that run concurrently and join when their results are needed, streaming ActiveRecord relations in constant memory for large sets. Among the Ruby-native engines here, only ChronoForge offers this without a separate orchestration server (Temporal does, server-side).
 - **Recovery is built into the model.** Steps are append-only history, so a crashed step leaves the workflow `stalled`, recoverable directly with `retry_later`.
+- **A real dashboard, free.** ChronoForge's [mountable dashboard](#-dashboard) — workflow list, step-replay timeline, context inspector, retry/unlock — ships as a separate MIT gem at no cost. Of the engines here only Temporal also offers a first-class UI; GenevaDrive's is a paid add-on, AcidicJob has none, and ActiveJob Continuations lean on a generic jobs dashboard like Mission Control.
 - **MIT licensed.** Permissive and dependency-policy-friendly.
+- **ActiveJob Continuations solve a narrower problem.** Rails 8.1's built-in [continuations](https://api.rubyonrails.org/classes/ActiveJob/Continuation.html) make a *single* long job survive interruptions: you wrap work in `step` blocks and track a `cursor`, and at each checkpoint the job asks the queue adapter whether it's `stopping?`, re-enqueuing to resume from the last completed step/cursor — no gem, no tables. They deliberately stop short of being a workflow engine: there's no durable waiting on time, conditions, or external events; no periodic steps; no parallel fan-out; and no persisted, queryable history. Reach for continuations to make one big job restart-safe; reach for ChronoForge when a process spans steps that wait, recur, fan out, and need recovery and visibility. They also compose — a ChronoForge workflow *is* ActiveJob work.
 
 ## 🌟 Features
 
