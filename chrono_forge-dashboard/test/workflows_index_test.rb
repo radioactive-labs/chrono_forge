@@ -29,6 +29,25 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match "cf-stat", response.body
   end
 
+  test "stats header includes a blocked (failed+stalled) filter chip" do
+    get "/chrono_forge/workflows"
+    assert_match "blocked", response.body
+    assert_match "state=blocked", response.body
+  end
+
+  test "filtering by blocked shows failed and stalled, not others" do
+    create_workflow(key: "stall-1", state: :stalled)
+    get "/chrono_forge/workflows", params: {state: "blocked"}
+    assert_match "ord-1", response.body    # failed
+    assert_match "stall-1", response.body  # stalled
+    refute_match "pay-1", response.body    # completed
+  end
+
+  test "bulk retry button is labeled to match the blocked filter" do
+    get "/chrono_forge/workflows"
+    assert_match "Retry blocked", response.body
+  end
+
   test "hides branch children by default, shows them when toggle is off" do
     parent = ChronoForge::Workflow.find_by!(key: "ord-1")
     branch_log = parent.execution_logs.create!(

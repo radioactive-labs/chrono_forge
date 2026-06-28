@@ -12,19 +12,15 @@
 <div data-poll-region>
   <% current = params.key?(:state) ? params[:state].to_s : "blocked" %>
   <% blocked = @stats["failed"].to_i + @stats["stalled"].to_i %>
-  <% chip = ->(label, state, count, active) {
-       link_to workflow_branch_path(@workflow, @branch_log, state: state),
-         class: "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition #{active ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50"}" do
-         safe_join([tag.span(label, class: "text-zinc-500"),
-           (count ? tag.span(cf_capped(count, @stats_cap), class: "font-mono font-medium tabular-nums") : "".html_safe)])
-       end
-     } %>
+  <% branch_chip_href = ->(state) { workflow_branch_path(@workflow, @branch_log, state: state) } %>
   <div class="mb-4 flex flex-wrap gap-2">
-    <%= chip.call("blocked", "blocked", blocked, current == "blocked") %>
-    <%= chip.call("all", "", nil, current == "") %>
+    <%# "blocked" (failed+stalled) gets a red dot; "all" has no single state, so no
+        dot, and sits last as the catch-all/reset. %>
+    <%= cf_filter_chip(branch_chip_href.call("blocked"), label: "blocked", count: blocked, cap: @stats_cap, active: current == "blocked", dot: "failed") %>
     <% ChronoForge::Workflow.states.keys.each do |s| %>
-      <%= chip.call(s, s, @stats[s], current == s) %>
+      <%= cf_filter_chip(branch_chip_href.call(s), label: s, count: @stats[s], cap: @stats_cap, active: current == s, dot: s) %>
     <% end %>
+    <%= cf_filter_chip(branch_chip_href.call(""), label: "all", active: current == "") %>
   </div>
 
   <div class="cf-card overflow-hidden">

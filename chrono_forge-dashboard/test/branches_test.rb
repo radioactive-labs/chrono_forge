@@ -109,6 +109,14 @@ class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
     assert_match "pc-orders-ok", response.body
   end
 
+  test "filter chips render a colored state dot for each real state" do
+    parent, bl = setup_branch
+    get "/chrono_forge/workflows/#{parent.id}/branches/#{bl.id}", params: {state: ""}
+    assert_match "cf-dot-running", response.body
+    assert_match "cf-dot-completed", response.body
+    assert_match "cf-dot-failed", response.body
+  end
+
   test "bulk retry re-enqueues blocked children only" do
     parent, bl = setup_branch
     assert_enqueued_jobs 1 do

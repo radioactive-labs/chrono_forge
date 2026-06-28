@@ -32,6 +32,23 @@ module ChronoForge
         tag.span(class: "cf-dot cf-dot-#{state}")
       end
 
+      # A filter chip: optional colored state dot, a label, and an optional capped
+      # count, with active styling. Shared by the index stats header and the
+      # branch-children filter row. The caller computes +href+ (the two views build
+      # different URLs); +dot+ is a state name for the colored dot, or nil for none
+      # (e.g. the "all" chip, or a composite like "blocked").
+      def cf_filter_chip(href, label:, active:, count: nil, cap: nil, dot: nil)
+        classes = "cf-stat flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition " +
+          (active ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50")
+        link_to href, class: classes do
+          safe_join([
+            dot ? cf_dot(dot) : "",
+            tag.span(label, class: "text-zinc-500"),
+            count ? tag.span(cf_capped(count, cap), class: "font-mono font-medium tabular-nums") : ""
+          ])
+        end
+      end
+
       def cf_time(t)
         t&.iso8601 || "—"
       end
