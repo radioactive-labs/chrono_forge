@@ -228,17 +228,84 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_nil meta["poll"], "stale poller must not write poll state"
   end
 
-  # Adaptive cadence: the reschedule delay scales with pending and clamps to
-  # [min_interval, max_interval].
+  # Adaptive cadence: the reschedule delay scales with the count of PROGRESSING
+  # children and clamps to [min_interval, max_interval].
   def test_reschedule_delay_scales_and_clamps
     job = ChronoForge::BranchMergeJob.new
     factor = ChronoForge::BranchMergeJob::FACTOR
 
-    # Few pending → clamps up to min_interval.
+    # Few progressing → clamps up to min_interval.
     assert_equal 5, job.send(:reschedule_delay, 1, 5, 300)
     # Mid-range → scales linearly by FACTOR (100 * 0.06 = 6).
     assert_in_delta 100 * factor, job.send(:reschedule_delay, 100, 5, 300), 0.001
-    # Huge pending → clamps down to max_interval.
+    # Huge progressing → clamps down to max_interval.
     assert_equal 300, job.send(:reschedule_delay, 1_000_000, 5, 300)
+  end
+
+  # Zero progressing children → back off to max_interval (the recovery backstop),
+  # NOT the min floor a naive (0 * FACTOR).clamp(min, max) would produce.
+  def test_reschedule_delay_uses_max_when_nothing_progresses
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 300, job.send(:reschedule_delay, 0, 5, 300)
+  end
+
+  # Delay actually applied this poll, read back from the recorded poll metadata.
+  def poll_delay
+    poll = @log.reload.metadata["poll"]
+    Time.zone.parse(poll["next_poll_at"]) - Time.zone.parse(poll["last_polled_at"])
+  end
+
+  # The disaster case. A branch whose only incomplete children are blocked
+  # (failed/stalled) can never complete without operator recovery. Polling at the
+  # 5s floor forever would re-enqueue ~17k pollers/day per stuck branch. Instead it
+  # backs off to max_interval — a cheap backstop that still notices a recovered
+  # child within one interval.
+  def test_blocked_only_branch_backs_off_to_max_interval
+    child!(state: :failed)
+    child!(state: :stalled)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_in_delta 300, poll_delay, 2,
+      "blocked-only branch must back off to max_interval, not spin at the 5s floor"
+  end
+
+  # A child parked on a wait/wait_until (idle, started_at SET) can't progress on
+  # the poller's account either, so it must not pin the cadence at the floor.
+  # (Currently lands at max_interval; a future enhancement may align it to the
+  # wait's known resume deadline.)
+  def test_waiting_only_branch_backs_off_from_floor
+    child!(state: :idle, started_at: 20.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_operator poll_delay, :>, 5,
+      "a waiting-only branch must not poll at the 5s floor"
+  end
+
+  # A genuinely progressing child (running, or dispatched-but-not-yet-started)
+  # keeps the responsive floor so its completion is caught promptly.
+  def test_progressing_child_keeps_responsive_floor
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_in_delta 5, poll_delay, 1
+  end
+
+  # Cadence is driven by the count of children that can progress, NOT the total
+  # incomplete: blocked siblings must not slow polling of an active child.
+  def test_blocked_siblings_do_not_slow_a_progressing_child
+    child!(state: :running)
+    5.times { child!(state: :failed) }
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_in_delta 5, poll_delay, 1,
+      "one progressing child polls fast regardless of blocked siblings"
+  end
+
+  # The backstop preserves recovery: a blocked child that is retried and completes
+  # is noticed on the next poll and the parent is woken.
+  def test_recovered_blocked_child_wakes_parent_on_next_poll
+    failed = child!(state: :failed)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    failed.update!(state: :completed) # operator retry, eventually completes
+    assert_enqueued_with(job: SingleSpawnWorkflow, args: ["bmj-parent"]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
   end
 end

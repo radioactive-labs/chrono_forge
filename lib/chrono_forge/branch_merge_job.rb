@@ -46,7 +46,14 @@ module ChronoForge
 
       rekick_dropped_jobs(branch_log_ids)
 
-      delay = reschedule_delay(pending, min_interval, max_interval)
+      # Cadence is driven by children that can actually progress, NOT the raw
+      # pending count: a branch whose only incomplete children are blocked
+      # (failed/stalled) or waiting would otherwise spin at the min-interval floor
+      # forever — re-enqueuing a poller every few seconds for work that can't move
+      # without operator recovery or a wait elapsing. Scoping to "progressing"
+      # backs those branches off to max_interval (see reschedule_delay).
+      progressing = branch_log_ids.sum { |id| BranchProbe.progressing(id).limit(CAP).count }
+      delay = reschedule_delay(progressing, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
@@ -54,11 +61,21 @@ module ChronoForge
 
     private
 
-    # Adaptive poll cadence: scale the wait with the number of pending children,
-    # clamped to [min_interval, max_interval]. min_interval <= max_interval is
-    # enforced up front in merge_branches, so the clamp can't raise here.
-    def reschedule_delay(pending, min_interval, max_interval)
-      (pending * FACTOR).clamp(min_interval, max_interval)
+    # Adaptive poll cadence: scale the wait with the number of PROGRESSING children
+    # (running / dispatched-but-unstarted), clamped to [min_interval, max_interval].
+    # min_interval <= max_interval is enforced up front in merge_branches, so the
+    # clamp can't raise here.
+    #
+    # With zero progressing children the branch can only be waiting on a wait/
+    # wait_until or blocked on failed/stalled children — nothing the poller can
+    # hurry along. A naive (0 * FACTOR).clamp would yield min_interval and spin the
+    # poller hot indefinitely; instead we back off to max_interval, a cheap
+    # recovery backstop that still notices a recovered/resumed child within one
+    # interval.
+    def reschedule_delay(progressing, min_interval, max_interval)
+      return max_interval if progressing.zero?
+
+      (progressing * FACTOR).clamp(min_interval, max_interval)
     end
 
     # A poller is superseded when its token no longer matches what's stored on the

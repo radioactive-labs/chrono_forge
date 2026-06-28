@@ -19,6 +19,19 @@ module ChronoForge
         .where.not(state: Workflow.states[:completed])
     end
 
+    # Relation of children that can advance on their own — actively running, or
+    # dispatched-but-not-yet-started (started_at nil). This drives the adaptive
+    # poll cadence. Deliberately EXCLUDES waiting children (idle with started_at
+    # SET — parked on a wait/wait_until) and blocked children (failed/stalled —
+    # awaiting operator recovery): polling can't make either progress, so they
+    # must not pin the cadence at the responsive floor. They still count as
+    # +incomplete+ (the branch stays open), they just don't accelerate polling.
+    def progressing(branch_log_id)
+      base = Workflow.where(parent_execution_log_id: branch_log_id)
+      base.where(state: Workflow.states[:running])
+        .or(base.where(state: Workflow.states[:idle], started_at: nil))
+    end
+
     def done?(branch_log_id)
       sealed?(branch_log_id) && !incomplete(branch_log_id).exists?
     end
