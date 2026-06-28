@@ -24,7 +24,7 @@ step :remind_of_tasks, wait: 2.days
 step :complete_onboarding, wait: 15.days
 ```
 
-That reads cleanly for a fixed, linear sequence. But many business processes branch, loop, and react to data that only exists at runtime, and a declarative schema gets awkward there. ChronoForge takes the opposite approach: **a workflow is just a Ruby method.** Conditionals, iteration, early returns, and helper methods all work the way they normally do.
+That reads cleanly for a fixed, linear sequence. But many business processes branch, loop, and react to data that only exists at runtime, and a declarative schema gets awkward there. ChronoForge takes the opposite approach: **you write a workflow as an ordinary Ruby method.** Conditionals, iteration, early returns, and helper methods all work the way they normally do; the durable parts — steps, waits, retries — are marked inline with a few primitives like `durably_execute` and `wait_until`.
 
 There is a real trade-off. Because the flow is ordinary code, ChronoForge can show the steps that **have run** (a replay/history view), but not a roadmap of steps that *haven't* run yet, which a declarative engine can. For workflows whose path isn't fixed in advance, that's a trade worth making; for a simple, fixed sequence ("send email, wait 2 days, send another"), a declarative DSL may read more cleanly, and that's a fine reason to reach for one.
 
