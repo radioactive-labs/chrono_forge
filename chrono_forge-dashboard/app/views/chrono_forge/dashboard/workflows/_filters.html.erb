@@ -1,6 +1,17 @@
-<%= form_with url: workflows_path, method: :get, class: "mb-4 flex flex-wrap items-center gap-2" do |f| %>
+<%# enforce_utf8: false keeps the legacy `utf8=✓` IE hack out of the GET query string. %>
+<%= form_with url: workflows_path, method: :get, enforce_utf8: false, class: "mb-4 flex flex-wrap items-center gap-2" do |f| %>
   <%= f.select :state, options_for_select([["All states", ""], *ChronoForge::Workflow.states.keys], params[:state]), {}, class: "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm", data: {autosubmit: true} %>
   <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
   <%= f.text_field :key, value: params[:key], placeholder: "Key", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
   <%= f.submit "Filter", class: "cf-btn" %>
+
+  <%# Far right: hide spawned branch children (on by default) so a large fan-out
+      doesn't flood the top-level list. Hidden field makes "off" submit "0" so the
+      controller can default an absent param to on. Auto-applies on toggle. %>
+  <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-sm text-zinc-600">
+    <%= hidden_field_tag :hide_branches, "0", id: nil %>
+    <%= check_box_tag :hide_branches, "1", params[:hide_branches] != "0",
+          data: {autosubmit: true}, class: "h-4 w-4 rounded border-zinc-300" %>
+    Hide branches
+  </label>
 <% end %>

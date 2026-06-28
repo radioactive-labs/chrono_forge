@@ -2,10 +2,14 @@ module ChronoForge
   module Dashboard
     class WorkflowsController < BaseController
       def index
-        @query = WorkflowsQuery.new(**list_params)
+        @hide_branches = params[:hide_branches] != "0" # on by default
+        @query = WorkflowsQuery.new(**list_params, exclude_branched: @hide_branches)
         @workflows = @query.records
         @waits = WaitStatePresenter.active_map(@workflows)
-        stats = StatsQuery.new
+        # Stats track the toggle so the counts match the visible list — a large
+        # fan-out's children don't dominate the totals while hidden from the list.
+        stats_base = @hide_branches ? ChronoForge::Workflow.where(parent_execution_log_id: nil) : ChronoForge::Workflow.all
+        stats = StatsQuery.new(base: stats_base)
         @stats = stats.counts
         @stats_cap = stats.cap
       end

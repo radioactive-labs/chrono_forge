@@ -29,6 +29,33 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match "cf-stat", response.body
   end
 
+  test "hides branch children by default, shows them when toggle is off" do
+    parent = ChronoForge::Workflow.find_by!(key: "ord-1")
+    branch_log = parent.execution_logs.create!(
+      step_name: "branch$g", state: ChronoForge::ExecutionLog.states[:completed]
+    )
+    create_workflow(key: "branch-child-1", state: :idle, parent_execution_log_id: branch_log.id)
+
+    get "/chrono_forge/workflows"
+    refute_match "branch-child-1", response.body
+
+    get "/chrono_forge/workflows", params: {hide_branches: "0"}
+    assert_match "branch-child-1", response.body
+  end
+
+  test "renders the hide-branches toggle, checked by default" do
+    get "/chrono_forge/workflows"
+    assert_match "Hide branches", response.body
+    assert_match(/name="hide_branches"[^>]*value="1"[^>]*checked/, response.body)
+  end
+
+  # The GET filter form must not inject the legacy `utf8=✓` field, which would
+  # otherwise pollute the query string on every filter/toggle submit.
+  test "filter form does not emit a utf8 enforcement field" do
+    get "/chrono_forge/workflows"
+    refute_match(/name="utf8"/, response.body)
+  end
+
   test "idle workflow parked on a future wait shows as scheduled" do
     wf = create_workflow(key: "sched-1", state: :idle)
     ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$payment_time?",

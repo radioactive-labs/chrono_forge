@@ -10,7 +10,8 @@ module ChronoForge
       MAX_PER = 200
 
       def initialize(base: ChronoForge::Workflow.all, state: nil, job_class: nil, key: nil,
-        created_from: nil, created_to: nil, before: nil, after: nil, per: DEFAULT_PER)
+        created_from: nil, created_to: nil, before: nil, after: nil, per: DEFAULT_PER,
+        exclude_branched: false)
         @base = base
         @state = state.presence
         @job_class = job_class.presence
@@ -20,6 +21,11 @@ module ChronoForge
         @before = before.presence&.to_i
         @after = after.presence&.to_i
         @per = per.to_i.clamp(1, MAX_PER)
+        # Off by default: the branch-children view drives this same query with a
+        # base scoped to a branch's spawned_workflows (all of which ARE branch
+        # children), so excluding them there would empty the list. Only the main
+        # index opts in, to keep a large fan-out's children out of the top level.
+        @exclude_branched = exclude_branched
       end
 
       def records
@@ -83,6 +89,9 @@ module ChronoForge
         s = s.where("key LIKE ?", "#{ChronoForge::Workflow.sanitize_sql_like(@key)}%") if @key
         s = s.where(created_at: @created_from..) if @created_from
         s = s.where(created_at: ..@created_to) if @created_to
+        # Top-level workflows only: a spawned branch child carries a non-null
+        # parent_execution_log_id (its branch coordination log).
+        s = s.where(parent_execution_log_id: nil) if @exclude_branched
         s
       end
     end

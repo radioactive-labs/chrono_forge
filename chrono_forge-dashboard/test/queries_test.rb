@@ -49,6 +49,35 @@ class QueriesTest < ActiveSupport::TestCase
     assert_equal ["c"], q.records.map(&:key)
   end
 
+  test "includes branch children by default (branch-children view depends on it)" do
+    spawn_branch_child(key: "child")
+    assert_includes ChronoForge::Dashboard::WorkflowsQuery.new.records.map(&:key), "child"
+  end
+
+  test "exclude_branched drops spawned branch children, keeps top-level" do
+    spawn_branch_child(key: "child")
+    keys = ChronoForge::Dashboard::WorkflowsQuery.new(exclude_branched: true).records.map(&:key)
+    refute_includes keys, "child"
+    assert_equal %w[a b c].sort, keys.sort
+  end
+
+  test "stats exclude branch children when based on the top-level scope" do
+    spawn_branch_child(key: "child", state: :failed)
+    top_level = ChronoForge::Workflow.where(parent_execution_log_id: nil)
+    counts = ChronoForge::Dashboard::StatsQuery.new(base: top_level).counts
+    assert_equal 2, counts["failed"], "a and c only — the spawned failed child is excluded"
+  end
+
+  # A workflow spawned inside a branch: linked to a branch$ coordination log via
+  # parent_execution_log_id (what distinguishes it from a top-level workflow).
+  def spawn_branch_child(key:, state: :idle)
+    parent = ChronoForge::Workflow.find_by!(key: "a") # an existing top-level workflow
+    branch_log = parent.execution_logs.create!(
+      step_name: "branch$g", state: ChronoForge::ExecutionLog.states[:completed]
+    )
+    create_workflow(key: key, state: state, parent_execution_log_id: branch_log.id)
+  end
+
   test "stats counts every state" do
     counts = ChronoForge::Dashboard::StatsQuery.new.counts
     assert_equal 2, counts["failed"]
