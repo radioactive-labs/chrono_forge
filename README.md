@@ -114,9 +114,9 @@ $ rails generate chrono_forge:upgrade
 $ rails db:migrate
 ```
 
-The upgrade migration is idempotent (`if_not_exists`), so it is safe to run even
-if your schema already has the index. Fresh installs get the index from the
-install migration and do **not** need to run the upgrade.
+Re-running the generator is safe — it skips any migrations you already have.
+Fresh installs get everything from `chrono_forge:install` and don't need the
+upgrade.
 
 ## 📋 Usage
 
@@ -1028,6 +1028,17 @@ This gem is available as open source under the terms of the [MIT License](https:
 | `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_policy: nil` |
 | `continue_if` | Manual continuation wait | `condition`, `name: nil` |
 | `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `retry_policy: nil`, `timeout: 1.hour`, `on_error: :continue` |
+
+### Branch Methods
+
+Fan a workflow out into parallel child sub-workflows (see [Branches](#-branches-parallel-sub-workflows)).
+
+| Method | Purpose | Key Parameters |
+|--------|---------|----------------|
+| `branch` | Open a named branch (takes a block) to dispatch children | `name`, `automerge: false` |
+| `spawn` | Enqueue one child workflow inside a branch | `name`, `workflow_class`, `**kwargs` |
+| `spawn_each` | Enqueue one child per item, streamed (block returns `[WorkflowClass, kwargs]`) | `name`, `source`, `of: 1000` |
+| `merge_branches` | Join named branches; blocks until all complete (alias `merge_branch`) | `*names`, `min_interval: 5.seconds`, `max_interval: 5.minutes` |
 
 ### Context Methods
 

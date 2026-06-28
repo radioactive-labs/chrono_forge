@@ -1,5 +1,9 @@
 # ChronoForge::Dashboard
 
+[![Gem Version](https://badge.fury.io/rb/chrono_forge-dashboard.svg)](https://badge.fury.io/rb/chrono_forge-dashboard)
+[![Ruby](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg)](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A mountable Rails engine that provides visibility and operational controls for ChronoForge workflows.
 
 Version: `0.1.0` (early release). The UI and config API may change before `1.0`.
@@ -14,7 +18,7 @@ Version: `0.1.0` (early release). The UI and config API may change before `1.0`.
 | Waiting | Repetitions |
 | --- | --- |
 | [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
-| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with tombstones and lateness. |
+| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with catch-up skips (per-tick tombstones or a "caught up ×N" summary) and lateness. |
 
 | Branches | Branch children |
 | --- | --- |
