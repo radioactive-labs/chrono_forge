@@ -7,15 +7,16 @@
 #
 #   1. rake release:core:prepare           # auto-computes next version (git-cliff)
 #      rake release:core:prepare[0.11.0]   # ...or pass one explicitly
-#   2. git show                            # review the bump commit
-#   3. rake release:core:publish           # build + push gem, then tag + push → CI cuts the Release
+#   2. git diff                            # review the bump + changelog (nothing committed yet)
+#   3. rake release:core:publish           # commit, build + push gem, then tag + push → CI cuts the Release
 #
 # Same tasks under release:dashboard:*. Release `core` BEFORE `dashboard` —
 # the dashboard depends on core, so bump its `chrono_forge` floor first if needed.
 #
-# prepare commits straight to the current branch (no push) so you can review,
-# then publish. publish is idempotent + resumable: it skips a gem already live
-# and only tags if the tag is missing, so a partial failure can just be re-run.
+# prepare leaves the bump + changelog UNCOMMITTED so you can review the diff
+# first; publish commits them, then publishes. publish is idempotent + resumable:
+# it skips a gem already live and only tags if the tag is missing, so a partial
+# failure can just be re-run.
 
 RELEASE_CLIFF_CONFIG = "cliff.toml"
 
@@ -138,23 +139,35 @@ namespace :release do
         release_prepend_changelog(cfg[:changelog], section)
         puts "✓ #{cfg[:changelog]}"
 
-        # Commit straight to the branch. No push — review, then publish.
+        # Leave everything uncommitted so the bump + changelog can be reviewed
+        # before anything is committed or published. publish makes the commit.
         files = [cfg[:version_file], cfg[:changelog], *cfg[:extra_files]]
-        system("git", "add", *files) || abort("git add failed")
-        system("git", "commit", "-m", "chore(release): #{cfg[:name]} #{version}") || abort("git commit failed")
 
-        puts "\n✓ Committed #{cfg[:name]} #{version}."
+        puts "\n✓ Prepared #{cfg[:name]} #{version} — nothing committed yet."
         puts "Next:"
-        puts "  git show                         # review"
-        puts "  rake release:#{key}:publish#{" " * (10 - key.length)}# build + push gem, then tag + push"
+        puts "  git diff -- #{files.join(" ")}"
+        puts "  rake release:#{key}:publish   # commit, build + push gem, then tag + push"
+        puts "  (abort with: git checkout -- #{files.join(" ")})"
       end
 
       desc "Publish #{cfg[:name]} (build + push gem, then tag + push). Idempotent + resumable."
       task :publish do
-        abort "Error: working tree is dirty. Run rake release:#{key}:prepare first." unless `git status --porcelain`.strip.empty?
-
         version = release_current_version(cfg)
         tag = "#{cfg[:tag_prefix]}#{version}"
+        files = [cfg[:version_file], cfg[:changelog], *cfg[:extra_files]]
+
+        # Commit the prepared changes (you review the diff between prepare and
+        # here). Resumable: if they're already committed — e.g. a re-run after a
+        # partial failure — skip straight to publishing.
+        if `git status --porcelain -- #{files.join(" ")}`.strip.empty?
+          unless `git log -1 --format=%s`.strip == "chore(release): #{cfg[:name]} #{version}"
+            abort "Nothing prepared — run rake release:#{key}:prepare first."
+          end
+        else
+          system("git", "add", *files) || abort("git add failed")
+          system("git", "commit", "-m", "chore(release): #{cfg[:name]} #{version}") || abort("git commit failed")
+          puts "✓ Committed #{cfg[:name]} #{version}"
+        end
 
         if release_gem_published?(cfg, version)
           puts "• #{cfg[:name]} #{version} already on RubyGems — skipping"
