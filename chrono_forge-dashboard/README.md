@@ -6,28 +6,11 @@
 
 A mountable Rails engine that provides visibility and operational controls for ChronoForge workflows.
 
+> Requires [`chrono_forge`](https://github.com/radioactive-labs/chrono_forge). See the [main README](https://github.com/radioactive-labs/chrono_forge#readme) for workflow documentation.
+
 Version: `0.1.0` (early release). The UI and config API may change before `1.0`.
 
-## Screenshots
-
-| Workflow list | Analytics |
-| --- | --- |
-| [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
-| Filter by state/class/key, keyset pagination, capped state counts. | Completion/failure rate, throughput, top errors, queue health — per class. |
-
-| Waiting | Repetitions |
-| --- | --- |
-| [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
-| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with catch-up skips (per-tick tombstones or a "caught up ×N" summary) and lateness. |
-
-| Branches | Branch children |
-| --- | --- |
-| [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
-| Fan-out branches with capped dispatched/pending/blocked counts and merge state. | One branch's children — blocked-first triage, capped filters, retry per child. |
-
-**Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
-
-[![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
+[![ChronoForge dashboard](docs/screenshots/workflows.png)](docs/screenshots/workflows.png)
 
 ## Installation
 
@@ -50,6 +33,27 @@ Add to `config/routes.rb`:
 ```ruby
 mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 ```
+
+## Screenshots
+
+| Workflow list | Analytics |
+| --- | --- |
+| [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
+| Filter by state/class/key, keyset pagination, capped state counts. | Completion/failure rate, throughput, top errors, queue health — per class. |
+
+| Waiting | Repetitions |
+| --- | --- |
+| [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
+| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with catch-up skips (per-tick tombstones or a "caught up ×N" summary) and lateness. |
+
+| Branches | Branch children |
+| --- | --- |
+| [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
+| Fan-out branches with capped dispatched/pending/blocked counts and merge state. | One branch's children — blocked-first triage, capped filters, retry per child. |
+
+**Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
+
+[![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
 
 ## Authentication
 

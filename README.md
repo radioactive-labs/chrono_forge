@@ -11,6 +11,7 @@ ChronoForge handles long-running processes, manages state, and recovers from fai
 
 Workflows are **plain Ruby**. Ordinary `if`/`else`, loops, and early returns drive the flow. There's no declarative DSL to learn and no extra service to run, which makes ChronoForge a good fit for business processes whose shape depends on runtime state: conditional branches, iteration over data, and built-in periodic tasks (`durably_repeat`).
 
+> [!NOTE]
 > **In production** at **achieve by Petra**, an investment platform in the Petra Group — where it has executed over 3.6 million workflows and 32 million durable steps across scheduled payments, investment rollovers, and membership lifecycle management.
 
 ## 🧭 Why ChronoForge
@@ -33,6 +34,7 @@ There is a real trade-off. Because the flow is ordinary code, ChronoForge can sh
 | ---------------------------- | -------------------- | ------------------ | --------------- | --------------- |
 | Programming model            | procedural (plain Ruby) | declarative DSL | declarative DSL | procedural (via SDK) |
 | Built-in periodic tasks      | ✓ `durably_repeat`   | ✗                  | ✗               | ✓               |
+| Parallel sub-workflows       | ✓ `branch` / `spawn` | ✗                  | ✗               | ✓               |
 | Pending-step visibility      | ✗ (procedural)       | ✓                  | ✓               | ✗ (procedural)  |
 | Extra infrastructure         | none (DB + ActiveJob)| none               | none            | server required |
 | License                      | MIT                  | LGPL / commercial  | MIT             | MIT             |
@@ -43,6 +45,7 @@ A few deliberate choices behind that table:
 
 - **Periodic tasks are built in.** `durably_repeat` runs a step on a schedule until a condition holds, with automatic catch-up for missed runs, so a workflow can be its own recurring job and cron-style monitor, right alongside the rest of its logic. Without built-in support, periodic behavior usually lives in a separate scheduler that you reconcile with workflow state by hand.
 - **No extra infrastructure.** ChronoForge is a gem over your existing database and ActiveJob backend. There's no separate server or daemon to operate, unlike Temporal.
+- **Large-scale fan-out is built in.** `branch` with `spawn`/`spawn_each` fans a workflow out into child workflows that run concurrently and join when their results are needed, streaming ActiveRecord relations in constant memory for large sets. Among the Ruby-native engines here, only ChronoForge offers this without a separate orchestration server (Temporal does, server-side).
 - **Recovery is built into the model.** Steps are append-only history, so a crashed step leaves the workflow `stalled`, recoverable directly with `retry_later`.
 - **MIT licensed.** Permissive and dependency-policy-friendly.
 
@@ -52,6 +55,7 @@ A few deliberate choices behind that table:
 - **Durable Execution**: Automatically tracks and recovers from failures during workflow execution
 - **Periodic tasks built in**: `durably_repeat` runs a step on an interval until a condition is met, with catch-up for missed runs. Acts as a recurring task and a cron-style monitor in one
 - **Wait States**: Time-based waits and condition-based waiting (`wait_until`) that survive restarts
+- **Parallel sub-workflows**: `branch` with `spawn`/`spawn_each` fans out into concurrent child workflows and joins them (`automerge` or `merge_branches`); large sets stream in constant memory. See [Branches](#-branches-parallel-sub-workflows)
 - **State Management**: Built-in workflow state tracking with persistent context storage
 - **Concurrency Control**: Advanced locking mechanisms to prevent parallel execution of the same workflow
 - **Error Handling**: Error tracking with a unified, configurable [`RetryPolicy`](#-retry-policies) (including per-error-type policies)
@@ -590,6 +594,21 @@ def cleanup_files(scheduled_time)
 end
 ```
 
+#### 🌿 Branches
+
+When a workflow needs to fan out — process every pending order, reconcile each region — `branch` spawns child workflows that run concurrently and join when their results are needed:
+
+```ruby
+branch :reconcile, automerge: true do
+  spawn :eu, ReconcileWorkflow, region: "EU"
+  spawn_each :orders, Order.pending do |order|
+    [OrderWorkflow, { order_id: order.id }]
+  end
+end
+```
+
+`spawn_each` streams ActiveRecord relations by primary key in constant memory, so a branch can fan out over very large sets. Join inline with `automerge: true`, or open branches without it and `merge_branches` them later after doing other work. See [Branches: parallel sub-workflows](#-branches-parallel-sub-workflows) for the full model, a worked example, and the crash-recovery caveats.
+
 #### 🔄 Workflow Context
 
 ChronoForge provides a persistent context that survives job restarts. The context behaves like a Hash but with additional capabilities:
@@ -651,6 +670,100 @@ end
 ```
 
 To make an error non-retryable, leave it out of `retry_on:` (an empty `retry_on: []` retries nothing).
+
+## 🌿 Branches: parallel sub-workflows
+
+`branch` / `spawn` / `spawn_each` / `merge_branches` let a workflow fan out into
+child workflows that run concurrently, then join them when their results are
+needed.
+
+### Model
+
+- **`branch :name do … end`** opens a named branch (a durable step). Inside the
+  block, `spawn` and `spawn_each` create and immediately enqueue child workflows —
+  children start running as soon as the branch block is entered.
+- **`spawn :name, WorkflowClass, **kwargs`** — enqueues one child workflow.
+- **`spawn_each :name, source do |item| [WorkflowClass, kwargs] end`** — enqueues
+  one child per item. The block returns the class and kwargs, so one branch can
+  fan out into mixed workflow types. Sources are iterated in constant memory;
+  ActiveRecord relations are streamed by primary key — pass them **without** an
+  explicit `.order`.
+- **`automerge: true`** — joins the branch **inline at the block's close**.
+  Execution does not continue past the `branch` call until every child has
+  completed. Use it for "dispatch this group and wait right here."
+- **`merge_branches :a, :b`** (or the singular alias `merge_branch :a`) — the
+  separate join point. Open branches without `automerge`, do other work while the
+  children run, then join when you need their results. `merge_branches` blocks
+  until all named branches are complete.
+
+### Worked example
+
+```ruby
+class FulfillmentWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(cycle_id:)
+    # automerge: the branch is joined inline, right where the block closes —
+    # `perform` does not continue past it until every child has completed.
+    branch :reconcile, automerge: true do
+      spawn :eu, ReconcileWorkflow, region: "EU"
+      spawn_each :orders, Order.pending do |order|
+        order.priority? ? [PriorityOrderWorkflow, { order_id: order.id }]
+                        : [OrderWorkflow, { order_id: order.id }]
+      end
+    end
+
+    # For branches you want to run concurrently and join later, omit automerge
+    # and use merge_branches:
+    branch :invoices do
+      spawn_each :unpaid, Invoice.unpaid do |inv|
+        [InvoiceWorkflow, { invoice_id: inv.id }]
+      end
+    end
+    branch :shipments do
+      spawn_each :ready, Shipment.ready do |s|
+        [ShipmentWorkflow, { shipment_id: s.id }]
+      end
+    end
+    do_other_work                        # runs while :invoices and :shipments dispatch/run
+    merge_branches :invoices, :shipments # join both here
+
+    durably_execute :finalize
+  end
+end
+```
+
+### Caveats
+
+> **Every branch must be joined.** A branch opened and never joined raises
+> `ChronoForge::Executor::UnmergedBranchError` when the workflow tries to
+> complete — fail-fast, no silently-orphaned children. Use either
+> `automerge: true` or a matching `merge_branches` call.
+
+> **The parent isn't replayed while waiting.** A lightweight
+> `ChronoForge::BranchMergeJob` polls for child completion; the parent workflow
+> only runs again once the branch is fully done. Polling cadence adapts to how
+> many children are still actively progressing, backing off to the maximum
+> interval when the remaining children are only waiting or blocked on a failure
+> (which need a wait to elapse or operator recovery, not faster polling).
+
+> **`spawn_each` sources must re-enumerate deterministically across replays.**
+> ActiveRecord relations are streamed by primary key (children are keyed by
+> record id, so crash-resume is idempotent); a relation carrying an explicit
+> `.order(...)` raises. For non-AR enumerables, items are keyed by position, so
+> inserting or removing items mid-dispatch would shift keys and break idempotency.
+
+> **`spawn_each` AR sources must have stable membership.** Dispatch streams by
+> ascending primary key and resumes from the last key on crash-recovery, so a row
+> that enters the relation *below* the cursor after it has passed (e.g. a
+> `where(state: …)` scope whose rows mutate mid-dispatch) will never get a child.
+> Point `spawn_each` at a set that is fixed for the branch's lifetime — a frozen id
+> range, an append-only table, or `where(id: [...])` over a snapshot.
+
+> **`branch` blocks cannot be lexically nested within one workflow.** Opening a
+> `branch` inside another `branch` block raises `ArgumentError`; spawns belong to
+> exactly one branch. (A *spawned child workflow* may open its own branches — it
+> runs in its own executor — so cross-workflow nesting is fine.)
 
 ## 🧪 Testing
 
@@ -894,98 +1007,6 @@ production:
     args: { older_than_days: 90, prune_repetition_logs_older_than_days: 30 }
     schedule: every day at 3am
 ```
-
-## 🌿 Branches: parallel sub-workflows
-
-`branch` / `spawn` / `spawn_each` / `merge_branches` let a workflow fan out into
-child workflows that run concurrently, then join them when their results are
-needed.
-
-### Model
-
-- **`branch :name do … end`** opens a named branch (a durable step). Inside the
-  block, `spawn` and `spawn_each` create and immediately enqueue child workflows —
-  children start running as soon as the branch block is entered.
-- **`spawn :name, WorkflowClass, **kwargs`** — enqueues one child workflow.
-- **`spawn_each :name, source do |item| [WorkflowClass, kwargs] end`** — enqueues
-  one child per item. The block returns the class and kwargs, so one branch can
-  fan out into mixed workflow types. Sources are iterated in constant memory;
-  ActiveRecord relations are streamed by primary key — pass them **without** an
-  explicit `.order`.
-- **`automerge: true`** — joins the branch **inline at the block's close**.
-  Execution does not continue past the `branch` call until every child has
-  completed. Use it for "dispatch this group and wait right here."
-- **`merge_branches :a, :b`** (or the singular alias `merge_branch :a`) — the
-  separate join point. Open branches without `automerge`, do other work while the
-  children run, then join when you need their results. `merge_branches` blocks
-  until all named branches are complete.
-
-### Worked example
-
-```ruby
-class FulfillmentWorkflow < ApplicationJob
-  prepend ChronoForge::Executor
-
-  def perform(cycle_id:)
-    # automerge: the branch is joined inline, right where the block closes —
-    # `perform` does not continue past it until every child has completed.
-    branch :reconcile, automerge: true do
-      spawn :eu, ReconcileWorkflow, region: "EU"
-      spawn_each :orders, Order.pending do |order|
-        order.priority? ? [PriorityOrderWorkflow, { order_id: order.id }]
-                        : [OrderWorkflow, { order_id: order.id }]
-      end
-    end
-
-    # For branches you want to run concurrently and join later, omit automerge
-    # and use merge_branches:
-    branch :invoices do
-      spawn_each :unpaid, Invoice.unpaid do |inv|
-        [InvoiceWorkflow, { invoice_id: inv.id }]
-      end
-    end
-    branch :shipments do
-      spawn_each :ready, Shipment.ready do |s|
-        [ShipmentWorkflow, { shipment_id: s.id }]
-      end
-    end
-    do_other_work                        # runs while :invoices and :shipments dispatch/run
-    merge_branches :invoices, :shipments # join both here
-
-    durably_execute :finalize
-  end
-end
-```
-
-### Caveats
-
-> **Every branch must be joined.** A branch opened and never joined raises
-> `ChronoForge::Executor::UnmergedBranchError` when the workflow tries to
-> complete — fail-fast, no silently-orphaned children. Use either
-> `automerge: true` or a matching `merge_branches` call.
-
-> **The parent isn't replayed while waiting.** A lightweight
-> `ChronoForge::BranchMergeJob` polls for child completion; the parent workflow
-> only runs again once the branch is fully done. Polling cadence adapts to how
-> many children remain.
-
-> **`spawn_each` sources must re-enumerate deterministically across replays.**
-> ActiveRecord relations are streamed by primary key (children are keyed by
-> record id, so crash-resume is idempotent); a relation carrying an explicit
-> `.order(...)` raises. For non-AR enumerables, items are keyed by position, so
-> inserting or removing items mid-dispatch would shift keys and break idempotency.
-
-> **`spawn_each` AR sources must have stable membership.** Dispatch streams by
-> ascending primary key and resumes from the last key on crash-recovery, so a row
-> that enters the relation *below* the cursor after it has passed (e.g. a
-> `where(state: …)` scope whose rows mutate mid-dispatch) will never get a child.
-> Point `spawn_each` at a set that is fixed for the branch's lifetime — a frozen id
-> range, an append-only table, or `where(id: [...])` over a snapshot.
-
-> **`branch` blocks cannot be lexically nested within one workflow.** Opening a
-> `branch` inside another `branch` block raises `ArgumentError`; spawns belong to
-> exactly one branch. (A *spawned child workflow* may open its own branches — it
-> runs in its own executor — so cross-workflow nesting is fine.)
 
 ## 🚀 Development
 
