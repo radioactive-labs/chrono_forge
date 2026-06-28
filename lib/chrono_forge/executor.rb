@@ -210,15 +210,6 @@ module ChronoForge
           workflow.kwargs = kwargs
           workflow.started_at = Time.current
         end
-
-      # Branch children are pre-inserted by their parent (dispatch_children's
-      # insert_all), so the creation block above never runs for them and their
-      # started_at stays nil. Stamp it the first time the child actually executes
-      # so started_at reliably means "has been picked up and run" — the
-      # BranchMergeJob rekick poller treats a nil started_at as a never-executed
-      # (dropped) child, and must not mistake a child that ran and is now parked
-      # on a wait (also :idle) for one that was never picked up.
-      @workflow.update_column(:started_at, Time.current) if @workflow.started_at.nil?
     end
 
     def setup_context!
@@ -257,6 +248,40 @@ module ChronoForge
 
       ExecutionLog.find_by(workflow: @workflow, step_name: step_name) ||
         ExecutionLog.create_or_find_by!(workflow: @workflow, step_name: step_name, &)
+    end
+
+    # Record a step that completes synchronously within this pass as a single
+    # INSERT already in its terminal :completed state — there is no
+    # started→completed UPDATE chasing the INSERT (one statement, not two). Use
+    # this for steps with no deferral point between create and completion
+    # (workflow completion/failure markers and similar); deferring steps (waits,
+    # branch coordination) must stay :started across resumes and use
+    # find_or_create_execution_log! instead.
+    #
+    # Idempotent: an already-existing row (a resume after a partial pass, or a
+    # create race) is flipped to :completed instead of duplicated. The block runs
+    # only on create, letting callers attach metadata to the new row.
+    def create_completed_execution_log!(step_name)
+      now = Time.current
+      log = find_or_create_execution_log!(step_name) do |l|
+        l.attempts = 1
+        l.started_at = now
+        l.last_executed_at = now
+        l.completed_at = now
+        l.state = :completed
+        yield l if block_given?
+      end
+
+      unless log.completed?
+        log.update!(
+          attempts: log.attempts + 1,
+          last_executed_at: now,
+          completed_at: now,
+          state: :completed
+        )
+      end
+
+      log
     end
 
     # One bulk read of this workflow's completed steps, mapping step_name to its

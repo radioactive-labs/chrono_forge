@@ -66,9 +66,14 @@ module ChronoForge
           policy = step_retry_policy(retry_policy)
           validate_step_name_segment!(name || method)
           step_name = "durably_execute$#{name || method}"
-          # Find or create execution log
+          # Find or create execution log. On a fresh step the first attempt is
+          # recorded in the INSERT itself (attempts: 1, last_executed_at) so there
+          # is no separate pre-execution UPDATE to follow it.
           execution_log = find_or_create_execution_log!(step_name) do |log|
-            log.started_at = Time.current
+            now = Time.current
+            log.started_at = now
+            log.last_executed_at = now
+            log.attempts = 1
           end
 
           # Return if already completed
@@ -76,11 +81,14 @@ module ChronoForge
 
           # Execute with error handling
           begin
-            # Update execution log with attempt
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current
-            )
+            # Existing logs (retries) still need the pre-execution attempt bump;
+            # a freshly-created log already recorded its first attempt above.
+            unless execution_log.previously_new_record?
+              execution_log.update!(
+                attempts: execution_log.attempts + 1,
+                last_executed_at: Time.current
+              )
+            end
 
             # Execute the method
             send(method)

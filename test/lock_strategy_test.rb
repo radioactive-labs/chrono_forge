@@ -20,6 +20,63 @@ class LockStrategyTest < ActiveJob::TestCase
     )
   end
 
+  def make_idle_workflow(started_at:)
+    ChronoForge::Workflow.create!(
+      key: "lock_test_#{SecureRandom.hex(4)}",
+      job_class: "KitchenSink",
+      kwargs: {},
+      options: {},
+      context: {},
+      state: :idle,
+      started_at: started_at
+    )
+  end
+
+  def test_acquire_lock_stamps_started_at_when_unset
+    # Branch children are pre-inserted by their parent without started_at; the
+    # first execution must stamp it. Folding that stamp into the lock-acquire
+    # transaction saves a standalone UPDATE (one fsync) per child on fan-outs.
+    workflow = make_idle_workflow(started_at: nil)
+
+    LockStrategy.acquire_lock("job-a", workflow, max_duration: 10.minutes)
+
+    workflow.reload
+    assert workflow.started_at, "acquire_lock should stamp started_at when it was nil"
+    assert_equal "job-a", workflow.locked_by
+  end
+
+  def test_acquire_lock_preserves_existing_started_at
+    original = 1.hour.ago.change(usec: 0)
+    workflow = make_idle_workflow(started_at: original)
+
+    LockStrategy.acquire_lock("job-a", workflow, max_duration: 10.minutes)
+
+    workflow.reload
+    assert_in_delta original, workflow.started_at, 1.second,
+      "acquire_lock must not overwrite an already-set started_at"
+  end
+
+  def test_acquire_lock_stamps_started_at_within_the_lock_update
+    # The stamp should ride along the existing lock UPDATE, not be its own write.
+    workflow = make_idle_workflow(started_at: nil)
+
+    updates = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*args|
+      sql = args.last[:sql].to_s
+      updates << sql if sql.match?(/UPDATE ["`]?chrono_forge_workflows/i)
+    end
+    begin
+      LockStrategy.acquire_lock("job-a", workflow, max_duration: 10.minutes)
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+
+    assert_equal 1, updates.size,
+      "lock acquire (with started_at stamp) should be a single workflows UPDATE, got #{updates.size}"
+    assert_match(/started_at/i, updates.first, "the lock UPDATE should also set started_at")
+    assert_match(/locked_by/i, updates.first, "the lock UPDATE should set the lock owner")
+  end
+
   def test_acquire_lock_raises_concurrent_execution_error_when_freshly_locked
     workflow = make_workflow(locked_by: "job-b")
 

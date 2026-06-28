@@ -99,9 +99,14 @@ module ChronoForge
           validate_step_name_segment!(name || condition)
           step_name = "continue_if$#{name || condition}"
 
-          # Find or create execution log
+          # Find or create execution log. A fresh gate records its first evaluation
+          # in the INSERT itself (attempts: 1, last_executed_at), so there is no
+          # separate pre-evaluation UPDATE to follow it.
           execution_log = find_or_create_execution_log!(step_name) do |log|
-            log.started_at = Time.current
+            now = Time.current
+            log.started_at = now
+            log.last_executed_at = now
+            log.attempts = 1
             log.metadata = {
               condition: condition.to_s,
               name: name
@@ -115,10 +120,14 @@ module ChronoForge
 
           # Evaluate condition once
           begin
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current
-            )
+            # Existing logs (re-evaluations after a not-met halt) still need the
+            # attempt bump; a freshly-created gate already recorded its first above.
+            unless execution_log.previously_new_record?
+              execution_log.update!(
+                attempts: execution_log.attempts + 1,
+                last_executed_at: Time.current
+              )
+            end
 
             condition_met = send(condition)
           rescue HaltExecutionFlow

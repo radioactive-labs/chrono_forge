@@ -50,34 +50,28 @@ module ChronoForge
         def complete_workflow!
           enforce_branch_joins!
 
-          # Create an execution log for workflow completion
-          execution_log = find_or_create_execution_log!("$workflow_completion$") do |log|
-            log.started_at = Time.current
-          end
-
+          # Completion is two writes with no external side effect between them: the
+          # workflow → :completed transition and the (born-completed) marker. Batch
+          # them in one transaction so a trivial child pays a single commit here,
+          # and write the marker in its terminal state in a single INSERT.
+          execution_log = nil
           begin
-            workflow.completed_at = Time.current
-            workflow.completed!
-
-            # Mark execution log as completed. Attempt tracking and the terminal
-            # state are written together: completion is not retried on an
-            # attempt-count basis, so there is no need for a separate pre-write.
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current,
-              state: :completed,
-              completed_at: Time.current
-            )
+            ActiveRecord::Base.transaction do
+              workflow.completed_at = Time.current
+              workflow.completed!
+              execution_log = create_completed_execution_log!("$workflow_completion$")
+            end
 
             # Return the execution log for tracking
             execution_log
           rescue => e
-            # Log any errors
-            execution_log.update!(
-              state: :failed,
-              error_message: e.message,
-              error_class: e.class.name
-            )
+            # The transaction rolled back (so the marker may be gone too). Re-find
+            # or recreate it and record the failure for observability, then re-raise.
+            # The workflow stays not-completed, so a resume retries completion.
+            log = find_or_create_execution_log!("$workflow_completion$") do |l|
+              l.started_at = Time.current
+            end
+            log.update!(state: :failed, error_message: e.message, error_class: e.class.name)
             raise
           end
         end
@@ -153,36 +147,30 @@ module ChronoForge
         # - Safe to call multiple times with same error_log
         #
         def fail_workflow!(error_log)
-          # Create an execution log for workflow failure
-          execution_log = find_or_create_execution_log!("$workflow_failure$#{error_log.id}") do |log|
-            log.started_at = Time.current
-            log.metadata = {
-              error_log_id: error_log.id
-            }
-          end
+          step_name = "$workflow_failure$#{error_log.id}"
 
+          # Mirror complete_workflow!: the workflow → :failed transition and the
+          # (born-completed) failure marker are batched in one transaction, and the
+          # marker is written in its terminal state in a single INSERT.
+          execution_log = nil
           begin
-            workflow.failed!
-
-            # Mark execution log as completed. Attempt tracking and the terminal
-            # state are written together (failure handling is not retried on an
-            # attempt-count basis).
-            execution_log.update!(
-              attempts: execution_log.attempts + 1,
-              last_executed_at: Time.current,
-              state: :completed,
-              completed_at: Time.current
-            )
+            ActiveRecord::Base.transaction do
+              workflow.failed!
+              execution_log = create_completed_execution_log!(step_name) do |log|
+                log.metadata = {error_log_id: error_log.id}
+              end
+            end
 
             # Return the execution log for tracking
             execution_log
           rescue => e
-            # Log any errors
-            execution_log.update!(
-              state: :failed,
-              error_message: e.message,
-              error_class: e.class.name
-            )
+            # The transaction rolled back; re-find/recreate the marker and record
+            # the failure for observability, then re-raise.
+            log = find_or_create_execution_log!(step_name) do |l|
+              l.started_at = Time.current
+              l.metadata = {error_log_id: error_log.id}
+            end
+            log.update!(state: :failed, error_message: e.message, error_class: e.class.name)
             raise
           end
         end

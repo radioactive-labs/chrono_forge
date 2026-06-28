@@ -765,6 +765,8 @@ end
 > exactly one branch. (A *spawned child workflow* may open its own branches — it
 > runs in its own executor — so cross-workflow nesting is fine.)
 
+Verified correct at 500,000 children on a single Postgres instance. A follow-up commit-consolidation change halved per-child execution time. See the [scale test](docs/fanout-scale-test.md).
+
 ## 🧪 Testing
 
 ChronoForge is designed to be easily testable using [ChaoticJob](https://github.com/fractaledmind/chaotic_job), a testing framework that makes it simple to test complex job workflows:

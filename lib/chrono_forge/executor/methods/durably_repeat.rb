@@ -107,20 +107,28 @@ module ChronoForge
           validate_step_name_segment!(name || method)
           step_name = "durably_repeat$#{name || method}"
 
-          # Get or create the main coordination log for this periodic task
+          # Get or create the main coordination log for this periodic task. A fresh
+          # coordinator records its first pass in the INSERT (attempts: 1,
+          # last_executed_at); only later passes bump via UPDATE.
           coordination_log = find_or_create_execution_log!(step_name) do |log|
-            log.started_at = Time.current
+            now = Time.current
+            log.started_at = now
+            log.last_executed_at = now
+            log.attempts = 1
             log.metadata = {last_execution_at: nil}
           end
 
           # Return if already completed
           return if coordination_log.completed?
 
-          # Update coordination log attempt tracking
-          coordination_log.update!(
-            attempts: coordination_log.attempts + 1,
-            last_executed_at: Time.current
-          )
+          # Update coordination log attempt tracking (first pass already recorded
+          # above on create).
+          unless coordination_log.previously_new_record?
+            coordination_log.update!(
+              attempts: coordination_log.attempts + 1,
+              last_executed_at: Time.current
+            )
+          end
 
           # Check if we should stop repeating
           condition_met = if till.is_a?(Symbol)
@@ -252,9 +260,14 @@ module ChronoForge
         def execute_or_schedule_repetition(method, coordination_log, next_execution_at, every, policy, timeout, on_error)
           step_name = "#{coordination_log.step_name}$#{next_execution_at.to_i}"
 
-          # Create execution log for this specific repetition
+          # Create execution log for this specific repetition. A fresh repetition
+          # records its first attempt in the INSERT itself (attempts: 1,
+          # last_executed_at), so there is no separate pre-execution UPDATE.
           repetition_log = find_or_create_execution_log!(step_name) do |log|
-            log.started_at = Time.current
+            now = Time.current
+            log.started_at = now
+            log.last_executed_at = now
+            log.attempts = 1
             log.metadata = {
               scheduled_for: next_execution_at,
               timeout_at: next_execution_at + timeout,
@@ -265,11 +278,14 @@ module ChronoForge
           # Return if this repetition is already completed
           return if repetition_log.completed?
 
-          # Update execution log with attempt
-          repetition_log.update!(
-            attempts: repetition_log.attempts + 1,
-            last_executed_at: Time.current
-          )
+          # Existing logs (a resume of a scheduled-for-later repetition) still need
+          # the attempt bump; a freshly-created one recorded its first above.
+          unless repetition_log.previously_new_record?
+            repetition_log.update!(
+              attempts: repetition_log.attempts + 1,
+              last_executed_at: Time.current
+            )
+          end
 
           # Check if it's time to execute this repetition
           if next_execution_at <= Time.current

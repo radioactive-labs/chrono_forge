@@ -20,12 +20,19 @@ module ChronoForge
                 "Currently being executed by job(#{workflow.locked_by})"
             end
 
-            # Atomic update of lock status
-            workflow.update_columns(
+            # Atomic update of lock status. Stamp started_at here on first
+            # acquisition too: branch children are pre-inserted by their parent
+            # without it, and folding the stamp into this UPDATE saves a separate
+            # commit (fsync) per child on large fan-outs. started_at then reliably
+            # means "has been picked up and run" — the BranchMergeJob rekick poller
+            # treats a nil started_at as a never-executed (dropped) child.
+            columns = {
               locked_by: job_id,
               locked_at: Time.current,
               state: :running
-            )
+            }
+            columns[:started_at] = Time.current if workflow.started_at.nil?
+            workflow.update_columns(columns)
 
             Rails.logger.debug { "ChronoForge:#{name}(#{workflow.key}) job(#{job_id}) acquired lock." }
 
