@@ -17,6 +17,17 @@ class AssetsTest < ActionDispatch::IntegrationTest
     assert_includes ["application/javascript", "text/javascript"], response.media_type
   end
 
+  # The polling refresh swaps the list region's innerHTML. Without preserving the
+  # filter inputs, every tick wipes whatever is being typed and drops focus.
+  # There is no JS test harness, so this is a structural guard: the preservation
+  # logic must ship in the served script. Behavior is verified in a real browser.
+  test "polling js preserves in-progress filter input across refresh" do
+    get "/chrono_forge/assets/dashboard.js"
+    assert_response :success
+    assert_includes response.body, "isTextEntry",
+      "dashboard.js must preserve text-input value/focus across the polling innerHTML swap"
+  end
+
   test "unknown asset 404s" do
     # show_exceptions = :none means routing errors propagate rather than render 404
     assert_raises(ActionController::RoutingError) { get "/chrono_forge/assets/evil.css" }

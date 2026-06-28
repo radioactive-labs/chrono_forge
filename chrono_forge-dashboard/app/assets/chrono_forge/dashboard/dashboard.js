@@ -79,10 +79,47 @@
           // so polling doesn't yank a table back while it's being scrolled.
           var scrolls = Array.prototype.map.call(
             region.querySelectorAll(".overflow-x-auto"), function (el) { return el.scrollLeft; });
+
+          // Preserve in-progress text in the filter boxes. The swap replaces the
+          // inputs with server-rendered ones reflecting only the LAST SUBMITTED
+          // query, so without this every poll tick wipes whatever is being typed
+          // and drops focus. Capture each named text field's value, plus the caret
+          // of the focused one, and reapply them after the swap.
+          var isTextEntry = function (el) {
+            if (!el) return false;
+            if (el.tagName === "TEXTAREA") return true;
+            if (el.tagName !== "INPUT") return false;
+            return /^(text|search|email|url|tel|number|password)$/i.test(el.type || "text");
+          };
+          var values = {};
+          region.querySelectorAll("input, textarea").forEach(function (el) {
+            if (el.name && isTextEntry(el)) values[el.name] = el.value;
+          });
+          var active = document.activeElement;
+          var activeName = (active && region.contains(active) && isTextEntry(active) && active.name) ? active.name : null;
+          var caretStart = null, caretEnd = null;
+          if (activeName) {
+            try { caretStart = active.selectionStart; caretEnd = active.selectionEnd; } catch (e) {}
+          }
+
           region.innerHTML = fresh.innerHTML;
+
           region.querySelectorAll(".overflow-x-auto").forEach(function (el, i) {
             if (scrolls[i]) el.scrollLeft = scrolls[i];
           });
+          // Reapply preserved field values, then restore focus + caret.
+          region.querySelectorAll("input, textarea").forEach(function (el) {
+            if (el.name && isTextEntry(el) && Object.prototype.hasOwnProperty.call(values, el.name)) {
+              el.value = values[el.name];
+            }
+          });
+          if (activeName) {
+            var refocus = region.querySelector("[name='" + activeName + "']");
+            if (refocus) {
+              refocus.focus();
+              try { refocus.setSelectionRange(caretStart, caretEnd); } catch (e) {}
+            }
+          }
         }).catch(function () {});
     }, interval);
   }
