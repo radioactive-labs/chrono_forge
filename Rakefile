@@ -12,3 +12,7 @@ Rake::TestTask.new do |t|
   t.test_files = FileList["test/**/*_test.rb"]
   t.verbose = true
 end
+
+# Release tasks (release:core:*, release:dashboard:*). Loaded after
+# bundler/gem_tasks so it can neutralize the bare `rake release` footgun.
+Dir.glob(File.expand_path("lib/tasks/*.rake", __dir__)).sort.each { |f| load f }

@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'                          # core
+      - 'chrono_forge-dashboard-v*'   # dashboard
+
+permissions:
+  contents: write
+
+# Publishing to RubyGems happens from a laptop (rake release:<gem>:publish).
+# This workflow only cuts the GitHub Release from the tag — it never pushes to a
+# registry, so it can't race the local publish. One workflow serves both gems;
+# the tag name selects which.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2.2'
+          bundler-cache: true
+
+      - name: Identify gem from tag
+        id: gem
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if [[ "$tag" == chrono_forge-dashboard-v* ]]; then
+            {
+              echo "name=chrono_forge-dashboard"
+              echo "version=${tag#chrono_forge-dashboard-v}"
+              echo "build_dir=chrono_forge-dashboard"
+              echo "gemspec=chrono_forge-dashboard.gemspec"
+              echo "tag_pattern=^chrono_forge-dashboard-v[0-9]"
+              echo "scope_flag=--include-path"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "name=chrono_forge"
+              echo "version=${tag#v}"
+              echo "build_dir=."
+              echo "gemspec=chrono_forge.gemspec"
+              echo "tag_pattern=^v[0-9]"
+              echo "scope_flag=--exclude-path"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build the gem only to attach it to the GitHub Release — it is NOT pushed
+      # to RubyGems here (the laptop already did that via rake release:publish).
+      # The dashboard recompiles its stylesheet first so the artifact matches.
+      - name: Build gem
+        working-directory: ${{ steps.gem.outputs.build_dir }}
+        run: |
+          if [ "${{ steps.gem.outputs.name }}" = "chrono_forge-dashboard" ]; then
+            bundle exec rake tailwind:build
+          fi
+          gem build "${{ steps.gem.outputs.gemspec }}"
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      # Notes for exactly this tag: --current = commits of the tag at HEAD,
+      # scoped to this gem's tag pattern + subtree (matches the local changelog).
+      - name: Generate release notes
+        run: |
+          git-cliff --config cliff.toml \
+            --tag-pattern "${{ steps.gem.outputs.tag_pattern }}" \
+            "${{ steps.gem.outputs.scope_flag }}" 'chrono_forge-dashboard/**' \
+            --current --strip all > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ steps.gem.outputs.name }} ${{ steps.gem.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          files: ${{ steps.gem.outputs.build_dir }}/${{ steps.gem.outputs.name }}-${{ steps.gem.outputs.version }}.gem
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

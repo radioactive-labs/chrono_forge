@@ -28,7 +28,14 @@ Rake::Task["build"].enhance(["tailwind:build"])
 desc "Compile assets, run tests and linter (pre-release gate)"
 task prepare: ["tailwind:build", :test, :standard]
 
-# Guard releases behind the test + lint gate.
-Rake::Task["release"].enhance(%i[test standard])
+# Releases are driven from the repo root (rake release:dashboard:*), so disable
+# the bare `rake release` bundler/gem_tasks defines here — it would tag + push
+# the dashboard gem directly, bypassing the version/changelog flow.
+if Rake::Task.task_defined?("release")
+  Rake::Task["release"].clear
+  task :release do
+    warn "Release from the repo root: `rake release:dashboard:prepare` then `rake release:dashboard:publish`."
+  end
+end
 
 task default: %i[test standard]

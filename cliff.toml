@@ -50,6 +50,13 @@ commit_parsers = [
 ]
 protect_breaking_commits = false
 filter_commits = false
-tag_pattern = "v[0-9]*"
+tag_pattern = "^v[0-9]"
 topo_order = false
 sort_commits = "oldest"
+
+[bump]
+# Pre-1.0 semver: both gems are on 0.x. A feature bumps the minor, and a
+# breaking change ALSO bumps the minor (not the major) while we're on 0.x.
+# Fixes bump the patch. Revisit once a gem reaches 1.0.
+features_always_bump_minor = true
+breaking_always_bump_major = false
