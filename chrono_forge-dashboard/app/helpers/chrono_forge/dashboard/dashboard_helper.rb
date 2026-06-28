@@ -88,6 +88,16 @@ module ChronoForge
         tag.span(shown, title: hover, class: "cursor-help")
       end
 
+      # Like cf_ago but direction-aware: future times read "in 3 minutes", past
+      # times "3 minutes ago" — for things like a poller's next scheduled check.
+      def cf_when(t)
+        return "—" unless t
+        rel = t.future? ? "in #{time_ago_in_words(t)}" : "#{time_ago_in_words(t)} ago"
+        abs = t.iso8601
+        shown, hover = cf_absolute_time? ? [abs, rel] : [rel, abs]
+        tag.span(shown, title: hover, class: "cursor-help")
+      end
+
       # Human duration between two times (e.g. "1m 04s"); "—" if unfinished.
       def cf_duration(from, to)
         return "—" unless from && to

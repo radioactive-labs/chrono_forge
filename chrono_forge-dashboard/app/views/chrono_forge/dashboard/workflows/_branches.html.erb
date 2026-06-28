@@ -48,8 +48,14 @@
           <div class="min-w-0">
             <span class="break-all font-mono text-zinc-700"><%= m.names.join(" + ") %></span>
             <span class="ml-1.5 text-xs <%= m.merging? ? "text-amber-600" : "text-zinc-400" %>"><%= m.state %></span>
+            <% if m.poll_overdue? %><span class="ml-1.5 text-xs font-medium text-rose-600" title="next check is past due — the poller may have been dropped">poll overdue</span><% end %>
           </div>
-          <% if m.started_at %><span class="shrink-0 text-xs text-zinc-400">started <%= cf_ago(m.started_at) %></span><% end %>
+          <div class="flex shrink-0 flex-wrap items-baseline gap-x-3 text-xs text-zinc-400">
+            <% if m.last_polled_at %><span>last check <%= cf_ago(m.last_polled_at) %></span><% end %>
+            <% if m.merging? && m.next_poll_at %><span class="<%= "font-medium text-rose-600" if m.poll_overdue? %>">next check <%= cf_when(m.next_poll_at) %></span><% end %>
+            <% if m.polls&.positive? %><span><%= pluralize(m.polls, "poll") %></span><% end %>
+            <% if m.started_at %><span>started <%= cf_ago(m.started_at) %></span><% end %>
+          </div>
         </div>
       <% end %>
     </div>

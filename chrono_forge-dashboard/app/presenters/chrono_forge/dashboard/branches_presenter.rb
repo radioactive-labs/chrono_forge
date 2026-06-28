@@ -6,8 +6,15 @@ module ChronoForge
     class BranchesPresenter
       # One merge join (a merge$<names> log = a BranchMergeJob's durable target).
       # state: :merging (pending — a poller is joining) | :merged (completed).
-      Merge = Struct.new(:names, :state, :started_at) do
+      # The poll fields are the BranchMergeJob's observable cadence (it stamps them
+      # on the target branch logs each pass): when it last checked, when it's
+      # scheduled to check next, and how many times it has polled.
+      Merge = Struct.new(:names, :state, :started_at, :last_polled_at, :next_poll_at, :polls) do
         def merging? = state == :merging
+
+        # A next check scheduled in the past while still merging means the poller
+        # was dropped (or is overdue) — the join is stuck until it's re-armed.
+        def poll_overdue? = merging? && next_poll_at && next_poll_at.past?
       end
 
       def initialize(workflow) = @workflow = workflow
@@ -23,12 +30,39 @@ module ChronoForge
       # The merge joins on this workflow, in-progress first. A long-pending merge
       # with no blocked children is the sign of a dropped BranchMergeJob poller.
       def merges
-        @merges ||= merge_logs
-          .map { |log| Merge.new(StepNameParser.parse(log.step_name).name.split(","), log.completed? ? :merged : :merging, log.started_at) }
-          .sort_by { |m| [m.merging? ? 0 : 1, m.started_at || Time.current] }
+        @merges ||= merge_logs.map { |log|
+          names = StepNameParser.parse(log.step_name).name.split(",")
+          poll = merge_poll(names)
+          Merge.new(
+            names,
+            log.completed? ? :merged : :merging,
+            log.started_at,
+            parse_time(poll&.dig("last_polled_at")),
+            parse_time(poll&.dig("next_poll_at")),
+            poll&.dig("polls")
+          )
+        }.sort_by { |m| [m.merging? ? 0 : 1, m.started_at || Time.current] }
       end
 
       private
+
+      # Freshest poll state across a merge's target branch logs. BranchMergeJob
+      # stamps identical state on every target branch each pass, so any one works;
+      # take the latest by last_polled_at to be safe with multi-branch merges.
+      def merge_poll(names)
+        names.filter_map { |nm| branch_poll_by_name[nm] }.max_by { |p| p["last_polled_at"].to_s }
+      end
+
+      def branch_poll_by_name
+        @branch_poll_by_name ||= branch_logs.each_with_object({}) do |log, h|
+          h[StepNameParser.parse(log.step_name).name] = log.metadata&.dig("poll")
+        end
+      end
+
+      def parse_time(value)
+        return nil if value.blank?
+        value.is_a?(Time) ? value : Time.zone.parse(value.to_s)
+      end
 
       def coordination_logs
         d = StepNameParser::DELIM
