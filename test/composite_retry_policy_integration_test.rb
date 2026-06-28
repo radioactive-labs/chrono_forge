@@ -23,6 +23,7 @@ class CompositeRetryPolicyIntegrationTest < ActiveJob::TestCase
     test_class_name = "#{name}#{Time.now.to_i}_#{rand(100000)}"
     Object.const_set(test_class_name, Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       class_eval(&block)
     end)
     Object.const_get(test_class_name)

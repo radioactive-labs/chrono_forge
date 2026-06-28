@@ -13,6 +13,7 @@ class StepNameValidationTest < ActiveJob::TestCase
   def build_job(&perform_body)
     klass = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       define_method(:perform, &perform_body)
       def noop
       end

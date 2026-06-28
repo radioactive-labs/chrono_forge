@@ -13,6 +13,7 @@ class EnqueueContractTest < ActiveJob::TestCase
 
   class ContractJob < WorkflowJob
     prepend ChronoForge::Executor
+
     def perform(foo: nil)
       context[:foo] = foo
     end

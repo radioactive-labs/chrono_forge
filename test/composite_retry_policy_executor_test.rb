@@ -33,6 +33,7 @@ class CompositeRetryPolicyExecutorTest < ActiveSupport::TestCase
   def test_class_dsl_positional_sets_composite_default
     klass = Class.new do
       prepend ChronoForge::Executor
+
       retry_policy RetryPolicy.new(retry_on: [ArgumentError]), RetryPolicy.new(retry_on: nil)
     end
     assert_instance_of CompositeRetryPolicy, klass.default_retry_policy
@@ -41,6 +42,7 @@ class CompositeRetryPolicyExecutorTest < ActiveSupport::TestCase
   def test_class_dsl_kwargs_sets_single_default
     klass = Class.new do
       prepend ChronoForge::Executor
+
       retry_policy max_attempts: 7
     end
     assert_instance_of RetryPolicy, klass.default_retry_policy
@@ -51,6 +53,7 @@ class CompositeRetryPolicyExecutorTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) do
       Class.new do
         prepend ChronoForge::Executor
+
         retry_policy RetryPolicy.new, max_attempts: 3
       end
     end

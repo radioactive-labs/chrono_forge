@@ -2,6 +2,7 @@ require "test_helper"
 
 class BranchTest < ActiveJob::TestCase
   include ChaoticJob::Helpers
+
   def test_spawn_creates_linked_child_and_seals_branch
     SingleSpawnWorkflow.perform_later("ss-1")
     perform_all_jobs
@@ -20,6 +21,7 @@ class BranchTest < ActiveJob::TestCase
   def test_spawn_outside_branch_raises
     workflow = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform = spawn(:x, NoopChild)
     end
     Object.const_set(:BareSpawnWorkflow, workflow)
@@ -69,6 +71,7 @@ class BranchTest < ActiveJob::TestCase
   def test_branch_name_with_dollar_raises
     workflow = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:"a$b") { spawn :one, NoopChild }
       end
@@ -83,6 +86,7 @@ class BranchTest < ActiveJob::TestCase
   def test_spawn_name_with_dollar_raises
     workflow = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:ok) { spawn :"a$b", NoopChild }
       end

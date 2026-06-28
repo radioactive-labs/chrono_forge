@@ -8,6 +8,7 @@ class ErrorLogCorrelationTest < ActiveJob::TestCase
 
   class FailingStepWorkflow < WorkflowJob
     prepend ChronoForge::Executor
+
     def perform
       durably_execute :always_fails
     end
@@ -19,6 +20,7 @@ class ErrorLogCorrelationTest < ActiveJob::TestCase
 
   class TimeoutWorkflow < WorkflowJob
     prepend ChronoForge::Executor
+
     def perform
       wait_until :never?, timeout: -1.second, check_interval: 1.second
     end

@@ -21,6 +21,7 @@ class MergeBranchesTest < ActiveJob::TestCase
   def test_unopened_branch_name_raises
     job = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform = merge_branches(:nope)
     end
     Object.const_set(:NoBranchMergeWorkflow, job)
@@ -33,6 +34,7 @@ class MergeBranchesTest < ActiveJob::TestCase
   def test_merge_branches_rejects_dollar_name
     bad_dollar = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:a) { spawn :one, NoopChild }
         merge_branches :"a$b"
@@ -48,6 +50,7 @@ class MergeBranchesTest < ActiveJob::TestCase
   def test_merge_branches_rejects_comma_name
     bad_comma = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:a) { spawn :one, NoopChild }
         merge_branches :"a,b"
@@ -64,6 +67,7 @@ class MergeBranchesTest < ActiveJob::TestCase
     # merge_branches :a, :a must dedup to :a and behave identically to merge_branches :a.
     dup_wf = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:a) { spawn :one, NoopChild }
         merge_branches :a, :a
@@ -134,6 +138,7 @@ class MergeBranchesTest < ActiveJob::TestCase
   def test_merge_branch_singular_alias_joins
     wf = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:a) { spawn :one, NoopChild }
         merge_branch :a
@@ -170,6 +175,7 @@ end
 # max_attempts: 1 means exactly one attempt, no retry jobs → terminates fast.
 class StallingChild < WorkflowJob
   prepend ChronoForge::Executor
+
   retry_policy max_attempts: 1
 
   def perform(**)

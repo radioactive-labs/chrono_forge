@@ -21,7 +21,9 @@ module ChronoForge
       def sealed? = @log.completed?
 
       def dispatched = capped(children)
+
       def pending = capped(children.where.not(state: ChronoForge::Workflow.states[:completed]))
+
       def blocked = capped(children.where(state: BLOCKED_STATES))
 
       def cap = CAP
@@ -35,8 +37,11 @@ module ChronoForge
       # The BranchMergeJob stamps its poll state onto the branch log's metadata
       # (it can't be queried from the backend; ActiveJob has no such API).
       def polled? = poll.present?
+
       def last_polled_at = parse_time(poll&.dig("last_polled_at"))
+
       def next_poll_at = parse_time(poll&.dig("next_poll_at"))
+
       def polls = poll&.dig("polls").to_i
 
       # next_poll_at is nil once the merge completes, so a finished merge never

@@ -43,6 +43,7 @@ class WorkflowRetryApiTest < ActiveJob::TestCase
 
   class RetryRecordWorkflow < WorkflowJob
     prepend ChronoForge::Executor
+
     def perform
       raise "fail until recovered" unless context.key?(:recovered)
       context[:done] = true

@@ -25,11 +25,13 @@ class SpawnEachTest < ActiveJob::TestCase
   def test_spawn_each_honors_class_from_block
     klass = Class.new(WorkflowJob) {
       prepend ChronoForge::Executor
+
       def perform(**) = nil
     }
     Object.const_set(:AltChild, klass)
     job = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:g, automerge: true) do
           spawn_each(:i, User.all) { |u| u.id.even? ? [AltChild, {id: u.id}] : [NoopChild, {id: u.id}] }
@@ -51,6 +53,7 @@ class SpawnEachTest < ActiveJob::TestCase
   def test_spawn_each_raises_on_conflicting_order
     job = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:g, automerge: true) do
           spawn_each(:i, User.order(:email)) { |u| [NoopChild, {id: u.id}] }
@@ -67,6 +70,7 @@ class SpawnEachTest < ActiveJob::TestCase
   def test_spawn_each_over_plain_enumerable
     job = Class.new(WorkflowJob) do
       prepend ChronoForge::Executor
+
       def perform
         branch(:g, automerge: true) do
           spawn_each(:n, [10, 20, 30]) { |val| [NoopChild, {val: val}] }
