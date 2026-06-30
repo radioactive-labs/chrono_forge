@@ -656,6 +656,12 @@ context.set(:total_amount, 99.99)
 # Set a value only if the key doesn't already exist
 context.set_once(:created_at, Time.current.iso8601)
 
+# Set several values at once (alias: set_multiple)
+context.merge(status: "processing", total_amount: 99.99, attempts: 0)
+
+# Set several values at once, but only keys that don't already exist (alias: set_multiple_once)
+context.merge_once(created_at: Time.current.iso8601, attempts: 0)
+
 # Check if a key exists
 if context.key?(:user_id)
   # Do something with the user ID
@@ -1097,6 +1103,8 @@ Fan a workflow out into parallel child sub-workflows (see [Branches](#-branches-
 | `context[:key]` | Get context value | `user_id = context[:user_id]` |
 | `context.set(key, value)` | Set context value (alias) | `context.set(:status, "active")` |
 | `context.set_once(key, value)` | Set only if key doesn't exist | `context.set_once(:created_at, Time.current)` |
+| `context.merge(hash)` | Set multiple values atomically (alias: `set_multiple`) | `context.merge(status: "active", count: 0)` |
+| `context.merge_once(hash)` | Set multiple values, skipping existing keys (alias: `set_multiple_once`) | `context.merge_once(created_at: Time.current, count: 0)` |
 | `context.fetch(key, default)` | Get with default value | `context.fetch(:count, 0)` |
 | `context.key?(key)` | Check if key exists | `context.key?(:user_id)` |
 

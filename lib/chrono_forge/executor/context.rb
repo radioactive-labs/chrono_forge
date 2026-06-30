@@ -51,6 +51,29 @@ module ChronoForge
         set_value(key, value)
       end
 
+      # Sets multiple values in the context at once from a hash.
+      # The merge is atomic: every value is validated before any is written, so
+      # a single invalid value raises and leaves the context untouched.
+      # Returns self for chaining.
+      def merge(hash)
+        hash.each_value { |value| validate_value!(value) }
+        hash.each { |key, value| set_value(key, value) }
+        self
+      end
+      alias_method :set_multiple, :merge
+
+      # Like #merge, but only sets keys that don't already exist; present keys
+      # are skipped entirely (their values are never validated), matching
+      # #set_once semantics. The applied keys are written atomically: an invalid
+      # value among the new keys raises and writes nothing. Returns self.
+      def merge_once(hash)
+        new_pairs = hash.reject { |key, _| key?(key) }
+        new_pairs.each_value { |value| validate_value!(value) }
+        new_pairs.each { |key, value| set_value(key, value) }
+        self
+      end
+      alias_method :set_multiple_once, :merge_once
+
       # Sets a value in the context only if the key doesn't already exist
       # Returns true if the value was set, false otherwise
       def set_once(key, value)
