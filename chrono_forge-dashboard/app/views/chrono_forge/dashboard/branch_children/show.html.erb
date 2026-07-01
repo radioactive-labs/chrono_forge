@@ -25,9 +25,15 @@
         </div>
       <% end %>
     <% end %>
+    <% if @branch.exact_pending %>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-zinc-400">Pending</dt>
+        <dd class="font-mono text-zinc-700"><%= number_with_delimiter(@branch.exact_pending) %></dd>
+      </div>
+    <% end %>
     <div>
       <dt class="text-xs uppercase tracking-wide text-zinc-400">Never started</dt>
-      <dd class="font-mono text-zinc-700"><%= cf_capped(@branch.never_started, @branch.cap) %></dd>
+      <dd class="font-mono text-zinc-700"><%= @branch.exact_never_started ? number_with_delimiter(@branch.exact_never_started) : cf_capped(@branch.never_started, @branch.cap) %></dd>
     </div>
     <div>
       <dt class="text-xs uppercase tracking-wide text-zinc-400">Recovered</dt>

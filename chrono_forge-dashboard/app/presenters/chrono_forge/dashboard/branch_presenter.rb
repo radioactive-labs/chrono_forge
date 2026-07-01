@@ -64,6 +64,14 @@ module ChronoForge
       # this branch hasn't been picked up yet. Capped/index-only like the other counts.
       def never_started = capped(children.where(state: ChronoForge::Workflow.states[:idle], started_at: nil))
 
+      # The FULL (uncapped) pending / never-started counts the poller ALREADY records
+      # each pass — so the dashboard can show the real number instead of the capped
+      # "CAP+", with NO new query. nil until the branch has been polled; callers fall
+      # back to the capped count. (The poll's "dispatched" is the never-started count.)
+      def exact_pending = poll&.dig("pending")
+
+      def exact_never_started = poll&.dig("dispatched")
+
       # Dropped-child recovery: how many children the poller has rekicked, and when
       # it last did (nil if never).
       def rekicks = poll&.dig("rekick_total").to_i
