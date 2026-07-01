@@ -6,6 +6,7 @@ ChronoForge::Dashboard::Engine.routes.draw do
       post :resume, to: "actions#resume"
       post :unlock, to: "actions#unlock"
       get :repetitions, to: "repetitions#index"
+      get :definition, to: "definitions#show"
     end
     collection do
       post :bulk_retry, to: "actions#bulk_retry"
@@ -16,5 +17,9 @@ ChronoForge::Dashboard::Engine.routes.draw do
   end
   resources :wait_states, only: :index
   get "analytics", to: "analytics#index", as: :analytics
-  get "assets/:file", to: "assets#show", constraints: {file: /dashboard\.(css|js)/}
+  # Explicit allowlist (mirrors AssetsController::TYPES) so unknown assets 404 at
+  # the routing layer rather than reaching the controller.
+  get "assets/:file", to: "assets#show", constraints: {
+    file: /(dashboard\.(css|js)|cytoscape\.min\.js|dagre\.min\.js|cytoscape-dagre\.js|definition_graph\.js)/
+  }
 end

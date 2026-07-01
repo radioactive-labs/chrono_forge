@@ -4,7 +4,14 @@ module ChronoForge
       skip_before_action :authenticate!
       skip_forgery_protection
 
-      TYPES = {"dashboard.css" => "text/css", "dashboard.js" => "application/javascript"}.freeze
+      TYPES = {
+        "dashboard.css" => "text/css",
+        "dashboard.js" => "application/javascript",
+        "cytoscape.min.js" => "application/javascript",
+        "dagre.min.js" => "application/javascript",
+        "cytoscape-dagre.js" => "application/javascript",
+        "definition_graph.js" => "application/javascript"
+      }.freeze
       ROOT = ChronoForge::Dashboard::Engine.root.join("app/assets/chrono_forge/dashboard")
 
       def show

@@ -92,7 +92,7 @@ A few deliberate choices behind that table:
 
 ## 🖥️ Dashboard
 
-ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
+ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, a per-run **definition graph** (the durable steps a workflow will run, statically parsed from `perform`, with live run status overlaid), context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
 
 [![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
 

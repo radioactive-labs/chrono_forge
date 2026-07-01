@@ -9,6 +9,7 @@
       <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
         <span class="break-all font-mono"><%= @workflow.job_class %></span>
         <%= link_to "metrics →", analytics_path(class: @workflow.job_class), class: cf_chip %>
+        <%= link_to "Definition graph", definition_workflow_path(@workflow), class: cf_chip %>
       </p>
     </div>
     <% if @workflow.retryable? || @workflow.running? || @workflow.idle? %>

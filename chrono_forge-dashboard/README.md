@@ -55,6 +55,14 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 
 [![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
 
+**Definition graph** — a per-run static DAG of the durable steps a workflow *will* run (parsed from `perform` with Prism, never executed), with the run's status painted on each node — done / in progress / failed / not-yet-reached — plus guarded edges, early-`return` exits, and unmapped steps. Tap a node or edge to inspect its step name / guard:
+
+[![Definition graph](docs/screenshots/definition-graph.png)](docs/screenshots/definition-graph.png)
+
+A real production workflow — a scheduled-payment recurrence whose three reminder-ordering branches reconverge on the charge, with guarded early-`return` exits and a failed final `process_payment`:
+
+[![Definition graph — scheduled payment](docs/screenshots/definition-graph-scheduled-payment.png)](docs/screenshots/definition-graph-scheduled-payment.png)
+
 ## Authentication
 
 The dashboard is fail-closed. If you mount it without configuring authentication, hitting any dashboard URL raises `ChronoForge::Dashboard::AuthenticationNotConfigured`. Configure one of the following in an initializer (e.g. `config/initializers/chrono_forge_dashboard.rb`).
@@ -120,6 +128,7 @@ end
 
 - **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state
 - **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step
+- **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / running / pending / not-yet-reached / failed, plus fan-out and repeat aggregates). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. A workflow whose source can't be analyzed degrades to a warning, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
@@ -137,6 +146,8 @@ bundle exec rake tailwind:build
 ```
 
 Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
+
+**One exception:** the **Definition graph** page loads [Cytoscape](https://js.cytoscape.org) + [dagre](https://github.com/dagrejs/dagre) to lay out the DAG client-side (~670 KB total, loaded only on that page). All three libraries plus the init module (`definition_graph.js`) are vendored into the gem and served from the engine — no external host / CDN, and no inline `<script>` (the init is an external file), so the page stays CSP-friendly. The graph is passed as JSON in a `data-` attribute and consumed directly, so node labels and guard text need no escaping. Every other page remains dependency-free vanilla JS.
 
 ## Development
 
