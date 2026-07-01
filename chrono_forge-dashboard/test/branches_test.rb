@@ -81,14 +81,14 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     parent = create_workflow(key: "pt", state: :idle)
     parent.execution_logs.create!(step_name: "branch$g",
       state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
-      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88,
+      metadata: {"poll" => {"rate" => 226.0, "pending" => 19_888, "eta_seconds" => 88,
                             "last_polled_at" => 20.seconds.ago.iso8601, "polls" => 3}})
     parent.execution_logs.create!(step_name: "merge$g", state: ChronoForge::ExecutionLog.states[:pending],
       attempts: 1, started_at: 1.hour.ago)
 
     merge = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.first
     assert_equal 226.0, merge.rate
-    assert_equal 88, merge.eta_seconds
+    assert_equal 88, merge.eta_seconds # 19,888 pending ÷ 226/s (single-branch: aggregate == the one branch)
     assert merge.throughput?, "a merging, draining merge reports throughput"
   end
 
@@ -108,6 +108,29 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     merges = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.index_by { |m| m.names.first }
     refute merges["idle"].throughput?, "rate 0.0 is not draining"
     refute merges["done"].throughput?, "a merged join isn't a live gauge"
+  end
+
+  # A merge may join several branches; each records its OWN rate/pending, so the
+  # merge's throughput is the sum and its ETA the combined remaining over the
+  # combined rate — not any single branch's figure.
+  test "aggregates rate/ETA across a multi-branch merge" do
+    parent = create_workflow(key: "p-multi", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$a",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 100.0, "pending" => 600,
+                            "last_polled_at" => 10.seconds.ago.iso8601, "polls" => 4}})
+    parent.execution_logs.create!(step_name: "branch$b",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 100.0, "pending" => 900,
+                            "last_polled_at" => 10.seconds.ago.iso8601, "polls" => 4}})
+    parent.execution_logs.create!(step_name: "merge$a,b", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 30.seconds.ago)
+
+    merge = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.first
+    assert_equal ["a", "b"], merge.names
+    assert_in_delta 200.0, merge.rate, 0.001, "rate is the sum of both branches (100 + 100)"
+    assert_equal 8, merge.eta_seconds, "ETA is combined pending (1500) over combined rate (200) = 7.5 → 8"
+    assert merge.throughput?
   end
 end
 

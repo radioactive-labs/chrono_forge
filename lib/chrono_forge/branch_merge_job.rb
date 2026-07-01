@@ -176,7 +176,8 @@ module ChronoForge
             "interval" => interval,
             "pending" => pend,
             "sealed" => sealed_by_branch[log.id],
-            "rate" => rate.round(2),                               # children/s (throughput)
+            "rate" => rate.round(3),                               # children/s (round(3), not (2), so a
+                                                                   # very slow but real drain still reads > 0)
             "eta_seconds" => (rate > 0 ? (pend / rate).round : nil),
             "polls" => prev["polls"].to_i + 1,
             "rekicked" => n,
