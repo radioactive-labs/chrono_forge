@@ -9,12 +9,18 @@ module ChronoForge
       # The poll fields are the BranchMergeJob's observable cadence (it stamps them
       # on the target branch logs each pass): when it last checked, when it's
       # scheduled to check next, and how many times it has polled.
-      Merge = Struct.new(:names, :state, :started_at, :last_polled_at, :next_poll_at, :polls) do
+      Merge = Struct.new(:names, :state, :started_at, :last_polled_at, :next_poll_at, :polls, :rate, :eta_seconds) do
         def merging? = state == :merging
+
+        def merged? = state == :merged
 
         # A next check scheduled in the past while still merging means the poller
         # was dropped (or is overdue) — the join is stuck until it's re-armed.
         def poll_overdue? = merging? && next_poll_at && next_poll_at.past?
+
+        # Throughput is a live gauge — only meaningful while merging and actually
+        # draining (rate 0.0 means idle; a merged join has no live rate).
+        def throughput? = merging? && rate.to_f > 0
       end
 
       def initialize(workflow) = @workflow = workflow
@@ -39,7 +45,9 @@ module ChronoForge
             log.started_at,
             parse_time(poll&.dig("last_polled_at")),
             parse_time(poll&.dig("next_poll_at")),
-            poll&.dig("polls")
+            poll&.dig("polls"),
+            poll&.dig("rate"),
+            poll&.dig("eta_seconds")
           )
         }.sort_by { |m| [m.merging? ? 0 : 1, m.started_at || Time.current] }
       end

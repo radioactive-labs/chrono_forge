@@ -76,6 +76,39 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     assert_equal ["b"], merges.first.names
     assert_equal :merged, merges.last.state
   end
+
+  test "exposes live throughput/ETA on an in-flight merge" do
+    parent = create_workflow(key: "pt", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$g",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88,
+                            "last_polled_at" => 20.seconds.ago.iso8601, "polls" => 3}})
+    parent.execution_logs.create!(step_name: "merge$g", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 1.hour.ago)
+
+    merge = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.first
+    assert_equal 226.0, merge.rate
+    assert_equal 88, merge.eta_seconds
+    assert merge.throughput?, "a merging, draining merge reports throughput"
+  end
+
+  test "throughput? is false when the merge isn't draining or is already merged" do
+    parent = create_workflow(key: "pt0", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$idle",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 0.0, "eta_seconds" => nil, "polls" => 5}})
+    parent.execution_logs.create!(step_name: "merge$idle", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 1.hour.ago)
+    parent.execution_logs.create!(step_name: "branch$done",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 500.0, "polls" => 7}})
+    parent.execution_logs.create!(step_name: "merge$done", state: ChronoForge::ExecutionLog.states[:completed],
+      attempts: 1, started_at: 1.hour.ago)
+
+    merges = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.index_by { |m| m.names.first }
+    refute merges["idle"].throughput?, "rate 0.0 is not draining"
+    refute merges["done"].throughput?, "a merged join isn't a live gauge"
+  end
 end
 
 class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
