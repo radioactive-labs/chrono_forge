@@ -25,12 +25,10 @@
         </div>
       <% end %>
     <% end %>
-    <% unless @branch.never_started.nil? %>
-      <div>
-        <dt class="text-xs uppercase tracking-wide text-zinc-400">Never started</dt>
-        <dd class="font-mono text-zinc-700"><%= number_with_delimiter(@branch.never_started) %></dd>
-      </div>
-    <% end %>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-zinc-400">Never started</dt>
+      <dd class="font-mono text-zinc-700"><%= cf_capped(@branch.never_started, @branch.cap) %></dd>
+    </div>
     <div>
       <dt class="text-xs uppercase tracking-wide text-zinc-400">Recovered</dt>
       <dd class="font-mono text-zinc-700"><%= @branch.rekicks %><% if @branch.last_rekick_at %> <span class="text-zinc-400">· last <%= cf_ago(@branch.last_rekick_at) %></span><% end %></dd>

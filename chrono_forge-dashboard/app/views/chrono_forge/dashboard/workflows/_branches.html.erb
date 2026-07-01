@@ -8,6 +8,7 @@
           <th class="py-2 pr-4 font-medium">Status</th>
           <th class="py-2 pr-4 text-right font-medium">Dispatched</th>
           <th class="py-2 pr-4 text-right font-medium">Pending</th>
+          <th class="py-2 pr-4 text-right font-medium">Never started</th>
           <th class="py-2 pr-4 text-right font-medium">Blocked</th>
           <th class="py-2 font-medium"></th>
         </tr>
@@ -31,6 +32,7 @@
             </td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.dispatched, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.pending, b.cap) %></td>
+            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.never_started, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums <%= "font-medium text-rose-600" if b.blocked > 0 %>"><%= cf_capped(b.blocked, b.cap) %></td>
             <td class="py-2 text-right"><%= link_to "details →", workflow_branch_path(workflow, b.log), class: cf_chip %></td>
           </tr>

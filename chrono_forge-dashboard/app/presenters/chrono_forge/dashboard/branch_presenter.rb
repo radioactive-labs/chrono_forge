@@ -60,9 +60,9 @@ module ChronoForge
 
       def throughput? = rate > 0
 
-      # Children dispatched but not yet started (from the poll's drain signal) — how
-      # much of this branch hasn't been picked up yet. Uncapped (the poller's count).
-      def never_started = poll&.dig("dispatched")
+      # Children dispatched but not yet started (idle, started_at nil) — how much of
+      # this branch hasn't been picked up yet. Capped/index-only like the other counts.
+      def never_started = capped(children.where(state: ChronoForge::Workflow.states[:idle], started_at: nil))
 
       # Dropped-child recovery: how many children the poller has rekicked, and when
       # it last did (nil if never).
