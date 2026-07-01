@@ -198,6 +198,26 @@ children rekicked, and a `touch` on each rekick debounces it to at most once per
 `REKICK_AFTER`. Rekick counts are stamped on the branch-log metadata for the
 dashboard.
 
+### ⚠️ Poller queue placement (a trap)
+
+`merge_branches` enqueues `BranchMergeJob` **after** it dispatches the branch's
+children, so the poller **must not run on the same queue as a large fan-out's
+children**. If it does, it is enqueued behind the entire backlog and starved: it
+gets a worker slot only near the end, polls **once** at `pending≈0` with no prior
+sample (`rate 0`), and backs off to `max_interval`. The consequences are twofold
+and both defeat the point of the ETA cadence:
+
+- the parent's convergence **lags by up to `max_interval` (~5 min)** after the last
+  child finishes (all children `completed`, parent still `idle`); and
+- the dashboard's **live throughput/ETA never renders** — the poller never took a
+  mid-drain sample, so `rate` stays 0.
+
+Give the poller a **dedicated, un-starved queue** so it polls throughout the drain
+(then ETA engages and convergence is tight). For these runs that is the
+`:scale_poller` worker in `config/scale_queue.yml`; in production, route
+`BranchMergeJob` off the fan-out's own queue. This bit us live-driving 20k/100k —
+the first pass had the poller on `:scale` and every parent hung `idle` for 5 min.
+
 ## Environment caveats
 
 - Local Docker **Postgres 13**, default `shared_buffers` 128 MB, single disk,

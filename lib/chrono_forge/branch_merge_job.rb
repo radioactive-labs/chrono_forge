@@ -4,6 +4,15 @@ module ChronoForge
   # Lightweight poller that joins one or more branches. NOT a workflow — it holds
   # no lock, does no replay, and carries no context. It exists so the heavy parent
   # workflow is replayed only twice per merge (kick off + completion wake).
+  #
+  # DEPLOY NOTE — queue placement matters. merge_branches enqueues this poller
+  # AFTER dispatching the branch's children, so if it runs on the SAME queue as a
+  # large fan-out's children it is starved behind the whole backlog and only gets a
+  # worker slot near the end. It then polls once, at pending≈0, with no prior sample
+  # (rate 0) and backs off to max_interval — so the parent's convergence lags by up
+  # to max_interval and no mid-drain throughput sample is ever recorded. Run it on a
+  # queue that is NOT saturated by the fan-out's own children so it polls throughout
+  # the drain (ETA cadence then converges tightly). See docs/fanout-scale-test.md.
   class BranchMergeJob < ActiveJob::Base
     # The poller is the parent's only wake mechanism, so survive TRANSIENT
     # infrastructure errors (DB connection/timeout/deadlock) with backoff. Any
