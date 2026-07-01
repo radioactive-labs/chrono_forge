@@ -1,6 +1,9 @@
 <%= link_to "‹ Workflows", workflows_path, class: cf_chip("mb-2") %>
 <%= render "parent_breadcrumb", parent_log: @parent_log if @parent_log %>
 
+<%# data-poll-region: auto-refreshed in place (like the index) so a live merge's
+    throughput/ETA and branch counts update without a manual reload. %>
+<div data-poll-region>
 <div class="mb-6">
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div class="min-w-0">
@@ -77,3 +80,4 @@
     <%= render "context_tree", context: @context %>
   </section>
 </div>
+</div><%# /data-poll-region %>
