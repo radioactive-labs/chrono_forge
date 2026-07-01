@@ -357,4 +357,39 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_equal 1, poll["rekick_total"]
     assert poll["last_rekick_at"], "last_rekick_at should be set when a rekick happened"
   end
+
+  # rekick_total is a running counter, not a per-poll value: it accumulates across
+  # successive rekicking polls. The first poll rekicks child A (debouncing it); a
+  # fresh stale child B on the second poll keeps pending from dropping (so the
+  # drain gate stays open) and is rekicked, carrying rekick_total 1 -> 2.
+  def test_rekick_total_accumulates_across_polls
+    a = child!(state: :idle, started_at: nil)
+    a.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata["poll"]["rekick_total"]
+
+    # A is now debounced (touched fresh). Add a second stale child so pending stays
+    # at 2 >= prior 1 (branch not draining => gate open) and B gets rekicked.
+    b = child!(state: :idle, started_at: nil)
+    b.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 2, @log.reload.metadata["poll"]["rekick_total"]
+  end
+
+  # last_rekick_at is carried forward on a later poll that rekicks nothing (it is
+  # only overwritten when a rekick actually fires), so the dashboard keeps the true
+  # timestamp of the last recovery rather than nil'ing it on the next quiet poll.
+  def test_last_rekick_at_preserved_on_zero_rekick_poll
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    first = @log.reload.metadata["poll"]["last_rekick_at"]
+    assert first, "last_rekick_at should be set after the first rekick"
+
+    # Second poll: the child was touched on rekick => no longer stale => no rekick.
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    poll = @log.reload.metadata["poll"]
+    assert_equal 0, poll["rekicked"], "no rekick should fire on the second poll"
+    assert_equal first, poll["last_rekick_at"], "last_rekick_at must be carried forward, not nil'd"
+  end
 end
