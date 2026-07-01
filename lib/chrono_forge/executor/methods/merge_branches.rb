@@ -16,9 +16,9 @@ module ChronoForge
           end
 
           # Validate cadence here, in the parent, so a misconfiguration fails at the
-          # call site instead of deep inside the poller — where (pending * FACTOR)
-          # .clamp(min, max) would raise ArgumentError, a non-transient error that
-          # dead-letters BranchMergeJob and orphans the parent.
+          # call site instead of deep inside the poller — where the clamp to
+          # [min_interval, max_interval] would raise ArgumentError, a non-transient
+          # error that dead-letters BranchMergeJob and orphans the parent.
           if min_interval > max_interval
             raise ArgumentError,
               "min_interval (#{min_interval}) must be <= max_interval (#{max_interval})"

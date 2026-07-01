@@ -228,25 +228,48 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_nil meta["poll"], "stale poller must not write poll state"
   end
 
-  # Adaptive cadence: the reschedule delay scales with the count of PROGRESSING
-  # children and clamps to [min_interval, max_interval].
-  def test_reschedule_delay_scales_and_clamps
+  # Cadence: reschedule_delay(pending, rate, motion, prev_delay, min, max).
+  # `rate` is children/s (0 unless the branch drained since the prior poll); `motion`
+  # is :running | :dispatched | :none. Positive rate => ETA-scaled delay (motion moot).
+  def test_reschedule_delay_scales_with_measured_drain_rate
     job = ChronoForge::BranchMergeJob.new
-    factor = ChronoForge::BranchMergeJob::FACTOR
-
-    # Few progressing → clamps up to min_interval.
-    assert_equal 5, job.send(:reschedule_delay, 1, 5, 300)
-    # Mid-range → scales linearly by FACTOR (100 * 0.06 = 6).
-    assert_in_delta 100 * factor, job.send(:reschedule_delay, 100, 5, 300), 0.001
-    # Huge progressing → clamps down to max_interval.
-    assert_equal 300, job.send(:reschedule_delay, 1_000_000, 5, 300)
+    # rate 20/s, 800 left => ETA 40s; * 0.5 = 20s.
+    assert_in_delta 20, job.send(:reschedule_delay, 800, 20.0, :running, nil, 5, 300), 0.001
   end
 
-  # Zero progressing children → back off to max_interval (the recovery backstop),
-  # NOT the min floor a naive (0 * FACTOR).clamp(min, max) would produce.
+  def test_reschedule_delay_clamps_eta_to_max
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 300, job.send(:reschedule_delay, 100_000, 0.1, :running, nil, 5, 300)
+  end
+
+  def test_reschedule_delay_clamps_eta_to_min
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 1, 1000.0, :running, nil, 5, 300)
+  end
+
+  # A running child produced no completion this interval: HOLD the floor (it's
+  # executing and will finish) — never back off, even with a large prior delay.
+  # Anti-regression guard for slow / low-fan-out children.
+  def test_reschedule_delay_running_holds_floor
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 1, 0.0, :running, nil, 5, 300)
+    assert_equal 5, job.send(:reschedule_delay, 1, 0.0, :running, 200, 5, 300) # ignores prev_delay
+  end
+
+  # Only a dispatched-but-unpicked child left (rate 0, :dispatched): back off
+  # exponentially from the floor (no prior delay => start at min; then double).
+  def test_reschedule_delay_backs_off_exponentially_for_dispatched_straggler
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 100, 0.0, :dispatched, nil, 5, 300)
+    assert_equal 10, job.send(:reschedule_delay, 100, 0.0, :dispatched, 5, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :dispatched, 200, 5, 300)
+  end
+
+  # Nothing can progress (all blocked/waiting) => straight to the max backstop.
   def test_reschedule_delay_uses_max_when_nothing_progresses
     job = ChronoForge::BranchMergeJob.new
-    assert_equal 300, job.send(:reschedule_delay, 0, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :none, nil, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :none, 200, 5, 300)
   end
 
   # Delay actually applied this poll, read back from the recorded poll metadata.
@@ -391,5 +414,35 @@ class BranchMergeJobTest < ActiveJob::TestCase
     poll = @log.reload.metadata["poll"]
     assert_equal 0, poll["rekicked"], "no rekick should fire on the second poll"
     assert_equal first, poll["last_rekick_at"], "last_rekick_at must be carried forward, not nil'd"
+  end
+
+  # Second poll: cadence driven by the drain rate measured from the first poll's
+  # persisted pending, not backlog size — and that rate is persisted as throughput.
+  # Seed 50 pending 60s ago, leave 40 incomplete => 10 drained over ~60s ≈ 0.167/s
+  # => ETA 240s => * 0.5 => ~120s.
+  def test_second_poll_records_throughput_and_uses_it_for_cadence
+    @log.update!(metadata: {"poll" => {
+      "pending" => 50, "last_polled_at" => 60.seconds.ago.iso8601, "polls" => 1
+    }})
+    40.times { child!(state: :idle, started_at: nil) } # fresh => not rekicked
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    assert_in_delta 120, poll_delay, 8,
+      "second poll should schedule at ~ETA*ETA_FRACTION, not a count-based delay"
+    poll = @log.reload.metadata["poll"]
+    assert_operator poll["rate"], :>, 0, "drain rate (throughput) should be recorded"
+    assert poll["eta_seconds"], "eta_seconds should be recorded while draining"
+  end
+
+  # Anti-regression (concern #1): a running child that produced no completion this
+  # interval must keep the floor, NOT decay to the prior poll's backoff.
+  def test_running_child_holds_floor_end_to_end
+    @log.update!(metadata: {"poll" => {
+      "pending" => 1, "interval" => 40, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 3
+    }})
+    child!(state: :running) # pending stays 1 => no drain => rate 0, motion :running
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_in_delta 5, poll_delay, 1,
+      "a running child must hold the floor, not decay to the 40s->80s backoff"
   end
 end

@@ -16,8 +16,7 @@ module ChronoForge
       ActiveRecord::LockWaitTimeout,
       wait: :polynomially_longer, attempts: 25
 
-    CAP = 5_000          # cap the pending count; beyond it we just pick max_interval
-    FACTOR = 0.06        # seconds of delay per pending child
+    ETA_FRACTION = 0.5   # poll at this fraction of the projected time-to-drain
     REKICK_AFTER = 5.minutes
     REKICK_BATCH = 200   # bound per-run rekicks; later polls handle the rest
 
@@ -44,44 +43,87 @@ module ChronoForge
       sealed = sealed_by_branch.values.all?
 
       if sealed && pending.zero?
-        record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil, rekicked_by_branch: {})
+        record_poll!(pending_by_branch, sealed_by_branch, token,
+          next_poll_at: nil, interval: nil, rate_by_branch: {}, rekicked_by_branch: {})
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
 
       rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)
 
-      # Cadence is driven by children that can actually progress, NOT the raw
-      # pending count: a branch whose only incomplete children are blocked
-      # (failed/stalled) or waiting would otherwise spin at the min-interval floor
-      # forever — re-enqueuing a poller every few seconds for work that can't move
-      # without operator recovery or a wait elapsing. Scoping to "progressing"
-      # backs those branches off to max_interval (see reschedule_delay).
-      progressing = branch_log_ids.sum { |id| BranchProbe.progressing(id).limit(CAP).count }
-      delay = reschedule_delay(progressing, min_interval, max_interval)
-      record_poll!(pending_by_branch, sealed_by_branch, token,
-        next_poll_at: delay.seconds.from_now, rekicked_by_branch: rekicked_by_branch)
+      # Cadence is driven by ESTIMATED TIME-TO-DRAIN, measured from the prior
+      # poll's persisted pending. `motion` (EXISTS probes) is the fallback signal
+      # when nothing completed this interval: :running => a live worker is
+      # executing a child (hold the floor, it'll finish); :dispatched => the only
+      # motion is a queued/rekicked-but-unpicked child (back off exponentially,
+      # it may never be picked up); :none => blocked/waiting (max backstop).
+      # See reschedule_delay.
+      motion = if branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
+      elsif branch_log_ids.any? { |id| BranchProbe.dispatched?(id) } then :dispatched
+      else :none
+      end
+      prior = logs.map { |l| l.metadata&.dig("poll") }
+      # Only trust the AGGREGATE prev_pending when every requested branch log is
+      # loaded AND carries a prior sample — otherwise `pending` (over all
+      # branch_log_ids) and prev_pending (over loaded logs) would cover different
+      # sets and yield a bogus aggregate rate. Missing/partial => no sample =>
+      # bootstrap. Per-branch rate below is independently safe (missing => nil => 0).
+      complete_prior = logs.size == branch_log_ids.size && prior.all?
+      prev_pending = (prior.sum { |p| p["pending"].to_i } if complete_prior)
+      prev_polled_at = prior.filter_map { |p| p && p["last_polled_at"] }.map { |s| Time.zone.parse(s) }.min
+      elapsed = prev_polled_at && (Time.current - prev_polled_at)
+      prev_delay = prior.filter_map { |p| p && p["interval"] }.max
+
+      # Drain rate = children completed / second since the prior poll — THIS is the
+      # throughput surfaced on the dashboard. Per branch for display; aggregated for
+      # the ETA. Zero unless the branch actually drained (a no-headway / cold poll).
+      # NOTE: the aggregate ETA blurs a heterogeneous multi-branch merge; acceptable
+      # (automerge is single-branch; clamp + per-poll re-estimate bound any skew).
+      drained = ->(pend, prev) { prev && elapsed && elapsed > 0 && pend < prev }
+      rate_by_branch = pending_by_branch.to_h do |id, pend|
+        prev = prev_pending_by_branch[id]
+        [id, drained.call(pend, prev) ? (prev - pend) / elapsed.to_f : 0.0]
+      end
+      rate = drained.call(pending, prev_pending) ? (prev_pending - pending) / elapsed.to_f : 0.0
+
+      delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
+      record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now,
+        interval: delay, rate_by_branch: rate_by_branch, rekicked_by_branch: rekicked_by_branch)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
 
     private
 
-    # Adaptive poll cadence: scale the wait with the number of PROGRESSING children
-    # (running / dispatched-but-unstarted), clamped to [min_interval, max_interval].
-    # min_interval <= max_interval is enforced up front in merge_branches, so the
-    # clamp can't raise here.
+    # Adaptive poll cadence driven by ESTIMATED TIME-TO-DRAIN, not backlog size.
+    # When the branch-set drained since the last poll we project completion from
+    # the measured rate and poll at ETA_FRACTION of it, clamped [min, max]. Because
+    # each poll re-estimates against the shrinking remainder, cadence converges
+    # geometrically and detects the merge within ~min_interval of the last child
+    # finishing — where the old count-based cadence polled SLOWEST (max_interval)
+    # exactly when a fast-draining backlog was about to complete.
     #
-    # With zero progressing children the branch can only be waiting on a wait/
-    # wait_until or blocked on failed/stalled children — nothing the poller can
-    # hurry along. A naive (0 * FACTOR).clamp would yield min_interval and spin the
-    # poller hot indefinitely; instead we back off to max_interval, a cheap
-    # recovery backstop that still notices a recovered/resumed child within one
-    # interval.
-    def reschedule_delay(progressing, min_interval, max_interval)
-      return max_interval if progressing.zero?
+    # No completion observed this interval — fall back on `motion`:
+    #   :running    => a live worker is executing a child; it will finish, so hold
+    #                  the responsive floor (matches prior behaviour and avoids
+    #                  waking the parent late for a slow/low-fan-out child).
+    #   :dispatched => the only motion is a queued/rekicked-but-unpicked child that
+    #                  may never be picked up => exponential backoff from the floor
+    #                  (double prev_delay, capped at max), catching a quick recovery
+    #                  within seconds without spinning on a dead dispatch.
+    #   :none       => nothing can progress (blocked/failed or parked on a wait) =>
+    #                  straight to max_interval, the cheap recovery backstop.
+    # min_interval <= max_interval is enforced in merge_branches, so clamp is safe.
+    # `rate` is children/s measured by the caller (0 => nothing completed since the
+    # prior poll / cold poll).
+    def reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
+      return (pending / rate * ETA_FRACTION).clamp(min_interval, max_interval) if rate > 0
 
-      (progressing * FACTOR).clamp(min_interval, max_interval)
+      case motion
+      when :running then min_interval
+      when :dispatched then prev_delay ? (prev_delay * 2).clamp(min_interval, max_interval) : min_interval
+      else max_interval
+      end
     end
 
     # A poller is superseded when its token no longer matches what's stored on the
@@ -100,7 +142,7 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, rekicked_by_branch:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, rekicked_by_branch:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
         # Lock the row so this read-modify-write can't clobber a concurrent token
@@ -112,11 +154,16 @@ module ChronoForge
           next unless meta["poll_token"] == token
           prev = meta["poll"] || {}
           n = rekicked_by_branch[log.id].to_i
+          pend = pending_by_branch[log.id]
+          rate = rate_by_branch[log.id].to_f
           meta["poll"] = {
             "last_polled_at" => now.iso8601,
             "next_poll_at" => next_poll_at&.iso8601,
-            "pending" => pending_by_branch[log.id],
+            "interval" => interval,
+            "pending" => pend,
             "sealed" => sealed_by_branch[log.id],
+            "rate" => rate.round(2),                               # children/s (throughput)
+            "eta_seconds" => (rate > 0 ? (pend / rate).round : nil),
             "polls" => prev["polls"].to_i + 1,
             "rekicked" => n,
             "rekick_total" => prev["rekick_total"].to_i + n,

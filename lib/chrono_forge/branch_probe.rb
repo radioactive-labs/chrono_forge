@@ -32,6 +32,20 @@ module ChronoForge
         .or(base.where(state: Workflow.states[:idle], started_at: nil))
     end
 
+    # A child of this branch is actively executing — a live worker will complete
+    # it, so the poller can hold its responsive floor rather than backing off.
+    def running?(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id, state: Workflow.states[:running]).exists?
+    end
+
+    # A child was dispatched but no worker has started it yet (started_at nil). If
+    # this is the only motion left, it's a queued/rekicked-but-unpicked straggler
+    # (which may never be picked up), NOT active work — so the poller backs off.
+    def dispatched?(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id,
+        state: Workflow.states[:idle], started_at: nil).exists?
+    end
+
     def done?(branch_log_id)
       sealed?(branch_log_id) && !incomplete(branch_log_id).exists?
     end
