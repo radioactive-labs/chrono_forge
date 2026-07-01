@@ -55,6 +55,10 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 
 [![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
 
+**Definition graph** — a per-run static DAG of the durable steps a workflow *will* run (parsed from `perform` with Prism, never executed), with the run's status painted on each node — done / in progress / failed / not-yet-reached — plus guarded edges, early-`return` exits, and unmapped steps. Tap a node or edge to inspect its step name / guard:
+
+[![Definition graph](docs/screenshots/definition-graph.png)](docs/screenshots/definition-graph.png)
+
 ## Authentication
 
 The dashboard is fail-closed. If you mount it without configuring authentication, hitting any dashboard URL raises `ChronoForge::Dashboard::AuthenticationNotConfigured`. Configure one of the following in an initializer (e.g. `config/initializers/chrono_forge_dashboard.rb`).
