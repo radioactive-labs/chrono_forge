@@ -24,7 +24,7 @@
     {
       "id": 4,
       "subject": "Task 4: Dashboard — live throughput / ETA for in-flight merges",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Surface the rate (throughput) + eta_seconds persisted by the poller (Task 2) on the merges list of a parent workflow's detail page. Separate package (chrono_forge-dashboard).\n\n**Files (chrono_forge-dashboard/):**\n- Modify: app/presenters/chrono_forge/dashboard/branches_presenter.rb (Merge struct + builder: add :rate, :eta_seconds; throughput? helper)\n- Modify: app/views/chrono_forge/dashboard/workflows/_branches.html.erb (render throughput/ETA)\n- Test: test/presenters_test.rb\n\n```json:metadata\n{\"files\": [\"chrono_forge-dashboard/app/presenters/chrono_forge/dashboard/branches_presenter.rb\", \"chrono_forge-dashboard/app/views/chrono_forge/dashboard/workflows/_branches.html.erb\", \"chrono_forge-dashboard/test/presenters_test.rb\"], \"verifyCommand\": \"cd chrono_forge-dashboard && bundle exec rake test TEST=test/presenters_test.rb\", \"acceptanceCriteria\": [\"merging branch shows throughput + ETA from poll metadata\", \"zero/absent rate renders nothing\"], \"requiresUserVerification\": false}\n```"
     }
