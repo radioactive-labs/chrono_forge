@@ -49,7 +49,7 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 | Branches | Branch children |
 | --- | --- |
 | [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
-| Fan-out branches with capped dispatched/pending/blocked counts and merge state. | One branch's children — blocked-first triage, capped filters, retry per child. |
+| Fan-out branches with capped dispatched/pending/blocked counts and merge state, plus in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children — blocked-first triage, capped filters, retry per child. |
 
 **Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
 
@@ -111,7 +111,7 @@ end
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `polling_interval` | `5` | Seconds between auto-refreshes (the default). A viewer can override it with the nav "refresh" control (stored in a cookie). `0` disables. |
+| `polling_interval` | `5` | Seconds between auto-refreshes (the default). Every page refreshes in place — preserving filter text, focus, and scroll — so a draining fan-out's live throughput/ETA and counts update without a manual reload. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
 | `polling_interval_options` | `[0, 5, 10, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |

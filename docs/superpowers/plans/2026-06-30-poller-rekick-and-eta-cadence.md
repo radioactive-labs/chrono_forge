@@ -676,3 +676,39 @@ git commit -m "feat(dashboard): show live throughput and ETA for in-flight merge
 **Type consistency:** `reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)` — `rate` numeric (0 ⇒ no drain), `motion` ∈ `{:running, :dispatched, :none}`, `prev_delay` numeric/nil — matches every call site and unit test (all six pass a `motion` symbol). `perform` builds `motion` from `BranchProbe.running?`/`dispatched?` (both EXISTS). `rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)` returns `{branch_id => count}`. `record_poll!(…, next_poll_at:, interval:, rate_by_branch:, rekicked_by_branch:)` — final signature after Task 2; the Task-1 call sites are updated in Task 2 Step 4 (the sealed-wake call gains `interval: nil, rate_by_branch: {}`). Aggregate `prev_pending` is guarded on `logs.size == branch_log_ids.size && prior.all?` (#3). `superseded?(logs, token)` takes loaded logs. `ETA_FRACTION = 0.5` matches the `* 0.5` arithmetic. `CAP`/`FACTOR` removed and no longer referenced (grep to confirm). `BranchProbe.incomplete` used as `.count` (uncapped); `running?`/`dispatched?` added; `progressing` retained but unused by the poller. Dashboard `Merge` struct gains `:rate, :eta_seconds`, populated from `poll.dig("rate"/"eta_seconds")`.
 
 **Verification requirement scan:** The prompt ("fix both issues", "update the doc") requests NO user verification, confirmation, or human sign-off. Answer: **NO.** No `requiresUserVerification` task needed.
+
+---
+
+## As shipped (post-review divergences)
+
+The plan above is the pre-implementation design; three review rounds and a live
+20k/100k/500k drive moved several things. What actually landed:
+
+- **Rekick gate is the never-started (dispatched) count delta, not total pending
+  (Task 1).** A `wait_until` child resuming drops total `pending` without any
+  never-started child being consumed, so the pending-delta gate could defer
+  recovery of a genuinely-dropped child behind staggered waits. The gate now keys
+  off the `idle & started_at IS NULL` count falling since the prior poll (added
+  `BranchProbe.dispatched`, persisted as `dispatched` in the poll metadata).
+- **Cadence fallback is motion-aware (Task 2).** When no completion is observed:
+  a `:running` child holds `min_interval` (anti-regression — a live child will
+  finish), a `:dispatched`-but-unpicked straggler backs off exponentially, and a
+  `:none` (blocked/waiting) branch backs off to `max_interval`. `motion` is
+  computed lazily (only when `rate == 0`, off the hot drain path).
+- **Dashboard throughput aggregates a multi-branch merge (Task 4).** The presenter
+  sums per-branch `rate` and recomputes the combined ETA (not one branch's figure).
+  `rate` is stored `round(3)` so a very slow but real drain still renders.
+- **Poller queue is a first-class config.** `ChronoForge.configure { |c|
+  c.branch_merge_queue = … }` (default `:default`) — the live drive showed the
+  poller starves when it shares the fan-out's child queue, and that placement is
+  our code's concern, not a user monkey-patch on `BranchMergeJob.queue_as`.
+- **Auto-refresh is universal.** Marked on the dashboard layout's `<main>` so every
+  page refreshes in place (was per-page opt-in; the detail page — where the
+  throughput gauge lives — had been missed).
+- **Screenshots** were refreshed from the live drives, and a "poller queue
+  placement" trap was documented in `docs/fanout-scale-test.md`.
+
+**Live validation (500k):** 500,000/500,000 children completed, parent converged,
+11 poller passes (ETA cadence held throughout, not a single starved poll), and 200
+children rekicked+recovered after a mid-drain worker restart — the rekick/debounce
+path exercised at scale. Full engine suite green (263 tests); dashboard 106.
