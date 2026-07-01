@@ -142,6 +142,27 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     assert_equal "(a? && b?)", guard
   end
 
+  # Real DSL arg positions: wait's name is 2nd positional; name: kw overrides.
+  def test_names_resolve_per_real_dsl_arg_positions
+    d = defn(DefinitionFixtures::Waits)
+    assert_equal(
+      %w[wait$cool_down wait$until_deadline durably_execute$settle
+         continue_if$gate durably_repeat$ticker],
+      d.nodes.map(&:step_name)
+    )
+    assert_equal %i[wait wait execute continue_if repeat], d.nodes.map(&:kind)
+    refute d.nodes.any?(&:dynamic?)
+  end
+
+  # A truly non-literal name stays dynamic with a prefix-only pattern.
+  def test_non_literal_name_is_dynamic
+    d = defn(DefinitionFixtures::DynExec)
+    node = d.nodes.first
+    assert_equal :dynamic, node.kind
+    assert_nil node.step_name
+    assert_equal "durably_execute$", node.step_name_pattern
+  end
+
   # I2: durable calls inside begin/rescue are not dropped.
   def test_begin_rescue_bodies_are_walked
     names = defn(DefinitionFixtures::Begins).nodes.map(&:step_name)

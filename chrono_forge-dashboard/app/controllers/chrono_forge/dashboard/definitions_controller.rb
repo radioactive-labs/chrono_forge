@@ -16,14 +16,14 @@ module ChronoForge
 
       private
 
+      # DefinitionAnalyzer.call always returns a Definition (an `unavailable` one on
+      # any analysis failure), so the only gap is a class that won't constantize.
       def analyze(workflow)
-        klass = workflow.job_class.constantize
-        ChronoForge::DefinitionAnalyzer.call(klass) ||
-          ChronoForge::Definition.new(warnings: ["perform source is not statically analyzable"])
+        ChronoForge::DefinitionAnalyzer.call(workflow.job_class.constantize)
       rescue NameError
         ChronoForge::Definition.new(
-          warnings: ["workflow class #{workflow.job_class} could not be loaded; " \
-            "its definition cannot be statically analyzed"]
+          warnings: ["workflow class #{workflow.job_class} is not loadable and " \
+            "cannot be statically analyzed"]
         )
       end
     end

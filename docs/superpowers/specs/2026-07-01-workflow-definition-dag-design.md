@@ -104,7 +104,7 @@ guesswork:
 |---|---|---|
 | `durably_execute :m` / `name: "x"` | `:execute` | exact `durably_execute$x` (or `$m`) |
 | `durably_execute :m, name: <expr>` | `:dynamic` | prefix `durably_execute$`, by ordinal |
-| `wait :n` | `:wait` | exact `wait$n` |
+| `wait <duration>, "n"` | `:wait` | exact `wait$n` (name is the 2nd positional) |
 | `wait_until :cond` | `:wait_until` | exact `wait_until$cond` |
 | `continue_if :cond` | `:continue_if` | exact `continue_if$cond` |
 | `branch :name { spawn/spawn_each }` | `:branch` (fan-out) | `branch$name` + child-workflow aggregate |

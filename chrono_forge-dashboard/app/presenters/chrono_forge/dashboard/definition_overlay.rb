@@ -25,7 +25,7 @@ module ChronoForge
       def overlay(node)
         base = node.to_h.merge(status: :not_reached)
         case node.kind
-        when :branch, :merge then base.merge(fanout_status(node))
+        when :branch then base.merge(fanout_status(node))
         when :repeat then base.merge(repeat_status(node))
         else
           log = logs_by_name[node.step_name]

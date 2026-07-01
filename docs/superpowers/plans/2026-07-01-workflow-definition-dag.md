@@ -17,7 +17,7 @@
 | DSL | step name |
 |---|---|
 | `durably_execute :m` / `name:` | `durably_execute$#{name || m}` |
-| `wait :n` | `wait$#{n}` |
+| `wait <duration>, "n"` | `wait$#{n}` (name is the 2nd positional) |
 | `wait_until :c` | `wait_until$#{c}` |
 | `continue_if :c` / `name:` | `continue_if$#{name || c}` |
 | `branch :n` | `branch$#{n}` |
@@ -172,7 +172,7 @@ module DefinitionFixtures
       context["started"] = true
       durably_execute :charge_card
       wait_until :funds_cleared
-      wait :cooloff
+      wait 30.seconds, "cooloff"
       continue_if :approved
       durably_execute :ship, name: "ship_it"
       merge_branches :b, :a

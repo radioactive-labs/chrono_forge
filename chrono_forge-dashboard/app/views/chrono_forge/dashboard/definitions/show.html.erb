@@ -21,6 +21,6 @@
 <script src="<%= "#{request.script_name}/assets/mermaid.min.js?v=#{ChronoForge::Dashboard.asset_digest("mermaid.min.js")}" %>"></script>
 <script>
   (function () {
-    if (window.mermaid) { window.mermaid.initialize({ startOnLoad: true }); window.mermaid.run(); }
+    if (window.mermaid) { window.mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); window.mermaid.run(); }
   })();
 </script>

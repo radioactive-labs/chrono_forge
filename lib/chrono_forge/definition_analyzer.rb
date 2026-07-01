@@ -14,6 +14,20 @@ module ChronoForge
       merge_branch: :merge, durably_repeat: :repeat
     }.freeze
 
+    # Which argument carries the step NAME, per the real DSL signatures in
+    # executor/methods. `pos` is the 0-based positional index; `kw` = whether a
+    # `name:` keyword overrides it. `wait(duration, name)` is the one primitive
+    # whose name is the SECOND positional. merge_branches is special-cased in
+    # step_name_for (its name joins all positional branch names).
+    NAME_ARG = {
+      durably_execute: {pos: 0, kw: true},
+      wait: {pos: 1, kw: false},
+      wait_until: {pos: 0, kw: false},
+      continue_if: {pos: 0, kw: true},
+      durably_repeat: {pos: 0, kw: true},
+      branch: {pos: 0, kw: false}
+    }.freeze
+
     def self.call(workflow_class) = new(workflow_class).call
 
     def initialize(workflow_class)
@@ -350,14 +364,16 @@ module ChronoForge
       end
     end
 
-    # First positional arg as a literal Symbol/String, honoring a literal `name:`
-    # keyword override. Returns [name_string_or_nil, dynamic?].
+    # Resolve the step NAME literal from a durable call, per NAME_ARG. Returns
+    # [name_string_or_nil, dynamic?]. dynamic? is true when the name can't be
+    # resolved to a literal statically. (merge_branches resolves via all
+    # positionals in step_name_for; its `name` here is just the first branch.)
     def resolved_name(call)
-      override = keyword_literal(call, :name)
-      return [override, false] if override
-
-      first = positional_args(call).first
-      lit = literal_value(first)
+      spec = NAME_ARG.fetch(call.name, {pos: 0, kw: true})
+      if spec[:kw] && (override = keyword_literal(call, :name))
+        return [override, false]
+      end
+      lit = literal_value(positional_args(call)[spec[:pos]])
       lit ? [lit, false] : [nil, true]
     end
 

@@ -6,7 +6,7 @@ module DefinitionFixtures
       context["started"] = true
       durably_execute :charge_card
       wait_until :funds_cleared
-      wait :cooloff
+      wait 30.seconds, "cooloff"
       continue_if :approved
       durably_execute :ship, name: "ship_it"
       merge_branches :b, :a
@@ -134,6 +134,24 @@ module DefinitionFixtures
           b?)
         durably_execute :m
       end
+    end
+  end
+
+  # Real wait signature: wait(duration, name) — name is the SECOND positional.
+  class Waits
+    def perform
+      wait 30.minutes, "cool_down"
+      wait (deadline - Time.current).seconds, "until_deadline"  # computed duration, literal name
+      durably_execute :charge, name: "settle"                    # name: kw override
+      continue_if :ok?, name: "gate"                             # name: kw override
+      durably_repeat :tick, every: 1.second, till: :done?, name: "ticker"  # name: kw
+    end
+  end
+
+  # A truly non-literal name stays dynamic (no literal to resolve statically).
+  class DynExec
+    def perform
+      durably_execute some_method_name
     end
   end
 
