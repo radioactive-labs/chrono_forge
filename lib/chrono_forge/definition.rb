@@ -12,9 +12,11 @@ module ChronoForge
       :id, :kind, :label, :step_name, :step_name_pattern, :guard, :warnings,
       keyword_init: true
     ) do
-      def warnings = self[:warnings] || []
       def dynamic? = kind == :dynamic || step_name.nil?
-      def to_h = super.merge(warnings: warnings)
+
+      # Default a missing warnings member to [] here (rather than overriding the
+      # struct's generated reader, which triggers a method-redefined warning).
+      def to_h = super.merge(warnings: self[:warnings] || [])
     end
 
     # kind: :seq :conditional :fanout :join :terminal

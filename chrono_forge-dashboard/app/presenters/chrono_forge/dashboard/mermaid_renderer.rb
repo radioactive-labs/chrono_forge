@@ -47,7 +47,7 @@ module ChronoForge
 
       def used_statuses = @nodes.map { |n| n[:status] }.uniq.select { |s| CLASS_DEFS.key?(s) }
 
-      def sanitize(s) = s.gsub('"', "'").gsub(/[\[\]{}|]/, " ").strip
+      def sanitize(s) = s.tr('"', "'").gsub(/[\[\]{}|]/, " ").strip
     end
   end
 end

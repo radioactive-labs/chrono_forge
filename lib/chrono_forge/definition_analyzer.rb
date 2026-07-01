@@ -25,12 +25,11 @@ module ChronoForge
     end
 
     def call
-      file, method_node, defs = locate_perform
+      _file, method_node, defs = locate_perform
       return unavailable unless method_node
 
       @defs = defs # name(Symbol) => Prism::DefNode, for same-class helper tracing
-      last = "start"
-      last = walk(method_node.body, last)
+      walk(method_node.body, "start") # builds @nodes/@edges as a side effect
       Definition.new(nodes: @nodes, edges: @edges, warnings: @warnings)
     rescue => e
       unavailable("analysis error: #{e.class}: #{e.message}")
@@ -283,7 +282,7 @@ module ChronoForge
       # Collapse internal whitespace/newlines and truncate so guard labels stay
       # renderable on a single Mermaid edge.
       compact = raw.to_s.gsub(/\s+/, " ").strip
-      compact.length > 60 ? "#{compact[0, 59]}…" : compact
+      (compact.length > 60) ? "#{compact[0, 59]}…" : compact
     end
 
     def negate(guard) = "!(#{guard})"
@@ -305,7 +304,7 @@ module ChronoForge
       step_name = dynamic ? nil : step_name_for(call.name, name, call)
       node = add_node(
         kind: dynamic ? :dynamic : kind,
-        label: (kind == :merge ? merge_label(call) : label_for(call.name, name)),
+        label: ((kind == :merge) ? merge_label(call) : label_for(call.name, name)),
         step_name: step_name,
         step_name_pattern: ("#{prefix_for(call.name)}$" if dynamic),
         warnings: (dynamic ? ["#{call.name}: dynamic name — bound by prefix/ordinal"] : [])

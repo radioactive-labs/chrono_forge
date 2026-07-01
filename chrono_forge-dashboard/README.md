@@ -120,6 +120,7 @@ end
 
 - **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state
 - **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step
+- **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / running / pending / not-yet-reached / failed, plus fan-out and repeat aggregates). Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, `branch`/`spawn_each` collapse to a fan-out node, `durably_repeat` to a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. A workflow whose source can't be analyzed degrades to a warning, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
@@ -137,6 +138,8 @@ bundle exec rake tailwind:build
 ```
 
 Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
+
+**One exception:** the **Definition graph** page loads [Mermaid](https://mermaid.js.org) to lay out the DAG client-side. It is vendored into the gem and served from the engine (no external host / CDN), but it is a large (~3.5 MB) library that loads only on that page, and its initialization uses a small inline `<script>` block — if you enforce a strict `script-src` Content Security Policy, allow that page's inline init (e.g. via a nonce). Every other page remains dependency-free vanilla JS.
 
 ## Development
 
