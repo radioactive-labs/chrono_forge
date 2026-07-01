@@ -59,6 +59,10 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 
 [![Definition graph](docs/screenshots/definition-graph.png)](docs/screenshots/definition-graph.png)
 
+A real production workflow — a scheduled-payment recurrence whose three reminder-ordering branches reconverge on the charge, with guarded early-`return` exits and a failed final `process_payment`:
+
+[![Definition graph — scheduled payment](docs/screenshots/definition-graph-scheduled-payment.png)](docs/screenshots/definition-graph-scheduled-payment.png)
+
 ## Authentication
 
 The dashboard is fail-closed. If you mount it without configuring authentication, hitting any dashboard URL raises `ChronoForge::Dashboard::AuthenticationNotConfigured`. Configure one of the following in an initializer (e.g. `config/initializers/chrono_forge_dashboard.rb`).
