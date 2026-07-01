@@ -12,7 +12,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     create_workflow(key: key, state: state, job_class: "OrderWorkflow", parent_execution_log_id: branch_log.id)
   end
 
-  test "summarizes a branch with capped dispatched/pending/blocked counts" do
+  test "summarizes a branch with capped spawned/pending/blocked counts" do
     parent = create_workflow(key: "p1", state: :idle)
     bl = branch_log(parent, "fulfillment")
     child(bl, "p1$fulfillment$1", :completed)
@@ -25,7 +25,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     b = presenter.branches.first
     assert_equal "fulfillment", b.name
     assert b.sealed?
-    assert_equal 4, b.dispatched
+    assert_equal 4, b.spawned
     assert_equal 3, b.pending  # everything not completed
     assert_equal 2, b.blocked  # failed + stalled
   end

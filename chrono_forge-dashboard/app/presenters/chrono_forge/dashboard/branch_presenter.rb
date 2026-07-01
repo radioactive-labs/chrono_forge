@@ -20,7 +20,7 @@ module ChronoForge
       # The branch is "sealed" once its block closed (done dispatching children).
       def sealed? = @log.completed?
 
-      def dispatched = capped(children)
+      def spawned = capped(children)
 
       def pending = capped(children.where.not(state: ChronoForge::Workflow.states[:completed]))
 
