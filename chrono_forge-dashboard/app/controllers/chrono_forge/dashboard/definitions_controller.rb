@@ -11,7 +11,7 @@ module ChronoForge
         overlay = DefinitionOverlay.new(definition, @workflow)
         @nodes = overlay.nodes
         @warnings = overlay.warnings
-        @mermaid = MermaidRenderer.new(@nodes, definition.edges).to_mermaid
+        @graph = CytoscapeGraph.new(@nodes, definition.edges).to_h
       end
 
       private

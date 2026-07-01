@@ -51,12 +51,24 @@ module ChronoForge
 
     private
 
+    # The workflow's OWN perform, not the prepended ChronoForge::Executor#perform.
+    # A workflow does `prepend ChronoForge::Executor`, so instance_method(:perform)
+    # resolves to the executor's wrapper (owner is a Module). Walk the super chain
+    # to the first perform defined on a real Class in the ancestry — the user's.
+    def user_perform
+      um = @klass.instance_method(:perform)
+      um = um.super_method while um && !um.owner.is_a?(Class)
+      um
+    rescue NameError
+      nil
+    end
+
     # Resolve perform's source file, parse it, and collect the instance-method
     # DefNodes that lexically belong to the SAME class body as the bound perform
     # (for same-class helper tracing). Scoping to the containing class avoids a
     # bare helper call resolving to a same-named method in a DIFFERENT class.
     def locate_perform
-      loc = @klass.instance_method(:perform).source_location
+      loc = user_perform&.source_location
       return [nil, nil, {}] unless loc && File.readable?(loc.first)
 
       file, line = loc

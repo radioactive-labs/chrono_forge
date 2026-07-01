@@ -14,13 +14,13 @@
   </div>
 <% end %>
 
-<div class="rounded border border-zinc-200 bg-white p-4 overflow-auto">
-  <pre class="mermaid"><%= @mermaid %></pre>
+<div class="rounded border border-zinc-200 bg-white">
+  <%# The graph is passed as JSON in a data attribute — ERB-escaped, so labels and
+      guard text (which contain (), <, &&) round-trip through the DOM untouched. %>
+  <div id="cf-graph" data-graph="<%= @graph.to_json %>" class="h-[70vh] w-full"></div>
+  <div id="cf-graph-detail" class="border-t border-zinc-100 p-3 text-xs"></div>
 </div>
 
-<script src="<%= "#{request.script_name}/assets/mermaid.min.js?v=#{ChronoForge::Dashboard.asset_digest("mermaid.min.js")}" %>"></script>
-<script>
-  (function () {
-    if (window.mermaid) { window.mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); window.mermaid.run(); }
-  })();
-</script>
+<% %w[cytoscape.min.js dagre.min.js cytoscape-dagre.js definition_graph.js].each do |asset| %>
+  <script src="<%= "#{request.script_name}/assets/#{asset}?v=#{ChronoForge::Dashboard.asset_digest(asset)}" %>"></script>
+<% end %>
