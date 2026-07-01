@@ -14,12 +14,28 @@
   </div>
 <% end %>
 
-<div class="rounded border border-zinc-200 bg-white">
+<div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-zinc-100 px-4 py-2.5 text-[11px] text-zinc-500">
+    <% {done: "done", active: "in progress", pending: "pending", not_reached: "not yet reached", failed: "failed", unmapped: "unmapped"}.each do |status, label| %>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-sm border cf-legend-<%= status %>"></span><%= label %>
+      </span>
+    <% end %>
+  </div>
   <%# The graph is passed as JSON in a data attribute — ERB-escaped, so labels and
       guard text (which contain (), <, &&) round-trip through the DOM untouched. %>
-  <div id="cf-graph" data-graph="<%= @graph.to_json %>" class="h-[70vh] w-full"></div>
-  <div id="cf-graph-detail" class="border-t border-zinc-100 p-3 text-xs"></div>
+  <div id="cf-graph" data-graph="<%= @graph.to_json %>" class="h-[72vh] w-full bg-zinc-50"></div>
+  <div id="cf-graph-detail" class="min-h-[3rem] border-t border-zinc-100 bg-white px-4 py-3 text-xs"></div>
 </div>
+
+<style>
+  .cf-legend-done{background:#ecfdf5;border-color:#10b981}
+  .cf-legend-active{background:#eff6ff;border-color:#3b82f6}
+  .cf-legend-pending{background:#fafafa;border-color:#d4d4d8}
+  .cf-legend-not_reached{background:#fff;border-color:#e4e4e7}
+  .cf-legend-failed{background:#fef2f2;border-color:#ef4444}
+  .cf-legend-unmapped{background:#fafaf9;border-color:#d6d3d1}
+</style>
 
 <% %w[cytoscape.min.js dagre.min.js cytoscape-dagre.js definition_graph.js].each do |asset| %>
   <script src="<%= "#{request.script_name}/assets/#{asset}?v=#{ChronoForge::Dashboard.asset_digest(asset)}" %>"></script>
