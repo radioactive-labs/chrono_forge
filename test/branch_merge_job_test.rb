@@ -242,7 +242,7 @@ class BranchMergeJobTest < ActiveJob::TestCase
 
   # Cadence: reschedule_delay(pending, rate, motion, prev_delay, min, max).
   # `rate` is children/s (0 unless the branch drained since the prior poll); `motion`
-  # is :running | :dispatched | :none. Positive rate => ETA-scaled delay (motion moot).
+  # is :running | :never_started | :none. Positive rate => ETA-scaled delay (motion moot).
   def test_reschedule_delay_scales_with_measured_drain_rate
     job = ChronoForge::BranchMergeJob.new
     # rate 20/s, 800 left => ETA 40s; * 0.5 = 20s.
@@ -268,13 +268,13 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_equal 5, job.send(:reschedule_delay, 1, 0.0, :running, 200, 5, 300) # ignores prev_delay
   end
 
-  # Only a dispatched-but-unpicked child left (rate 0, :dispatched): back off
+  # Only a dispatched-but-unpicked child left (rate 0, :never_started): back off
   # exponentially from the floor (no prior delay => start at min; then double).
   def test_reschedule_delay_backs_off_exponentially_for_dispatched_straggler
     job = ChronoForge::BranchMergeJob.new
-    assert_equal 5, job.send(:reschedule_delay, 100, 0.0, :dispatched, nil, 5, 300)
-    assert_equal 10, job.send(:reschedule_delay, 100, 0.0, :dispatched, 5, 5, 300)
-    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :dispatched, 200, 5, 300)
+    assert_equal 5, job.send(:reschedule_delay, 100, 0.0, :never_started, nil, 5, 300)
+    assert_equal 10, job.send(:reschedule_delay, 100, 0.0, :never_started, 5, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :never_started, 200, 5, 300)
   end
 
   # Nothing can progress (all blocked/waiting) => straight to the max backstop.
@@ -348,7 +348,7 @@ class BranchMergeJobTest < ActiveJob::TestCase
   # workers are consuming the branch's queue => a stale idle never-started child is
   # in line, not dropped. No rekick.
   def test_does_not_rekick_while_branch_is_draining
-    @log.update!(metadata: {"poll" => {"dispatched" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    @log.update!(metadata: {"poll" => {"never_started" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
     stale = child!(state: :idle, started_at: nil) # dispatched now = 1 < prior 5 => draining
     stale.update_column(:updated_at, 10.minutes.ago)
     assert_no_enqueued_jobs(only: NoopChild) do
@@ -359,7 +359,7 @@ class BranchMergeJobTest < ActiveJob::TestCase
   # Never-started count unchanged since the prior poll (queue not being consumed)
   # => a genuinely dropped, stale never-started child IS rekicked.
   def test_rekicks_when_branch_has_gone_quiet
-    @log.update!(metadata: {"poll" => {"dispatched" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    @log.update!(metadata: {"poll" => {"never_started" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
     stale = child!(state: :idle, started_at: nil) # dispatched now = 1 == prior 1 => not draining
     stale.update_column(:updated_at, 10.minutes.ago)
     assert_enqueued_with(job: NoopChild, args: [stale.key]) do
@@ -372,7 +372,7 @@ class BranchMergeJobTest < ActiveJob::TestCase
   # mask a genuinely-dropped never-started child behind it. The dropped child is
   # still rekicked because the never-started count did not fall.
   def test_rekicks_dropped_child_when_only_waits_drain_pending
-    @log.update!(metadata: {"poll" => {"pending" => 3, "dispatched" => 1,
+    @log.update!(metadata: {"poll" => {"pending" => 3, "never_started" => 1,
       "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 2}})
     child!(state: :completed)                        # a wait that resumed + completed
     child!(state: :idle, started_at: 20.minutes.ago) # a child still parked on a wait

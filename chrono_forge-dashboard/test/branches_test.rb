@@ -139,7 +139,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     parent = create_workflow(key: "bp-stats", state: :idle)
     draining = parent.execution_logs.create!(step_name: "branch$a",
       state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
-      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "dispatched" => 65_000,
+      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
                             "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601, "polls" => 7}})
     3.times { |i| create_workflow(key: "bp-ns-#{i}", state: :idle, started_at: nil, parent_execution_log_id: draining.id) }
     b = ChronoForge::Dashboard::BranchPresenter.new(draining)
@@ -214,7 +214,7 @@ class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
     parent = create_workflow(key: "pc-stats", state: :idle)
     bl = parent.execution_logs.create!(step_name: "branch$orders",
       state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
-      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "dispatched" => 65_000,
+      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
                             "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601,
                             "polls" => 7, "last_polled_at" => 10.seconds.ago.iso8601}})
     create_workflow(key: "pc-stats-x", state: :running, job_class: "OrderWorkflow", parent_execution_log_id: bl.id)

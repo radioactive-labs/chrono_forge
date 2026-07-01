@@ -191,7 +191,7 @@ child still running holds the responsive floor (so a slow or single-child branch
 never woken late), a dispatched-but-unpicked straggler backs off exponentially, and
 a fully blocked/waiting branch decays to `max_interval` instead of spinning.
 
-Rekick of dropped children is **gated on the never-started (dispatched) count
+Rekick of dropped children is **gated on the never-started count
 delta**: if that count fell since the last poll, workers are consuming the branch's
 queue, so deeply-queued-but-healthy children are left alone. It deliberately does
 NOT use total pending — a `wait_until` child resuming would drop pending without

@@ -56,16 +56,16 @@ class BranchProbeTest < ActiveSupport::TestCase
     assert ChronoForge::BranchProbe.running?(@log.id)
   end
 
-  # dispatched? — true iff a child is idle with started_at nil (dispatched but no
-  # worker has started it — the :dispatched motion). A running child, or an idle
+  # never_started? — true iff a child is idle with started_at nil (dispatched but no
+  # worker has started it — the :never_started motion). A running child, or an idle
   # child that already ran and is parked on a wait (started_at SET), is NOT it.
-  def test_dispatched_predicate
-    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+  def test_never_started_predicate
+    refute ChronoForge::BranchProbe.never_started?(@log.id)
     child!(state: :running)
-    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+    refute ChronoForge::BranchProbe.never_started?(@log.id)
     child!(state: :idle, started_at: 1.minute.ago) # ran, now waiting
-    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+    refute ChronoForge::BranchProbe.never_started?(@log.id)
     child!(state: :idle, started_at: nil) # dispatched, never started
-    assert ChronoForge::BranchProbe.dispatched?(@log.id)
+    assert ChronoForge::BranchProbe.never_started?(@log.id)
   end
 end

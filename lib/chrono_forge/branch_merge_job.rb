@@ -59,7 +59,7 @@ module ChronoForge
 
       if sealed && pending.zero?
         record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil, interval: nil,
-          rate_by_branch: {}, dispatched_by_branch: {}, rekicked_by_branch: {})
+          rate_by_branch: {}, never_started_by_branch: {}, rekicked_by_branch: {})
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
@@ -70,15 +70,15 @@ module ChronoForge
       # children is a dropped job to recover. Keyed off this, NOT total pending,
       # which a wait/wait_until child completing would drop without any never-started
       # child moving (masking a genuinely-dropped one behind staggered waits).
-      prev_dispatched_by_branch = logs.to_h { |l| [l.id, l.metadata&.dig("poll", "dispatched")] }
-      dispatched_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.dispatched(id).count] }
+      prev_never_started_by_branch = logs.to_h { |l| [l.id, l.metadata&.dig("poll", "never_started")] }
+      never_started_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.never_started(id).count] }
 
-      rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, dispatched_by_branch, prev_dispatched_by_branch)
+      rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, never_started_by_branch, prev_never_started_by_branch)
 
       # Cadence is driven by ESTIMATED TIME-TO-DRAIN, measured from the prior
       # poll's persisted pending. `motion` (EXISTS probes) is the fallback signal
       # when nothing completed this interval: :running => a live worker is
-      # executing a child (hold the floor, it'll finish); :dispatched => the only
+      # executing a child (hold the floor, it'll finish); :never_started => the only
       # motion is a queued/rekicked-but-unpicked child (back off exponentially,
       # it may never be picked up); :none => blocked/waiting (max backstop).
       # See reschedule_delay. Computed lazily below, only off the drain path.
@@ -111,13 +111,13 @@ module ChronoForge
       # EXISTS probes lazily keeps them off the hot drain path. See reschedule_delay.
       motion = if rate > 0 then nil
       elsif branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
-      elsif dispatched_by_branch.values.any?(&:positive?) then :dispatched
+      elsif never_started_by_branch.values.any?(&:positive?) then :never_started
       else :none
       end
 
       delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now,
-        interval: delay, rate_by_branch: rate_by_branch, dispatched_by_branch: dispatched_by_branch,
+        interval: delay, rate_by_branch: rate_by_branch, never_started_by_branch: never_started_by_branch,
         rekicked_by_branch: rekicked_by_branch)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
@@ -137,7 +137,7 @@ module ChronoForge
     #   :running    => a live worker is executing a child; it will finish, so hold
     #                  the responsive floor (matches prior behaviour and avoids
     #                  waking the parent late for a slow/low-fan-out child).
-    #   :dispatched => the only motion is a queued/rekicked-but-unpicked child that
+    #   :never_started => the only motion is a queued/rekicked-but-unpicked child that
     #                  may never be picked up => exponential backoff from the floor
     #                  (double prev_delay, capped at max), catching a quick recovery
     #                  within seconds without spinning on a dead dispatch.
@@ -151,7 +151,7 @@ module ChronoForge
 
       case motion
       when :running then min_interval
-      when :dispatched then prev_delay ? (prev_delay * 2).clamp(min_interval, max_interval) : min_interval
+      when :never_started then prev_delay ? (prev_delay * 2).clamp(min_interval, max_interval) : min_interval
       else max_interval
       end
     end
@@ -172,7 +172,7 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, dispatched_by_branch:, rekicked_by_branch:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, never_started_by_branch:, rekicked_by_branch:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
         # Lock the row so this read-modify-write can't clobber a concurrent token
@@ -191,7 +191,7 @@ module ChronoForge
             "next_poll_at" => next_poll_at&.iso8601,
             "interval" => interval,
             "pending" => pend,
-            "dispatched" => dispatched_by_branch[log.id],   # never-started count (rekick drain signal)
+            "never_started" => never_started_by_branch[log.id],   # never-started count (rekick drain signal)
             "sealed" => sealed_by_branch[log.id],
             "rate" => rate.round(3),                               # children/s (round(3), not (2), so a
                                                                    # very slow but real drain still reads > 0)
@@ -217,7 +217,7 @@ module ChronoForge
     # keep the :idle guard (a running/failed/stalled child must never be
     # re-dispatched). Re-enqueue of an :idle child a worker just grabbed is still
     # safe — the lock guard rejects the duplicate. Capped per run.
-    def rekick_dropped_jobs(branch_log_ids, dispatched_by_branch, prev_dispatched_by_branch)
+    def rekick_dropped_jobs(branch_log_ids, never_started_by_branch, prev_never_started_by_branch)
       cutoff = REKICK_AFTER.ago
       branch_log_ids.to_h do |id|
         # Skip a branch whose NEVER-STARTED count dropped since the last poll:
@@ -227,8 +227,8 @@ module ChronoForge
         # never-started child moving, masking a genuinely-dropped child behind
         # staggered waits. With no prior sample (cold poll) we don't gate — the
         # per-child staleness filter below still spares freshly-dispatched rows.
-        prev = prev_dispatched_by_branch[id]
-        next [id, 0] if prev && dispatched_by_branch[id] < prev
+        prev = prev_never_started_by_branch[id]
+        next [id, 0] if prev && never_started_by_branch[id] < prev
 
         count = 0
         Workflow.where(parent_execution_log_id: id, state: Workflow.states[:idle], started_at: nil)

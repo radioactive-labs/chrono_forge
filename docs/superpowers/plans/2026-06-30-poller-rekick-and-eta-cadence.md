@@ -37,7 +37,7 @@ deployment trap surfaced by the live drive:
   own completion rate — so the parent is woken within ~`min_interval` of the last
   child finishing. When an interval sees no completion, the fallback is
   **motion-aware** so a slow-but-healthy child isn't woken late.
-- **Rekick** is gated on the **never-started (dispatched) count delta** — the true
+- **Rekick** is gated on the **never-started count delta** — the true
   "workers are pulling this branch's queue" signal — and **debounced** with
   `child.touch`, so healthy deep-queued children are never rekicked and a dropped
   child is redelivered at most once per `REKICK_AFTER`.
@@ -58,7 +58,7 @@ def reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interv
 
   case motion
   when :running then min_interval
-  when :dispatched then prev_delay ? (prev_delay * 2).clamp(min_interval, max_interval) : min_interval
+  when :never_started then prev_delay ? (prev_delay * 2).clamp(min_interval, max_interval) : min_interval
   else max_interval
   end
 end
@@ -71,7 +71,7 @@ end
   - `:running` — a live worker is executing a child; it will finish, so **hold the
     floor** (`min_interval`). This is the anti-regression case: backing off would
     wake the parent late for a slow / single-child branch.
-  - `:dispatched` — the only motion is a queued/rekicked-but-unpicked child that may
+  - `:never_started` — the only motion is a queued/rekicked-but-unpicked child that may
     never be picked up → **exponential backoff** from the floor (double `prev_delay`,
     capped at `max`). Catches a quick recovery in seconds; decays instead of spinning.
   - `:none` — nothing can progress (blocked/failed or parked on a wait) →
@@ -92,20 +92,20 @@ Inputs, computed in `perform`:
   bogus rate.
 - **`motion`** is computed **lazily** — only when `rate == 0`, keeping the EXISTS
   probes off the hot drain path: `:running` if any `BranchProbe.running?`, else
-  `:dispatched` if any branch has a positive never-started count, else `:none`.
+  `:never_started` if any branch has a positive never-started count, else `:none`.
 - **`prev_delay`** comes from the prior poll's persisted `interval`, driving the
   exponential backoff.
 
-## Rekick — `rekick_dropped_jobs(branch_log_ids, dispatched_by_branch, prev_dispatched_by_branch)`
+## Rekick — `rekick_dropped_jobs(branch_log_ids, never_started_by_branch, prev_never_started_by_branch)`
 
 ```ruby
-prev = prev_dispatched_by_branch[id]
-next [id, 0] if prev && dispatched_by_branch[id] < prev   # never-started count fell → workers consuming → in line
+prev = prev_never_started_by_branch[id]
+next [id, 0] if prev && never_started_by_branch[id] < prev   # never-started count fell → workers consuming → in line
 # else: scan idle & started_at IS NULL & updated_at < REKICK_AFTER.ago, limit REKICK_BATCH,
 #       guarded perform_later, then child.touch on success (debounce), rescue per child.
 ```
 
-- **Gate on the never-started (dispatched) count delta, not total pending.** A
+- **Gate on the never-started count delta, not total pending.** A
   `wait_until` child resuming drops total `pending` without any never-started child
   being consumed, so a pending-delta gate would mistake that for "draining" and
   defer recovery of a genuinely-dropped child behind staggered waits. The

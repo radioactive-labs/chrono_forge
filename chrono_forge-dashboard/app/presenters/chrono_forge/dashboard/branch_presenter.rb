@@ -67,10 +67,10 @@ module ChronoForge
       # The FULL (uncapped) pending / never-started counts the poller ALREADY records
       # each pass — so the dashboard can show the real number instead of the capped
       # "CAP+", with NO new query. nil until the branch has been polled; callers fall
-      # back to the capped count. (The poll's "dispatched" is the never-started count.)
+      # back to the capped count. (The poll's "never_started" is the never-started count.)
       def exact_pending = poll&.dig("pending")
 
-      def exact_never_started = poll&.dig("dispatched")
+      def exact_never_started = poll&.dig("never_started")
 
       # Dropped-child recovery: how many children the poller has rekicked, and when
       # it last did (nil if never).
