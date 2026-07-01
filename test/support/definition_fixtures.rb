@@ -165,4 +165,17 @@ module DefinitionFixtures
       end
     end
   end
+
+  # Early `return`s (guarded and inside an if) become terminal edges to "halt";
+  # the main flow continues from the skip path.
+  class EarlyReturn
+    def perform
+      return unless ready?
+      durably_execute :step_one
+      if done?
+        return
+      end
+      durably_execute :step_two
+    end
+  end
 end

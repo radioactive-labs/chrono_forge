@@ -60,4 +60,24 @@ class DefinitionOverlayTest < ActiveSupport::TestCase
     unmapped = nodes.select { |n| n[:status] == :unmapped }
     assert_equal ["durably_execute$mystery"], unmapped.map { |n| n[:step_name] }
   end
+
+  # A dynamic node (computed name) binds to a log by prefix, and that log is then
+  # NOT double-reported as a separate unmapped node.
+  def test_dynamic_node_binds_by_prefix_without_double_report
+    wf = create_workflow(key: "dyn", state: :running)
+    wf.execution_logs.create!(step_name: "durably_execute$computed",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.minute.ago)
+    d = ChronoForge::Definition.new(
+      nodes: [ChronoForge::Definition::Node.new(
+        id: "d1", kind: :dynamic, label: "durably_execute", step_name: nil,
+        step_name_pattern: "durably_execute$"
+      )],
+      edges: [], warnings: []
+    )
+    nodes = ChronoForge::Dashboard::DefinitionOverlay.new(d, wf).nodes
+    dyn = nodes.find { |n| n[:id] == "d1" }
+    assert_equal :done, dyn[:status]
+    assert_equal "durably_execute$computed", dyn[:step_name]
+    assert_empty nodes.select { |n| n[:status] == :unmapped }
+  end
 end

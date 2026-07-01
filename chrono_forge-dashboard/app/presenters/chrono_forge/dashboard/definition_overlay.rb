@@ -27,10 +27,26 @@ module ChronoForge
         case node.kind
         when :branch then base.merge(fanout_status(node))
         when :repeat then base.merge(repeat_status(node))
+        when :dynamic then base.merge(dynamic_status(node))
         else
           log = logs_by_name[node.step_name]
           log ? base.merge(status: LOG_STATUS.fetch(log_state(log), :active)) : base
         end
+      end
+
+      # A dynamic node has no exact step_name (its name is computed at runtime).
+      # Bind it to the next unconsumed log whose step_name matches its prefix
+      # pattern (prefix + ordinal), and record the log as consumed so it does NOT
+      # also surface as a separate :unmapped node — that double-report was the gap.
+      def dynamic_status(node)
+        pattern = node.step_name_pattern
+        return {status: :not_reached} unless pattern
+        log = @workflow.execution_logs.find do |l|
+          l.step_name.start_with?(pattern) && !consumed.include?(l.step_name) && !framework_log?(l)
+        end
+        return {status: :not_reached} unless log
+        consumed << log.step_name
+        {status: LOG_STATUS.fetch(log_state(log), :active), step_name: log.step_name}
       end
 
       def fanout_status(node)
@@ -60,11 +76,13 @@ module ChronoForge
         {status: (coord_done?(coord) ? :done : :active), repetitions: reps}
       end
 
+      def consumed = @consumed ||= Set.new
+
       def unmapped_nodes(mapped)
         known = mapped.filter_map { |n| n[:step_name] }.to_set
         @workflow.execution_logs
           .select { |l| l.completed? }
-          .reject { |l| known.include?(l.step_name) || framework_log?(l) }
+          .reject { |l| known.include?(l.step_name) || consumed.include?(l.step_name) || framework_log?(l) }
           .map do |l|
             {id: "log-#{l.id}", kind: :dynamic, label: l.step_name, step_name: l.step_name,
              status: :unmapped, warnings: ["no matching static node"]}

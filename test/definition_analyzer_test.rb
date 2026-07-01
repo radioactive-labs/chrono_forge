@@ -29,6 +29,19 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     refute d.nodes.any? { |n| n.label.include?("context") }
   end
 
+  def test_early_returns_emit_guarded_terminal_edges_to_halt
+    d = defn(DefinitionFixtures::EarlyReturn)
+    terminals = d.edges.select { |e| e.to == "halt" && e.kind == :terminal }
+    # `return unless ready?` and `if done? then return` — two exits.
+    assert_equal ["!(ready?)", "done?"].sort, terminals.map(&:guard).sort
+    # The main flow still threads through both durable steps.
+    steps = d.nodes.select { |n| n.kind == :execute }
+    assert_equal %w[durably_execute$step_one durably_execute$step_two], steps.map(&:step_name)
+    one, two = steps.map(&:id)
+    assert d.edges.any? { |e| e.from == "start" && e.to == one && e.kind == :seq }
+    assert d.edges.any? { |e| e.from == one && e.to == two && e.kind == :seq }
+  end
+
   def test_conditional_body_reached_by_guarded_edge
     d = defn(DefinitionFixtures::Conditional)
     gift = d.nodes.find { |n| n.step_name == "durably_execute$gift" }

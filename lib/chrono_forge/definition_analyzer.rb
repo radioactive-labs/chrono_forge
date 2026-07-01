@@ -131,6 +131,14 @@ module ChronoForge
         visit_case(stmt, prev)
       when Prism::BeginNode
         visit_begin(stmt, prev)
+      when Prism::ReturnNode
+        # An early `return` exits the run: a :terminal edge to the shared "halt"
+        # sink from each live predecessor. When the return sits inside an if/unless
+        # (the common `return unless ready?` form), mark_entry_conditional stamps
+        # this edge with the guard. This path does NOT continue, so it contributes
+        # no exit — return [] so the next statement builds only from the skip path.
+        to_list(prev).each { |p| add_edge(p, "halt", :terminal) }
+        []
       else
         if (call = durable_call(stmt))
           id = emit_durable(call, prev)
@@ -276,7 +284,9 @@ module ChronoForge
       prevs = to_list(prev)
       @edges[before..].each do |e|
         next unless prevs.include?(e.from)
-        e.kind = :conditional
+        # Keep a terminal (early-return / continue_if false) edge dashed; only its
+        # guard is composed. Other entry edges become conditional.
+        e.kind = :conditional unless e.kind == :terminal
         e.guard = e.guard ? "#{guard} && #{e.guard}" : guard
       end
     end
