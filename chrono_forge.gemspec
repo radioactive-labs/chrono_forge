@@ -36,6 +36,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "activerecord"
   spec.add_dependency "activejob", ">= 7.1"
   spec.add_dependency "zeitwerk"
+  spec.add_dependency "prism"
 
   spec.add_development_dependency "rake"
   spec.add_development_dependency "minitest"
