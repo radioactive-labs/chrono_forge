@@ -83,4 +83,69 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     d = defn(DefinitionFixtures::Loopy)
     assert d.warnings.any? { |w| w.match?(/loop/i) }
   end
+
+  # C1: unless inverts the guards.
+  def test_unless_guards_are_inverted
+    d = defn(DefinitionFixtures::Unless)
+    a = d.nodes.find { |n| n.step_name == "durably_execute$a" }
+    b = d.nodes.find { |n| n.step_name == "durably_execute$b" }
+    assert_equal "!(vip?)", d.edges.find { |e| e.to == a.id }.guard
+    assert_equal "vip?", d.edges.find { |e| e.to == b.id }.guard
+  end
+
+  # C2: nested if composes the outer guard with the inner.
+  def test_nested_if_composes_guards
+    d = defn(DefinitionFixtures::Nested)
+    a = d.nodes.find { |n| n.step_name == "durably_execute$a" }
+    assert_equal "x? && y?", d.edges.find { |e| e.to == a.id }.guard
+  end
+
+  # C2: elsif/else compose negated outer predicates.
+  def test_elsif_composes_negated_guards
+    d = defn(DefinitionFixtures::Elsif)
+    a = d.nodes.find { |n| n.step_name == "durably_execute$a" }
+    c = d.nodes.find { |n| n.step_name == "durably_execute$c" }
+    dd = d.nodes.find { |n| n.step_name == "durably_execute$d" }
+    assert_equal "x?", d.edges.find { |e| e.to == a.id }.guard
+    assert_equal "!(x?) && y?", d.edges.find { |e| e.to == c.id }.guard
+    assert_equal "!(x?) && !(y?)", d.edges.find { |e| e.to == dd.id }.guard
+  end
+
+  # C3: same-named helper resolves within each class, not last-parsed.
+  def test_same_named_helper_traces_own_class
+    assert_equal %w[durably_execute$first_impl],
+      defn(DefinitionFixtures::FirstWf).nodes.map(&:step_name)
+    assert_equal %w[durably_execute$second_impl],
+      defn(DefinitionFixtures::SecondWf).nodes.map(&:step_name)
+  end
+
+  # I1: dynamic branch + dynamic merge must not fabricate a join.
+  def test_dynamic_merge_does_not_fabricate_join
+    d = defn(DefinitionFixtures::DynMerge)
+    refute d.edges.any? { |e| e.kind == :join }
+  end
+
+  # I3: merge label lists all literal branch names.
+  def test_merge_label_lists_all_branch_names
+    d = defn(DefinitionFixtures::Linear)
+    mg = d.nodes.find { |n| n.step_name == "merge$a,b" }
+    assert_includes mg.label, "a"
+    assert_includes mg.label, "b"
+  end
+
+  # M3: multiline predicate collapses to a single-line guard.
+  def test_multiline_guard_is_single_line
+    d = defn(DefinitionFixtures::Multiline)
+    m = d.nodes.find { |n| n.step_name == "durably_execute$m" }
+    guard = d.edges.find { |e| e.to == m.id }.guard
+    refute_includes guard, "\n"
+    assert_equal "(a? && b?)", guard
+  end
+
+  # I2: durable calls inside begin/rescue are not dropped.
+  def test_begin_rescue_bodies_are_walked
+    names = defn(DefinitionFixtures::Begins).nodes.map(&:step_name)
+    assert_includes names, "durably_execute$risky"
+    assert_includes names, "durably_execute$fallback"
+  end
 end

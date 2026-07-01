@@ -38,32 +38,58 @@ module ChronoForge
 
     private
 
-    # Resolve perform's source file, parse it, and collect every instance-method
-    # DefNode in the same class body (for helper tracing).
+    # Resolve perform's source file, parse it, and collect the instance-method
+    # DefNodes that lexically belong to the SAME class body as the bound perform
+    # (for same-class helper tracing). Scoping to the containing class avoids a
+    # bare helper call resolving to a same-named method in a DIFFERENT class.
     def locate_perform
       loc = @klass.instance_method(:perform).source_location
       return [nil, nil, {}] unless loc && File.readable?(loc.first)
 
       file, line = loc
-      result = Prism.parse_file(file)
+      root = Prism.parse_file(file).value
+      klass = innermost_class_containing(root, line)
+      return [file, nil, {}] unless klass
+
       defs = {}
       perform = nil
-      collect = ->(node) do
-        return unless node.is_a?(Prism::DefNode)
-        defs[node.name] = node
+      class_method_defs(klass).each do |d|
+        defs[d.name] = d
         # A file may hold several workflow classes (each with its own #perform);
         # bind to the one whose `def` starts on this method's source line.
-        perform = node if node.name == :perform && node.location.start_line == line
+        perform = d if d.name == :perform && d.location.start_line == line
       end
-      each_def(result.value, &collect)
       [file, perform, defs]
     end
 
-    # Yield every DefNode anywhere under `node` (workflows may nest in modules).
-    def each_def(node, &blk)
-      return unless node.is_a?(Prism::Node)
-      blk.call(node)
-      node.compact_child_nodes.each { |c| each_def(c, &blk) }
+    # The DEEPEST Class/Module node whose line range covers `line` (a class nested
+    # in a module returns the inner class, since descent reassigns last-wins).
+    def innermost_class_containing(node, line)
+      found = nil
+      visit = ->(n) do
+        return unless n.is_a?(Prism::Node)
+        if (n.is_a?(Prism::ClassNode) || n.is_a?(Prism::ModuleNode)) &&
+            n.location.start_line <= line && line <= n.location.end_line
+          found = n
+        end
+        n.compact_child_nodes.each { |c| visit.call(c) }
+      end
+      visit.call(node)
+      found
+    end
+
+    # DefNodes directly in this class/module body — NOT inside a deeper nested
+    # class/module (those belong to other classes).
+    def class_method_defs(klass)
+      out = []
+      collect = ->(n) do
+        return unless n.is_a?(Prism::Node)
+        return if n.is_a?(Prism::ClassNode) || n.is_a?(Prism::ModuleNode)
+        out << n if n.is_a?(Prism::DefNode)
+        n.compact_child_nodes.each { |c| collect.call(c) }
+      end
+      klass.compact_child_nodes.each { |c| collect.call(c) }
+      out
     end
 
     # Walk a body node in source order, threading the "previous node id" so we can
@@ -90,6 +116,8 @@ module ChronoForge
         visit_conditional(stmt, prev)
       when Prism::CaseNode
         visit_case(stmt, prev)
+      when Prism::BeginNode
+        visit_begin(stmt, prev)
       else
         if (call = durable_call(stmt))
           id = emit_durable(call, prev)
@@ -161,21 +189,41 @@ module ChronoForge
     # and the skip path (pre-`if` node, or the else-branch exits) so the next
     # statement is reachable every way. Returns a list of exit ids.
     def visit_conditional(node, prev)
-      guard = source_of(node.predicate)
+      raw = source_of(node.predicate)
+      unless_node = node.is_a?(Prism::UnlessNode)
+      # `unless P` runs its body when P is FALSE and its else when P is TRUE.
+      body_guard = unless_node ? negate(raw) : raw
+      else_guard = unless_node ? raw : negate(raw)
+
       before = @edges.size
       body_exit = walk(node.statements, prev)
-      mark_entry_conditional(before, prev, guard)
+      mark_entry_conditional(before, prev, body_guard)
 
       exits = to_list(body_exit)
       if (sub = branch_else(node))
         before_else = @edges.size
         else_stmts = sub.is_a?(Prism::ElseNode) ? sub.statements : sub
         else_exit = walk(else_stmts, prev)
-        mark_entry_conditional(before_else, prev, negate(guard))
+        mark_entry_conditional(before_else, prev, else_guard)
         exits |= to_list(else_exit)
       else
         exits |= to_list(prev) # no else: skip path is the pre-`if` node
       end
+      exits
+    end
+
+    # begin/rescue/else/ensure: walk the main body and every rescue clause so
+    # durable calls in either path appear. Each is an alternative path from the
+    # same `prev`; their exits rejoin. (ensure always runs, so it follows all.)
+    def visit_begin(node, prev)
+      exits = to_list(walk(node.statements, prev))
+      rescue_clause = node.rescue_clause
+      while rescue_clause
+        exits |= to_list(walk(rescue_clause.statements, prev))
+        rescue_clause = rescue_clause.subsequent
+      end
+      exits |= to_list(walk(node.else_clause.statements, prev)) if node.else_clause
+      exits = to_list(walk(node.ensure_clause.statements, exits)) if node.ensure_clause
       exits
     end
 
@@ -206,16 +254,17 @@ module ChronoForge
       nil
     end
 
-    # The edges added since `before` that enter the body's first node (one per
-    # incoming prev) are the conditional entry: relabel them :conditional + guard.
+    # The edges added since `before` whose `from` is one of the incoming `prev`
+    # ids are exactly the conditional's ENTRY edges (internal body edges originate
+    # at body nodes, not at `prev`). Relabel them :conditional and COMPOSE the
+    # guard with any existing one so an outer conditional wrapping an inner one
+    # yields `outer && inner` on every entry edge.
     def mark_entry_conditional(before, prev, guard)
       prevs = to_list(prev)
-      entry = @edges[before..].select { |e| prevs.include?(e.from) }
-      return if entry.empty?
-      first_to = entry.first.to
-      entry.select { |e| e.to == first_to }.each do |e|
+      @edges[before..].each do |e|
+        next unless prevs.include?(e.from)
         e.kind = :conditional
-        e.guard = guard
+        e.guard = e.guard ? "#{guard} && #{e.guard}" : guard
       end
     end
 
@@ -230,7 +279,11 @@ module ChronoForge
     # Best-effort source text of a predicate node (for guard labels). Falls back
     # to the node type when slicing isn't available.
     def source_of(node)
-      node.respond_to?(:slice) ? node.slice : node.class.name.split("::").last
+      raw = node.respond_to?(:slice) ? node.slice : node.class.name.split("::").last
+      # Collapse internal whitespace/newlines and truncate so guard labels stay
+      # renderable on a single Mermaid edge.
+      compact = raw.to_s.gsub(/\s+/, " ").strip
+      compact.length > 60 ? "#{compact[0, 59]}…" : compact
     end
 
     def negate(guard) = "!(#{guard})"
@@ -252,7 +305,7 @@ module ChronoForge
       step_name = dynamic ? nil : step_name_for(call.name, name, call)
       node = add_node(
         kind: dynamic ? :dynamic : kind,
-        label: label_for(call.name, name),
+        label: (kind == :merge ? merge_label(call) : label_for(call.name, name)),
         step_name: step_name,
         step_name_pattern: ("#{prefix_for(call.name)}$" if dynamic),
         warnings: (dynamic ? ["#{call.name}: dynamic name — bound by prefix/ordinal"] : [])
@@ -261,10 +314,11 @@ module ChronoForge
 
       if call.name == :branch && call.block
         emit_branch_children(call.block, node)
-        (@branches ||= {})[name] = node.id
+        (@branches ||= {})[name] = node.id if name # skip dynamic branch names
       elsif kind == :merge
         positional_args(call).each do |arg|
           bname = literal_value(arg)
+          next unless bname # a dynamic merge name matches no recorded branch
           src = @branches && @branches[bname]
           add_edge(src, node.id, :join) if src
         end
@@ -329,6 +383,14 @@ module ChronoForge
     end
 
     def label_for(dsl, name) = name ? "#{dsl} #{name}" : dsl.to_s
+
+    # A merge node lists ALL its literal branch names, e.g. "merge_branches a, b"
+    # (source order). Falls back to the bare DSL name if any name is non-literal.
+    def merge_label(call)
+      names = positional_args(call).map { |a| literal_value(a) }
+      return call.name.to_s if names.empty? || names.any?(&:nil?)
+      "#{call.name} #{names.join(", ")}"
+    end
 
     # ---- Prism literal helpers ----
 
