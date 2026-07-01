@@ -42,7 +42,10 @@
       </div>
     </div>
   </header>
-  <main class="mx-auto max-w-6xl px-4 py-6">
+  <%# data-poll-region: the JS auto-refreshes this region in place (preserving
+      filter text, focus, and scroll). Marking <main> makes EVERY page refresh —
+      the nav and the refresh/time controls sit in <header>, outside the swap. %>
+  <main class="mx-auto max-w-6xl px-4 py-6" data-poll-region>
     <%= yield %>
   </main>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>

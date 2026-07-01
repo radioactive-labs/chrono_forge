@@ -9,7 +9,7 @@
         form: {data: {confirm: "Re-enqueue every failed/stalled child of this branch?"}}, class: "cf-btn cf-btn-primary shrink-0" %>
 </div>
 
-<div data-poll-region>
+<div>
   <% current = params.key?(:state) ? params[:state].to_s : "blocked" %>
   <% blocked = @stats["failed"].to_i + @stats["stalled"].to_i %>
   <% branch_chip_href = ->(state) { workflow_branch_path(@workflow, @branch_log, state: state) } %>
