@@ -8,7 +8,7 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     d = defn(DefinitionFixtures::Linear)
     assert_equal(
       %w[durably_execute$charge_card wait_until$funds_cleared wait$cooloff
-         continue_if$approved durably_execute$ship_it merge$a,b],
+        continue_if$approved durably_execute$ship_it merge$a,b],
       d.nodes.map(&:step_name)
     )
     assert_equal %i[execute wait_until wait continue_if execute merge], d.nodes.map(&:kind)
@@ -53,7 +53,7 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
   def test_conditional_rejoins_skip_and_body_paths
     d = defn(DefinitionFixtures::Conditional)
     charge = d.nodes.find { |n| n.step_name == "durably_execute$charge" }
-    gift   = d.nodes.find { |n| n.step_name == "durably_execute$gift" }
+    gift = d.nodes.find { |n| n.step_name == "durably_execute$gift" }
     approved = d.nodes.find { |n| n.step_name == "continue_if$approved" }
     assert d.edges.any? { |e| e.from == gift.id && e.to == approved.id }
     assert d.edges.any? { |e| e.from == charge.id && e.to == approved.id }
@@ -160,7 +160,7 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     d = defn(DefinitionFixtures::Waits)
     assert_equal(
       %w[wait$cool_down wait$until_deadline durably_execute$settle
-         continue_if$gate durably_repeat$ticker],
+        continue_if$gate durably_repeat$ticker],
       d.nodes.map(&:step_name)
     )
     assert_equal %i[wait wait execute continue_if repeat], d.nodes.map(&:kind)

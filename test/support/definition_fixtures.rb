@@ -1,5 +1,10 @@
 # Fixture workflow classes for DefinitionAnalyzer. Only their SOURCE is read
 # (Prism); they are never executed, so the bodies can reference helpers freely.
+#
+# These fixtures DELIBERATELY use non-idiomatic syntax (unless/else, explicit
+# begin/rescue, parenthesised/multiline predicates) — that syntax is exactly what
+# the analyzer is being tested against, so standardrb must not rewrite it away.
+# standard:disable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses
 module DefinitionFixtures
   class Linear
     def perform
@@ -179,3 +184,4 @@ module DefinitionFixtures
     end
   end
 end
+# standard:enable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses

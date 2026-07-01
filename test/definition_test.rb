@@ -3,7 +3,7 @@ require "test_helper"
 class DefinitionTest < ActiveSupport::TestCase
   def test_node_dynamic_predicate
     exact = ChronoForge::Definition::Node.new(id: "n1", kind: :execute, label: "charge", step_name: "durably_execute$charge")
-    dyn   = ChronoForge::Definition::Node.new(id: "n2", kind: :dynamic, label: "?", step_name_pattern: "durably_execute$")
+    dyn = ChronoForge::Definition::Node.new(id: "n2", kind: :dynamic, label: "?", step_name_pattern: "durably_execute$")
     refute exact.dynamic?
     assert dyn.dynamic?
   end
