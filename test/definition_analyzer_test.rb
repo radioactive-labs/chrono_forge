@@ -51,4 +51,20 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     approved = d.nodes.find { |n| n.step_name == "continue_if$approved" }
     assert d.edges.any? { |e| e.from == approved.id && e.kind == :terminal }
   end
+
+  def test_branch_emits_fanout_node_and_child_group
+    d = defn(DefinitionFixtures::FanOut)
+    br = d.nodes.find { |n| n.step_name == "branch$ship" }
+    assert_equal :branch, br.kind
+    child = d.nodes.find { |n| n.kind == :dynamic && n.label.include?("spawn_each") }
+    assert child, "expected a child-group node for spawn_each"
+    assert d.edges.any? { |e| e.from == br.id && e.to == child.id && e.kind == :fanout }
+  end
+
+  def test_merge_joins_the_branch
+    d = defn(DefinitionFixtures::FanOut)
+    br = d.nodes.find { |n| n.step_name == "branch$ship" }
+    mg = d.nodes.find { |n| n.step_name == "merge$ship" }
+    assert d.edges.any? { |e| e.from == br.id && e.to == mg.id && e.kind == :join }
+  end
 end

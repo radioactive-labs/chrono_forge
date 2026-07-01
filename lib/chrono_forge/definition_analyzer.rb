@@ -202,7 +202,43 @@ module ChronoForge
         warnings: (dynamic ? ["#{call.name}: dynamic name — bound by prefix/ordinal"] : [])
       )
       to_list(prev).each { |p| add_edge(p, node.id, :seq) }
+
+      if call.name == :branch && call.block
+        emit_branch_children(call.block, node)
+        (@branches ||= {})[name] = node.id
+      elsif kind == :merge
+        positional_args(call).each do |arg|
+          bname = literal_value(arg)
+          src = @branches && @branches[bname]
+          add_edge(src, node.id, :join) if src
+        end
+      end
       node.id
+    end
+
+    # A branch's spawn/spawn_each calls each become one child-group node, reached
+    # by a :fanout edge. Children are keyed <wf.key>$<branch>$<name>_* at runtime;
+    # we record a prefix pattern for reference, but the dashboard overlay computes
+    # fan-out status from child-workflow counts (BranchProbe), not this pattern.
+    def emit_branch_children(block, branch_node)
+      body = block.is_a?(Prism::BlockNode) ? block.body : nil
+      stmts =
+        case body
+        when Prism::StatementsNode then body.body
+        else Array(body)
+        end
+      stmts.each do |stmt|
+        next unless stmt.is_a?(Prism::CallNode) && %i[spawn spawn_each].include?(stmt.name)
+        sname = literal_value(positional_args(stmt).first)
+        child = add_node(
+          kind: :dynamic,
+          label: "#{stmt.name} #{sname}".strip,
+          step_name: nil,
+          step_name_pattern: (sname ? "spawn:#{sname}" : "spawn"),
+          warnings: ["fan-out — status is aggregated from child workflows"]
+        )
+        add_edge(branch_node.id, child.id, :fanout)
+      end
     end
 
     # First positional arg as a literal Symbol/String, honoring a literal `name:`

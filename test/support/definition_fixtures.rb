@@ -23,4 +23,13 @@ module DefinitionFixtures
       durably_execute :ship
     end
   end
+
+  class FanOut
+    def perform
+      branch :ship do
+        spawn_each :pkg, orders
+      end
+      merge_branches :ship
+    end
+  end
 end
