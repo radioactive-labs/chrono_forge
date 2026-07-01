@@ -67,4 +67,20 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     mg = d.nodes.find { |n| n.step_name == "merge$ship" }
     assert d.edges.any? { |e| e.from == br.id && e.to == mg.id && e.kind == :join }
   end
+
+  def test_repeat_is_a_single_repeat_node
+    d = defn(DefinitionFixtures::Repeat)
+    rep = d.nodes.find { |n| n.kind == :repeat }
+    assert_equal "durably_repeat$tick", rep.step_name
+  end
+
+  def test_traces_durable_calls_in_same_class_helpers
+    d = defn(DefinitionFixtures::Traced)
+    assert_equal %w[durably_execute$charge durably_execute$finish], d.nodes.map(&:step_name)
+  end
+
+  def test_durable_call_inside_loop_warns
+    d = defn(DefinitionFixtures::Loopy)
+    assert d.warnings.any? { |w| w.match?(/loop/i) }
+  end
 end

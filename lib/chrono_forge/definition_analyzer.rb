@@ -95,10 +95,66 @@ module ChronoForge
           id = emit_durable(call, prev)
           id = attach_terminal(call, id) if call.name == :continue_if
           id
+        elsif (helper = traceable_helper(stmt))
+          trace_helper(helper, prev)
+        elsif loop_with_durable?(stmt)
+          @warnings << "durable step inside a loop (#{stmt.class.name.split("::").last}) — " \
+            "count is data-dependent; shown once, not unrolled"
+          walk_loop_body(stmt, prev)
         else
           prev
         end
       end
+    end
+
+    # A bare (receiverless/self) call to a same-file method whose body contains a
+    # durable call — worth tracing inline. Recursion-guarded via @tracing.
+    def traceable_helper(node)
+      return nil unless node.is_a?(Prism::CallNode)
+      return nil unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
+      dfn = @defs[node.name]
+      return nil unless dfn
+      return nil if (@tracing ||= []).include?(node.name)
+      body_has_durable?(dfn.body) ? dfn : nil
+    end
+
+    def trace_helper(dfn, prev)
+      (@tracing ||= []) << dfn.name
+      result = walk(dfn.body, prev)
+      @tracing.pop
+      result
+    end
+
+    def body_has_durable?(node)
+      return false unless node.is_a?(Prism::Node)
+      if node.is_a?(Prism::CallNode) && DURABLE.key?(node.name) &&
+          (node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode))
+        return true
+      end
+      node.compact_child_nodes.any? { |c| body_has_durable?(c) }
+    end
+
+    def loop_with_durable?(node)
+      case node
+      when Prism::WhileNode, Prism::UntilNode, Prism::ForNode
+        body_has_durable?(node)
+      when Prism::CallNode
+        %i[each times upto downto each_with_index map].include?(node.name) &&
+          node.block && body_has_durable?(node.block)
+      else
+        false
+      end
+    end
+
+    # Walk a loop body ONCE so contained steps appear (with the warning), not
+    # unrolled. Handles both keyword loops and iterator blocks.
+    def walk_loop_body(node, prev)
+      body =
+        case node
+        when Prism::CallNode then node.block.is_a?(Prism::BlockNode) ? node.block.body : nil
+        else node.respond_to?(:statements) ? node.statements : nil
+        end
+      walk(body, prev)
     end
 
     # if/unless: walk the body under a guard, then expose BOTH the body exit(s)

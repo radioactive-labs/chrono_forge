@@ -32,4 +32,29 @@ module DefinitionFixtures
       merge_branches :ship
     end
   end
+
+  class Repeat
+    def perform
+      durably_repeat :tick, every: 1.second, till: :done?
+    end
+  end
+
+  class Traced
+    def perform
+      setup
+      durably_execute :finish
+    end
+
+    private
+
+    def setup
+      durably_execute :charge
+    end
+  end
+
+  class Loopy
+    def perform
+      orders.each { |o| durably_execute :ship }
+    end
+  end
 end
