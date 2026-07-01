@@ -29,22 +29,27 @@ module ChronoForge
       # re-enqueue) holds a stale token. It stops quietly — no poll, no wake, no
       # reschedule — leaving only the newest chain to drive the merge. (A nil token
       # is a pre-upgrade job enqueued before fencing existed; it runs unfenced.)
-      return if superseded?(branch_log_ids, token)
+      logs = ExecutionLog.where(id: branch_log_ids).to_a
+      return if superseded?(logs, token)
 
       # Per-branch probe (kept as maps so we can persist each branch's own state,
       # not just the merge aggregate). Same query count as a plain sum/all?.
-      pending_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.incomplete(id).limit(CAP).count] }
+      # The pending count is UNCAPPED: it feeds the drain signal below (a change in
+      # pending since the prior poll), which a CAP would flatten into a false
+      # "not draining" for large branches.
+      prev_pending_by_branch = logs.to_h { |l| [l.id, l.metadata&.dig("poll", "pending")] }
+      pending_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.incomplete(id).count] }
       sealed_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.sealed?(id)] }
       pending = pending_by_branch.values.sum
       sealed = sealed_by_branch.values.all?
 
       if sealed && pending.zero?
-        record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil)
+        record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil, rekicked_by_branch: {})
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
 
-      rekick_dropped_jobs(branch_log_ids)
+      rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)
 
       # Cadence is driven by children that can actually progress, NOT the raw
       # pending count: a branch whose only incomplete children are blocked
@@ -54,7 +59,8 @@ module ChronoForge
       # backs those branches off to max_interval (see reschedule_delay).
       progressing = branch_log_ids.sum { |id| BranchProbe.progressing(id).limit(CAP).count }
       delay = reschedule_delay(progressing, min_interval, max_interval)
-      record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now)
+      record_poll!(pending_by_branch, sealed_by_branch, token,
+        next_poll_at: delay.seconds.from_now, rekicked_by_branch: rekicked_by_branch)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
@@ -82,8 +88,7 @@ module ChronoForge
     # branch logs (a newer merge_branches pass rotated it). A plain read is enough
     # for the early-out; the persisting write in record_poll! re-checks the token
     # under a row lock so it can never clobber the newer chain.
-    def superseded?(branch_log_ids, token)
-      logs = ExecutionLog.where(id: branch_log_ids).to_a
+    def superseded?(logs, token)
       logs.empty? || logs.any? { |log| log.metadata&.dig("poll_token") != token }
     end
 
@@ -95,7 +100,7 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, rekicked_by_branch:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
         # Lock the row so this read-modify-write can't clobber a concurrent token
@@ -105,12 +110,17 @@ module ChronoForge
         log.with_lock do
           meta = log.metadata || {}
           next unless meta["poll_token"] == token
+          prev = meta["poll"] || {}
+          n = rekicked_by_branch[log.id].to_i
           meta["poll"] = {
             "last_polled_at" => now.iso8601,
             "next_poll_at" => next_poll_at&.iso8601,
             "pending" => pending_by_branch[log.id],
             "sealed" => sealed_by_branch[log.id],
-            "polls" => meta.dig("poll", "polls").to_i + 1
+            "polls" => prev["polls"].to_i + 1,
+            "rekicked" => n,
+            "rekick_total" => prev["rekick_total"].to_i + n,
+            "last_rekick_at" => (n.positive? ? now.iso8601 : prev["last_rekick_at"])
           }
           log.update!(metadata: meta)
         end
@@ -128,10 +138,19 @@ module ChronoForge
     # keep the :idle guard (a running/failed/stalled child must never be
     # re-dispatched). Re-enqueue of an :idle child a worker just grabbed is still
     # safe — the lock guard rejects the duplicate. Capped per run.
-    def rekick_dropped_jobs(branch_log_ids)
-      branch_log_ids.each do |id|
+    def rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)
+      cutoff = REKICK_AFTER.ago
+      branch_log_ids.to_h do |id|
+        # Skip a branch that drained since its last poll: its pending dropped, so
+        # the queue is moving and idle never-started children are just in line,
+        # not dropped. With no prior sample (cold poll) we don't gate — the
+        # per-child staleness filter below still spares freshly-dispatched rows.
+        prev = prev_pending_by_branch[id]
+        next [id, 0] if prev && pending_by_branch[id] < prev
+
+        count = 0
         Workflow.where(parent_execution_log_id: id, state: Workflow.states[:idle], started_at: nil)
-          .where("updated_at < ?", REKICK_AFTER.ago)
+          .where("updated_at < ?", cutoff)
           .limit(REKICK_BATCH)
           .find_each do |child|
             # Intentionally uses the GUARDED perform_later (single-child path),
@@ -143,12 +162,19 @@ module ChronoForge
             # error — dead-letter the poller, orphaning every healthy sibling. Catch
             # per child, log, and let the next poll retry it (it's still idle+stale).
             child.job_klass.perform_later(child.key, **child.kwargs.symbolize_keys)
+            # Debounce: bump updated_at so this child isn't re-rekicked until it's
+            # been unstarted for another REKICK_AFTER — one redelivery window for a
+            # worker to pick it up. Only on a SUCCESSFUL enqueue; a rescued failure
+            # leaves it stale so the next poll retries.
+            child.touch
+            count += 1
           rescue => e
             Rails.logger.error do
               "ChronoForge:BranchMergeJob rekick failed for child #{child.key}: " \
               "#{e.class}: #{e.message}"
             end
           end
+        [id, count]
       end
     end
   end

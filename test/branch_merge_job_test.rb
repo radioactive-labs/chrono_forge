@@ -308,4 +308,53 @@ class BranchMergeJobTest < ActiveJob::TestCase
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     end
   end
+
+  # Fix 1: pending dropped since the prior poll => branch is draining => a stale
+  # idle never-started child is queued behind the drain, not dropped. No rekick.
+  def test_does_not_rekick_while_branch_is_draining
+    @log.update!(metadata: {"poll" => {"pending" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # pending now = 1 < prior 5 => draining
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Pending unchanged since the prior poll (branch gone quiet) => a genuinely
+  # dropped, stale never-started child IS rekicked.
+  def test_rekicks_when_branch_has_gone_quiet
+    @log.update!(metadata: {"poll" => {"pending" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # pending now = 1 == prior 1 => not draining
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_enqueued_with(job: NoopChild, args: [stale.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Debounce: touch on a successful rekick bumps updated_at, so the same child is
+  # not re-rekicked on the very next poll (it must go stale again first).
+  def test_does_not_rekick_same_child_twice_in_debounce_window
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_enqueued_with(job: NoopChild, args: [stale.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+    # Second poll: touch made updated_at fresh => not eligible => no re-rekick.
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Observability: rekick activity is stamped on the branch-log metadata for the
+  # dashboard (ActiveJob can't be queried for the scheduled poller).
+  def test_records_rekick_stats_on_branch_log
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    poll = @log.reload.metadata["poll"]
+    assert_equal 1, poll["rekicked"]
+    assert_equal 1, poll["rekick_total"]
+    assert poll["last_rekick_at"], "last_rekick_at should be set when a rekick happened"
+  end
 end
