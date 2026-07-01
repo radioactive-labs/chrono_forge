@@ -40,7 +40,10 @@ module ChronoForge
 
       def edge(e)
         guard = e.guard.to_s.strip
-        label = guard.empty? ? "" : "|#{sanitize(guard)}|"
+        # Quote the edge label: guard text routinely contains ( ) and < (from
+        # negated/compared predicates like "!(a < b)"), which the Mermaid parser
+        # rejects in a bare |label|. Quoting lets those render as text.
+        label = guard.empty? ? "" : %(|"#{sanitize(guard)}"|)
         arrow = (e.kind == :terminal) ? "-.->" : "-->"
         [e.from, "#{arrow}#{label}", e.to].join(" ")
       end
