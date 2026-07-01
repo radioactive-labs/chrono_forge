@@ -1,0 +1,68 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-01-workflow-definition-dag.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Definition value objects + Prism dep",
+      "status": "pending",
+      "description": "Graph data model (Definition/Node/Edge) + prism runtime dependency, round-trippable to_h.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/definition.rb\", \"chrono_forge.gemspec\", \"test/definition_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/definition_test.rb\", \"acceptanceCriteria\": [\"Definition holds nodes/edges/warnings; to_h JSON-safe\", \"Node#dynamic?\", \"prism declared dependency\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Analyzer — linear steps",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "DefinitionAnalyzer.call resolves perform via Prism; a node per straight-line durable call with sequential edges from start.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/definition_analyzer.rb\", \"test/support/definition_fixtures.rb\", \"test/definition_analyzer_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/definition_analyzer_test.rb\", \"acceptanceCriteria\": [\"node per durable call in source order with exact step_name\", \"seq edges start->n1->n2\", \"non-durable Ruby ignored\", \"no DB/exec\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Analyzer — conditionals & guards",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "if/unless/case around durable calls -> :conditional edges with guard labels; rejoin skip/body; continue_if false path -> :terminal.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/definition_analyzer.rb\", \"test/support/definition_fixtures.rb\", \"test/definition_analyzer_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/definition_analyzer_test.rb\", \"acceptanceCriteria\": [\"guarded conditional edge with source guard\", \"rejoin skip+body\", \"continue_if terminal edge\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Analyzer — branch fan-out + merge join",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "branch block -> :branch fan-out node + child-group node via :fanout edge; merge_branches -> :join edge from branch.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/definition_analyzer.rb\", \"test/support/definition_fixtures.rb\", \"test/definition_analyzer_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/definition_analyzer_test.rb\", \"acceptanceCriteria\": [\"branch$name node + child-group with pattern\", \"branch->child :fanout\", \"branch->merge :join\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Analyzer — repeat, helper tracing, loop warnings",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "durably_repeat -> :repeat node; trace durable calls in same-class helpers (recursion-guarded); durable call inside a loop -> warning, no crash.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/definition_analyzer.rb\", \"test/support/definition_fixtures.rb\", \"test/definition_analyzer_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/definition_analyzer_test.rb\", \"acceptanceCriteria\": [\"durably_repeat$tick single repeat node\", \"same-class helper traced in position\", \"loop-with-durable warns\", \"no infinite recursion\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Dashboard — DefinitionOverlay",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Annotate nodes with runtime status from execution_logs; fan-out/repeat aggregates via BranchProbe/rep logs; append unmapped nodes.\n\n```json:metadata\n{\"files\": [\"chrono_forge-dashboard/app/presenters/chrono_forge/dashboard/definition_overlay.rb\", \"chrono_forge-dashboard/test/definition_overlay_test.rb\"], \"verifyCommand\": \"cd chrono_forge-dashboard && bundle exec rake test TEST=test/definition_overlay_test.rb\", \"acceptanceCriteria\": [\"exact-name status\", \"branch/merge counts\", \"repeat repetitions\", \"unmapped logs appended\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Dashboard — MermaidRenderer",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "Statused nodes + edges -> Mermaid flowchart TD string with shapes by kind, :::status classes, guard edge labels, classDef lines.\n\n```json:metadata\n{\"files\": [\"chrono_forge-dashboard/app/presenters/chrono_forge/dashboard/mermaid_renderer.rb\", \"chrono_forge-dashboard/test/mermaid_renderer_test.rb\"], \"verifyCommand\": \"cd chrono_forge-dashboard && bundle exec rake test TEST=test/mermaid_renderer_test.rb\", \"acceptanceCriteria\": [\"flowchart TD header\", \"node line per node with :::status\", \"edge lines with guard labels\", \"classDef per used status\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Dashboard — definition page (route/controller/view/Mermaid/link)",
+      "status": "pending",
+      "blockedBy": [5, 6, 7],
+      "description": "GET workflows/:id/definition page — analyze class, overlay run, render Mermaid client-side (vendored), warnings panel, graceful degradation, link from detail page.\n\n```json:metadata\n{\"files\": [\"chrono_forge-dashboard/config/routes.rb\", \"chrono_forge-dashboard/app/controllers/chrono_forge/dashboard/definitions_controller.rb\", \"chrono_forge-dashboard/app/views/chrono_forge/dashboard/definitions/show.html.erb\", \"chrono_forge-dashboard/app/assets/chrono_forge/dashboard/mermaid.min.js\", \"chrono_forge-dashboard/app/views/chrono_forge/dashboard/workflows/show.html.erb\", \"chrono_forge-dashboard/test/definitions_controller_test.rb\"], \"verifyCommand\": \"cd chrono_forge-dashboard && bundle exec rake test TEST=test/definitions_controller_test.rb\", \"acceptanceCriteria\": [\"200 with flowchart TD for analyzable wf\", \"unknown class degrades to warning not 500\", \"detail page links to page\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Full suite + docs",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "Both packages green, lint clean, document the definition page.\n\n```json:metadata\n{\"files\": [\"chrono_forge-dashboard/README.md\"], \"verifyCommand\": \"bundle exec rake test && cd chrono_forge-dashboard && bundle exec rake test\", \"acceptanceCriteria\": [\"core suite green\", \"dashboard suite green\", \"lint clean on new files\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-07-01T00:00:00Z"
+}
