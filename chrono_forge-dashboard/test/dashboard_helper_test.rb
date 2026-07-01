@@ -41,7 +41,7 @@ class DashboardHelperTest < ActionView::TestCase
   end
 
   test "cf_poll_options come from config" do
-    assert_equal [0, 5, 10, 30, 60, 300], cf_poll_options
+    assert_equal [0, 5, 10, 15, 30, 60, 300], cf_poll_options
     ChronoForge::Dashboard.configure { |c| c.polling_interval_options = [0, 7] }
     assert_equal [0, 7], cf_poll_options
   ensure

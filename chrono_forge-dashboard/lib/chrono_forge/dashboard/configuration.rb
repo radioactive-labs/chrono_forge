@@ -19,9 +19,9 @@ module ChronoForge
         @http_basic = nil
         @authentication = nil
         @auth_hook = nil
-        @polling_interval = 5
+        @polling_interval = 15
         # Selectable auto-refresh intervals (seconds; 0 = off) for the nav control.
-        @polling_interval_options = [0, 5, 10, 30, 60, 300]
+        @polling_interval_options = [0, 5, 10, 15, 30, 60, 300]
         @page_size = 50
         @long_wait_threshold = 3600
       end
