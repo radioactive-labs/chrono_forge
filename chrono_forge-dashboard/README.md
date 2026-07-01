@@ -49,7 +49,7 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 | Branches | Branch children |
 | --- | --- |
 | [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
-| Fan-out branches with capped dispatched/pending/blocked counts and merge state. | One branch's children — blocked-first triage, capped filters, retry per child. |
+| Fan-out branches with exact **spawned / pending / never-started** counts (recorded by the poller — the immutable spawned total is counted once and cached when the branch seals) plus blocked count and merge state, and in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children with a **live stats header** (throughput/ETA, spawned, pending, never-started, dropped-child recovery) — blocked-first triage, capped state filters, retry per child. |
 
 **Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
 
@@ -102,8 +102,8 @@ All options go in the same `configure` block as auth:
 
 ```ruby
 ChronoForge::Dashboard.configure do |c|
-  c.polling_interval         = 5                      # seconds; the default auto-refresh interval. 0 to disable.
-  c.polling_interval_options = [0, 5, 10, 30, 60, 300] # selectable intervals in the nav "refresh" control
+  c.polling_interval         = 15                        # seconds; the default auto-refresh interval. 0 to disable.
+  c.polling_interval_options = [0, 5, 10, 15, 30, 60, 300] # selectable intervals in the nav "refresh" control
   c.page_size                = 50                     # workflows per page
   c.long_wait_threshold      = 3600                   # seconds; wait-state ages above this are flagged
 end
@@ -111,8 +111,8 @@ end
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `polling_interval` | `5` | Seconds between auto-refreshes (the default). A viewer can override it with the nav "refresh" control (stored in a cookie). `0` disables. |
-| `polling_interval_options` | `[0, 5, 10, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
+| `polling_interval` | `15` | Seconds between auto-refreshes (the default). Every page refreshes in place — preserving filter text, focus, and scroll — so a draining fan-out's live throughput/ETA and counts update without a manual reload. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
+| `polling_interval_options` | `[0, 5, 10, 15, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
 

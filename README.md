@@ -774,10 +774,21 @@ end
 
 > **The parent isn't replayed while waiting.** A lightweight
 > `ChronoForge::BranchMergeJob` polls for child completion; the parent workflow
-> only runs again once the branch is fully done. Polling cadence adapts to how
-> many children are still actively progressing, backing off to the maximum
-> interval when the remaining children are only waiting or blocked on a failure
-> (which need a wait to elapse or operator recovery, not faster polling).
+> only runs again once the branch is fully done. Polling cadence tracks the
+> **estimated time-to-drain** (measured from the children's completion rate), so
+> the parent is woken within ~`min_interval` of the last child finishing rather
+> than up to `max_interval` late; a branch that can only wait or is blocked on a
+> failure backs off to `max_interval` (those need a wait to elapse or operator
+> recovery, not faster polling).
+>
+> **Queue placement matters.** The poller is enqueued *after* the branch's
+> children, so on a queue those children saturate it starves behind the backlog
+> (the parent then converges up to `max_interval` late). Point it at a queue that
+> isn't saturated by the fan-out:
+>
+> ```ruby
+> ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers } # default: :default
+> ```
 
 > **`spawn_each` sources must re-enumerate deterministically across replays.**
 > ActiveRecord relations are streamed by primary key (children are keyed by

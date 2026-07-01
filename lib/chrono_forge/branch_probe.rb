@@ -32,6 +32,37 @@ module ChronoForge
         .or(base.where(state: Workflow.states[:idle], started_at: nil))
     end
 
+    # A child of this branch is actively executing — a live worker will complete
+    # it, so the poller can hold its responsive floor rather than backing off.
+    def running?(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id, state: Workflow.states[:running]).exists?
+    end
+
+    # Children dispatched but not yet started (idle, started_at nil) — the queue of
+    # never-started work for this branch. A DROP in this count between polls means
+    # workers are actively pulling it off the queue (so a still-queued child is in
+    # line, not dropped); the rekick gate keys off that. Distinct from total pending,
+    # which a wait/wait_until child completing would drop without any never-started
+    # child moving. (Not to be confused with the dashboard's "Dispatched" column,
+    # which is the TOTAL children spawned.)
+    def never_started(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id,
+        state: Workflow.states[:idle], started_at: nil)
+    end
+
+    # A child was dispatched but no worker has started it yet. If this is the only
+    # motion left, it's a queued/rekicked-but-unpicked straggler (which may never be
+    # picked up), NOT active work — so the poller backs off.
+    def never_started?(branch_log_id) = never_started(branch_log_id).exists?
+
+    # All children spawned into this branch (every state) — the dispatch total. Fixed
+    # once the branch is sealed, so the poller counts it exactly once and caches it on
+    # the branch-log metadata. This is the dashboard's "Spawned" column. Distinct from
+    # #never_started, which is only the idle-and-unstarted subset.
+    def spawned(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id)
+    end
+
     def done?(branch_log_id)
       sealed?(branch_log_id) && !incomplete(branch_log_id).exists?
     end

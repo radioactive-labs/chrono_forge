@@ -6,8 +6,9 @@
         <tr class="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500">
           <th class="py-2 pr-4 font-medium">Branch</th>
           <th class="py-2 pr-4 font-medium">Status</th>
-          <th class="py-2 pr-4 text-right font-medium">Dispatched</th>
+          <th class="py-2 pr-4 text-right font-medium">Spawned</th>
           <th class="py-2 pr-4 text-right font-medium">Pending</th>
+          <th class="py-2 pr-4 text-right font-medium">Never started</th>
           <th class="py-2 pr-4 text-right font-medium">Blocked</th>
           <th class="py-2 font-medium"></th>
         </tr>
@@ -29,8 +30,9 @@
                 · <span class="text-zinc-400" title="<%= b.polls %> polls · next <%= b.next_poll_at&.iso8601 || "—" %>">polling</span>
               <% end %>
             </td>
-            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.dispatched, b.cap) %></td>
-            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.pending, b.cap) %></td>
+            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_spawned ? number_with_delimiter(b.exact_spawned) : cf_capped(b.spawned, b.cap) %></td>
+            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_pending ? number_with_delimiter(b.exact_pending) : cf_capped(b.pending, b.cap) %></td>
+            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_never_started ? number_with_delimiter(b.exact_never_started) : cf_capped(b.never_started, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums <%= "font-medium text-rose-600" if b.blocked > 0 %>"><%= cf_capped(b.blocked, b.cap) %></td>
             <td class="py-2 text-right"><%= link_to "details →", workflow_branch_path(workflow, b.log), class: cf_chip %></td>
           </tr>
@@ -53,6 +55,8 @@
           <div class="flex shrink-0 flex-wrap items-baseline gap-x-3 text-xs text-zinc-400">
             <% if m.last_polled_at %><span>last check <%= cf_ago(m.last_polled_at) %></span><% end %>
             <% if m.merging? && m.next_poll_at %><span class="<%= "font-medium text-rose-600" if m.poll_overdue? %>">next check <%= cf_when(m.next_poll_at) %></span><% end %>
+            <% if m.throughput? %><span title="measured over the last poll interval"><%= m.rate < 1 ? m.rate.round(1) : number_with_delimiter(m.rate.round) %>/s</span><% end %>
+            <% if m.throughput? && m.eta_seconds %><span>ETA <%= cf_secs(m.eta_seconds) %></span><% end %>
             <% if m.polls&.positive? %><span><%= pluralize(m.polls, "poll") %></span><% end %>
             <% if m.started_at %><span>started <%= cf_ago(m.started_at) %></span><% end %>
           </div>

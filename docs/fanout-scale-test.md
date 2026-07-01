@@ -177,6 +177,63 @@ The dashboard's scale-aware design held up live: capped `5000+` counts (no
 `COUNT(*)` over 500k), keyset pagination, blocked-first triage — instant render
 throughout the run.
 
+On a branch's detail views the counts the poller already records render **exact**
+straight from the branch-log metadata — no live count: `pending` and
+`never-started` (recomputed each poll) and the total `spawned` (immutable once the
+branch is sealed, so it's counted **once** and cached). Only the mutable per-state
+chips (idle / completed / …) stay capped. So a 500k branch shows its real
+`spawned` / `pending` / `never-started` figures, not `5000+`.
+
+## Poller behavior
+
+`BranchMergeJob` cadence is driven by **estimated time-to-drain** (from the prior
+poll's uncapped pending count), not backlog size. For a 500k fan-out draining at
+~200/s this is flat `max_interval` (5 min) polling through the long middle, then a
+smooth ramp over the final minutes, tightening to `min_interval` (~5s) for the
+last few thousand children — so the parent is woken within ~5s of the last child
+finishing rather than up to a full `max_interval` late. ~15 cheap polls across the
+run, one branch-scoped index count each (`[parent_execution_log_id, state]`); no
+new indexes. When nothing completes in an interval the fallback is motion-aware: a
+child still running holds the responsive floor (so a slow or single-child branch is
+never woken late), a dispatched-but-unpicked straggler backs off exponentially, and
+a fully blocked/waiting branch decays to `max_interval` instead of spinning.
+
+Rekick of dropped children is **gated on the never-started count
+delta**: if that count fell since the last poll, workers are consuming the branch's
+queue, so deeply-queued-but-healthy children are left alone. It deliberately does
+NOT use total pending — a `wait_until` child resuming would drop pending without
+any never-started child moving, masking a genuinely-dropped child behind staggered
+waits. Only a branch whose never-started count has gone flat has its stale
+never-started children rekicked, and a `touch` on each rekick debounces it to at
+most once per `REKICK_AFTER`. Rekick counts are stamped on the branch-log metadata
+for the dashboard.
+
+### ⚠️ Poller queue placement (a trap)
+
+`merge_branches` enqueues `BranchMergeJob` **after** it dispatches the branch's
+children, so the poller **must not run on the same queue as a large fan-out's
+children**. If it does, it is enqueued behind the entire backlog and starved: it
+gets a worker slot only near the end, polls **once** at `pending≈0` with no prior
+sample (`rate 0`), and backs off to `max_interval`. The consequences are twofold
+and both defeat the point of the ETA cadence:
+
+- the parent's convergence **lags by up to `max_interval` (~5 min)** after the last
+  child finishes (all children `completed`, parent still `idle`); and
+- the dashboard's **live throughput/ETA never renders** — the poller never took a
+  mid-drain sample, so `rate` stays 0.
+
+Give the poller a **dedicated, un-starved queue** so it polls throughout the drain
+(then ETA engages and convergence is tight) via the first-class setting:
+
+```ruby
+ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers }
+```
+
+(and run a worker on that queue). It defaults to `:default`, which is fine when
+fan-outs run on their own queues. For these runs that queue is `:scale_poller`
+(see `config/scale_queue.yml`). This bit us live-driving 20k/100k — the first pass
+had the poller on `:scale` and every parent hung `idle` for 5 min.
+
 ## Environment caveats
 
 - Local Docker **Postgres 13**, default `shared_buffers` 128 MB, single disk,

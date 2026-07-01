@@ -4,7 +4,7 @@
         form: {data: {confirm: "Re-enqueue every blocked (failed and stalled) workflow?"}}, class: "cf-btn" %>
 </div>
 
-<div data-poll-region>
+<div>
   <%= render "stats", stats: @stats, cap: @stats_cap %>
   <%= render "filters", query: @query %>
 

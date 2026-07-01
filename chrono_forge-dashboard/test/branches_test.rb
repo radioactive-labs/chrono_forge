@@ -12,7 +12,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     create_workflow(key: key, state: state, job_class: "OrderWorkflow", parent_execution_log_id: branch_log.id)
   end
 
-  test "summarizes a branch with capped dispatched/pending/blocked counts" do
+  test "summarizes a branch with capped spawned/pending/blocked counts" do
     parent = create_workflow(key: "p1", state: :idle)
     bl = branch_log(parent, "fulfillment")
     child(bl, "p1$fulfillment$1", :completed)
@@ -25,7 +25,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     b = presenter.branches.first
     assert_equal "fulfillment", b.name
     assert b.sealed?
-    assert_equal 4, b.dispatched
+    assert_equal 4, b.spawned
     assert_equal 3, b.pending  # everything not completed
     assert_equal 2, b.blocked  # failed + stalled
   end
@@ -76,6 +76,94 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     assert_equal ["b"], merges.first.names
     assert_equal :merged, merges.last.state
   end
+
+  test "exposes live throughput/ETA on an in-flight merge" do
+    parent = create_workflow(key: "pt", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$g",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 226.0, "pending" => 19_888, "eta_seconds" => 88,
+                            "last_polled_at" => 20.seconds.ago.iso8601, "polls" => 3}})
+    parent.execution_logs.create!(step_name: "merge$g", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 1.hour.ago)
+
+    merge = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.first
+    assert_equal 226.0, merge.rate
+    assert_equal 88, merge.eta_seconds # 19,888 pending ÷ 226/s (single-branch: aggregate == the one branch)
+    assert merge.throughput?, "a merging, draining merge reports throughput"
+  end
+
+  test "throughput? is false when the merge isn't draining or is already merged" do
+    parent = create_workflow(key: "pt0", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$idle",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 0.0, "eta_seconds" => nil, "polls" => 5}})
+    parent.execution_logs.create!(step_name: "merge$idle", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 1.hour.ago)
+    parent.execution_logs.create!(step_name: "branch$done",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 500.0, "polls" => 7}})
+    parent.execution_logs.create!(step_name: "merge$done", state: ChronoForge::ExecutionLog.states[:completed],
+      attempts: 1, started_at: 1.hour.ago)
+
+    merges = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.index_by { |m| m.names.first }
+    refute merges["idle"].throughput?, "rate 0.0 is not draining"
+    refute merges["done"].throughput?, "a merged join isn't a live gauge"
+  end
+
+  # A merge may join several branches; each records its OWN rate/pending, so the
+  # merge's throughput is the sum and its ETA the combined remaining over the
+  # combined rate — not any single branch's figure.
+  test "aggregates rate/ETA across a multi-branch merge" do
+    parent = create_workflow(key: "p-multi", state: :idle)
+    parent.execution_logs.create!(step_name: "branch$a",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 100.0, "pending" => 600,
+                            "last_polled_at" => 10.seconds.ago.iso8601, "polls" => 4}})
+    parent.execution_logs.create!(step_name: "branch$b",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 100.0, "pending" => 900,
+                            "last_polled_at" => 10.seconds.ago.iso8601, "polls" => 4}})
+    parent.execution_logs.create!(step_name: "merge$a,b", state: ChronoForge::ExecutionLog.states[:pending],
+      attempts: 1, started_at: 30.seconds.ago)
+
+    merge = ChronoForge::Dashboard::BranchesPresenter.new(parent).merges.first
+    assert_equal ["a", "b"], merge.names
+    assert_in_delta 200.0, merge.rate, 0.001, "rate is the sum of both branches (100 + 100)"
+    assert_equal 8, merge.eta_seconds, "ETA is combined pending (1500) over combined rate (200) = 7.5 → 8"
+    assert merge.throughput?
+  end
+
+  # The branch detail page reads the poller's persisted stats: live throughput/ETA
+  # while draining, the never-started count, and dropped-child recovery.
+  test "BranchPresenter surfaces poll throughput/recovery, hiding the gauge when drained" do
+    parent = create_workflow(key: "bp-stats", state: :idle)
+    draining = parent.execution_logs.create!(step_name: "branch$a",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
+                            "spawned" => 100_000,
+                            "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601, "polls" => 7}})
+    3.times { |i| create_workflow(key: "bp-ns-#{i}", state: :idle, started_at: nil, parent_execution_log_id: draining.id) }
+    b = ChronoForge::Dashboard::BranchPresenter.new(draining)
+    assert_in_delta 226.0, b.rate, 0.001
+    assert_equal 88, b.eta_seconds
+    assert b.throughput?
+    assert_equal 3, b.never_started, "live count of idle + started_at nil children"
+    # The full (uncapped) counts the poller already recorded — no new query.
+    assert_equal 90_000, b.exact_pending
+    assert_equal 65_000, b.exact_never_started
+    assert_equal 100_000, b.exact_spawned, "total spawned, cached once at seal"
+    assert_equal 12, b.rekicks
+    assert b.last_rekick_at
+
+    # A drained / merged branch: the wake poll recorded rate 0 → no live gauge, but
+    # the historical recovery count is still readable.
+    done = parent.execution_logs.create!(step_name: "branch$b",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 0.0, "rekick_total" => 3, "polls" => 20}})
+    d = ChronoForge::Dashboard::BranchPresenter.new(done)
+    refute d.throughput?, "rate 0 (drained/merged) shows no live gauge"
+    assert_equal 3, d.rekicks, "but keeps the historical recovery count"
+  end
 end
 
 class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
@@ -122,6 +210,28 @@ class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
     assert_enqueued_jobs 1 do
       post "/chrono_forge/workflows/#{parent.id}/branches/#{bl.id}/bulk_retry"
     end
+  end
+
+  test "renders live poll stats (throughput, never-started, recovery) for a polled branch" do
+    parent = create_workflow(key: "pc-stats", state: :idle)
+    bl = parent.execution_logs.create!(step_name: "branch$orders",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
+      metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
+                            "spawned" => 100_000,
+                            "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601,
+                            "polls" => 7, "last_polled_at" => 10.seconds.ago.iso8601}})
+    create_workflow(key: "pc-stats-x", state: :running, job_class: "OrderWorkflow", parent_execution_log_id: bl.id)
+
+    get "/chrono_forge/workflows/#{parent.id}/branches/#{bl.id}", params: {state: ""}
+    assert_response :success
+    assert_match "226/s", response.body         # live throughput
+    assert_match "Never started", response.body # never-started label
+    assert_match "65,000", response.body        # exact never-started (full count from metadata)
+    assert_match "90,000", response.body        # exact pending (full count from metadata)
+    assert_match "Spawned", response.body       # total-spawned label
+    assert_match "100,000", response.body       # exact spawned (cached once at seal)
+    assert_match "Recovered", response.body     # dropped-child recovery
+    assert_match "12", response.body            # rekick_total
   end
 
   test "child detail shows the parent breadcrumb" do

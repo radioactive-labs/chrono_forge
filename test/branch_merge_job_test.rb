@@ -66,6 +66,18 @@ class BranchMergeJobTest < ActiveJob::TestCase
       "BranchMergeJob must retry transient DB errors so they do not orphan the parent"
   end
 
+  # The poller's queue is a first-class config (we own this job, not the user), read
+  # per-enqueue so a change takes effect without redefining the class — this is the
+  # supported way to keep the poller off a fan-out's saturated child queue.
+  def test_branch_merge_queue_is_configurable
+    ChronoForge.reset_configuration!
+    assert_equal "default", ChronoForge::BranchMergeJob.new.queue_name
+    ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers }
+    assert_equal "chrono_forge_pollers", ChronoForge::BranchMergeJob.new.queue_name
+  ensure
+    ChronoForge.reset_configuration!
+  end
+
   # A programming bug (e.g. the empty-input guard) must propagate loudly to the
   # backend's failed-job queue, NOT be silently retried-then-discarded.
   def test_empty_branch_log_ids_propagates_loudly
@@ -159,10 +171,25 @@ class BranchMergeJobTest < ActiveJob::TestCase
     poll = @log.reload.metadata["poll"]
     assert poll, "poll state should be recorded on the branch log"
     assert_equal 1, poll["pending"]
+    assert_equal 1, poll["spawned"], "total spawned (all children) counted and cached"
     assert_equal true, poll["sealed"]
     assert poll["last_polled_at"], "last_polled_at should be recorded"
     assert poll["next_poll_at"], "next_poll_at should be set while still polling"
     assert_equal 1, poll["polls"]
+  end
+
+  # The total spawned count is immutable once the branch is sealed, so the poller
+  # counts it EXACTLY ONCE and caches it — a row appearing after the first poll must
+  # not change the cached figure (proving it isn't recounted every pass).
+  def test_caches_spawned_count_once_when_sealed
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata.dig("poll", "spawned")
+
+    child!(state: :running) # a second child now exists
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata.dig("poll", "spawned"),
+      "spawned is cached once at seal, not recounted per poll"
   end
 
   # The poll state must not clobber spawn_each's cursors — both live in the same
@@ -228,25 +255,48 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_nil meta["poll"], "stale poller must not write poll state"
   end
 
-  # Adaptive cadence: the reschedule delay scales with the count of PROGRESSING
-  # children and clamps to [min_interval, max_interval].
-  def test_reschedule_delay_scales_and_clamps
+  # Cadence: reschedule_delay(pending, rate, motion, prev_delay, min, max).
+  # `rate` is children/s (0 unless the branch drained since the prior poll); `motion`
+  # is :running | :never_started | :none. Positive rate => ETA-scaled delay (motion moot).
+  def test_reschedule_delay_scales_with_measured_drain_rate
     job = ChronoForge::BranchMergeJob.new
-    factor = ChronoForge::BranchMergeJob::FACTOR
-
-    # Few progressing → clamps up to min_interval.
-    assert_equal 5, job.send(:reschedule_delay, 1, 5, 300)
-    # Mid-range → scales linearly by FACTOR (100 * 0.06 = 6).
-    assert_in_delta 100 * factor, job.send(:reschedule_delay, 100, 5, 300), 0.001
-    # Huge progressing → clamps down to max_interval.
-    assert_equal 300, job.send(:reschedule_delay, 1_000_000, 5, 300)
+    # rate 20/s, 800 left => ETA 40s; * 0.5 = 20s.
+    assert_in_delta 20, job.send(:reschedule_delay, 800, 20.0, :running, nil, 5, 300), 0.001
   end
 
-  # Zero progressing children → back off to max_interval (the recovery backstop),
-  # NOT the min floor a naive (0 * FACTOR).clamp(min, max) would produce.
+  def test_reschedule_delay_clamps_eta_to_max
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 300, job.send(:reschedule_delay, 100_000, 0.1, :running, nil, 5, 300)
+  end
+
+  def test_reschedule_delay_clamps_eta_to_min
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 1, 1000.0, :running, nil, 5, 300)
+  end
+
+  # A running child produced no completion this interval: HOLD the floor (it's
+  # executing and will finish) — never back off, even with a large prior delay.
+  # Anti-regression guard for slow / low-fan-out children.
+  def test_reschedule_delay_running_holds_floor
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 1, 0.0, :running, nil, 5, 300)
+    assert_equal 5, job.send(:reschedule_delay, 1, 0.0, :running, 200, 5, 300) # ignores prev_delay
+  end
+
+  # Only a dispatched-but-unpicked child left (rate 0, :never_started): back off
+  # exponentially from the floor (no prior delay => start at min; then double).
+  def test_reschedule_delay_backs_off_exponentially_for_dispatched_straggler
+    job = ChronoForge::BranchMergeJob.new
+    assert_equal 5, job.send(:reschedule_delay, 100, 0.0, :never_started, nil, 5, 300)
+    assert_equal 10, job.send(:reschedule_delay, 100, 0.0, :never_started, 5, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :never_started, 200, 5, 300)
+  end
+
+  # Nothing can progress (all blocked/waiting) => straight to the max backstop.
   def test_reschedule_delay_uses_max_when_nothing_progresses
     job = ChronoForge::BranchMergeJob.new
-    assert_equal 300, job.send(:reschedule_delay, 0, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :none, nil, 5, 300)
+    assert_equal 300, job.send(:reschedule_delay, 100, 0.0, :none, 200, 5, 300)
   end
 
   # Delay actually applied this poll, read back from the recorded poll metadata.
@@ -307,5 +357,138 @@ class BranchMergeJobTest < ActiveJob::TestCase
     assert_enqueued_with(job: SingleSpawnWorkflow, args: ["bmj-parent"]) do
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     end
+  end
+
+  # Fix 1: the never-started (dispatched) count dropped since the prior poll =>
+  # workers are consuming the branch's queue => a stale idle never-started child is
+  # in line, not dropped. No rekick.
+  def test_does_not_rekick_while_branch_is_draining
+    @log.update!(metadata: {"poll" => {"never_started" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # dispatched now = 1 < prior 5 => draining
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Never-started count unchanged since the prior poll (queue not being consumed)
+  # => a genuinely dropped, stale never-started child IS rekicked.
+  def test_rekicks_when_branch_has_gone_quiet
+    @log.update!(metadata: {"poll" => {"never_started" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # dispatched now = 1 == prior 1 => not draining
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_enqueued_with(job: NoopChild, args: [stale.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Fix 1 (the point of gating on never-started, not total pending): a wait/
+  # wait_until child resuming + completing drops total pending, but that must NOT
+  # mask a genuinely-dropped never-started child behind it. The dropped child is
+  # still rekicked because the never-started count did not fall.
+  def test_rekicks_dropped_child_when_only_waits_drain_pending
+    @log.update!(metadata: {"poll" => {"pending" => 3, "never_started" => 1,
+      "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 2}})
+    child!(state: :completed)                        # a wait that resumed + completed
+    child!(state: :idle, started_at: 20.minutes.ago) # a child still parked on a wait
+    dropped = child!(state: :idle, started_at: nil)  # genuinely dropped, never started
+    dropped.update_column(:updated_at, 10.minutes.ago)
+    # pending now = 2 (< prior 3 — the OLD pending gate would wrongly suppress) but
+    # dispatched = 1 (== prior 1: no never-started child was consumed) => rekick.
+    assert_enqueued_with(job: NoopChild, args: [dropped.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Debounce: touch on a successful rekick bumps updated_at, so the same child is
+  # not re-rekicked on the very next poll (it must go stale again first).
+  def test_does_not_rekick_same_child_twice_in_debounce_window
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    assert_enqueued_with(job: NoopChild, args: [stale.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+    # Second poll: touch made updated_at fresh => not eligible => no re-rekick.
+    assert_no_enqueued_jobs(only: NoopChild) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Observability: rekick activity is stamped on the branch-log metadata for the
+  # dashboard (ActiveJob can't be queried for the scheduled poller).
+  def test_records_rekick_stats_on_branch_log
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    poll = @log.reload.metadata["poll"]
+    assert_equal 1, poll["rekicked"]
+    assert_equal 1, poll["rekick_total"]
+    assert poll["last_rekick_at"], "last_rekick_at should be set when a rekick happened"
+  end
+
+  # rekick_total is a running counter, not a per-poll value: it accumulates across
+  # successive rekicking polls. The first poll rekicks child A (debouncing it); a
+  # fresh stale child B on the second poll keeps the never-started count from
+  # dropping (so the drain gate stays open) and is rekicked, carrying total 1 -> 2.
+  def test_rekick_total_accumulates_across_polls
+    a = child!(state: :idle, started_at: nil)
+    a.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata["poll"]["rekick_total"]
+
+    # A is now debounced (touched fresh). Add a second stale child so the never-
+    # started count rises to 2 (>= prior 1, gate open) and B gets rekicked.
+    b = child!(state: :idle, started_at: nil)
+    b.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 2, @log.reload.metadata["poll"]["rekick_total"]
+  end
+
+  # last_rekick_at is carried forward on a later poll that rekicks nothing (it is
+  # only overwritten when a rekick actually fires), so the dashboard keeps the true
+  # timestamp of the last recovery rather than nil'ing it on the next quiet poll.
+  def test_last_rekick_at_preserved_on_zero_rekick_poll
+    stale = child!(state: :idle, started_at: nil)
+    stale.update_column(:updated_at, 10.minutes.ago)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    first = @log.reload.metadata["poll"]["last_rekick_at"]
+    assert first, "last_rekick_at should be set after the first rekick"
+
+    # Second poll: the child was touched on rekick => no longer stale => no rekick.
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    poll = @log.reload.metadata["poll"]
+    assert_equal 0, poll["rekicked"], "no rekick should fire on the second poll"
+    assert_equal first, poll["last_rekick_at"], "last_rekick_at must be carried forward, not nil'd"
+  end
+
+  # Second poll: cadence driven by the drain rate measured from the first poll's
+  # persisted pending, not backlog size — and that rate is persisted as throughput.
+  # Seed 50 pending 60s ago, leave 40 incomplete => 10 drained over ~60s ≈ 0.167/s
+  # => ETA 240s => * 0.5 => ~120s.
+  def test_second_poll_records_throughput_and_uses_it_for_cadence
+    @log.update!(metadata: {"poll" => {
+      "pending" => 50, "last_polled_at" => 60.seconds.ago.iso8601, "polls" => 1
+    }})
+    40.times { child!(state: :idle, started_at: nil) } # fresh => not rekicked
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+
+    assert_in_delta 120, poll_delay, 8,
+      "second poll should schedule at ~ETA*ETA_FRACTION, not a count-based delay"
+    poll = @log.reload.metadata["poll"]
+    assert_operator poll["rate"], :>, 0, "drain rate (throughput) should be recorded"
+    assert poll["eta_seconds"], "eta_seconds should be recorded while draining"
+  end
+
+  # Anti-regression (concern #1): a running child that produced no completion this
+  # interval must keep the floor, NOT decay to the prior poll's backoff.
+  def test_running_child_holds_floor_end_to_end
+    @log.update!(metadata: {"poll" => {
+      "pending" => 1, "interval" => 40, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 3
+    }})
+    child!(state: :running) # pending stays 1 => no drain => rate 0, motion :running
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_in_delta 5, poll_delay, 1,
+      "a running child must hold the floor, not decay to the 40s->80s backoff"
   end
 end

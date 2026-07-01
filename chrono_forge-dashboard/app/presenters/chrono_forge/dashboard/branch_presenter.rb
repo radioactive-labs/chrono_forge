@@ -20,7 +20,7 @@ module ChronoForge
       # The branch is "sealed" once its block closed (done dispatching children).
       def sealed? = @log.completed?
 
-      def dispatched = capped(children)
+      def spawned = capped(children)
 
       def pending = capped(children.where.not(state: ChronoForge::Workflow.states[:completed]))
 
@@ -50,6 +50,38 @@ module ChronoForge
         t = next_poll_at
         t.present? && t < Time.current - POLL_OVERDUE_GRACE
       end
+
+      # Live throughput/ETA from the last poll (the poller measures the branch's
+      # completion rate each pass). The wake poll records rate 0, so a positive rate
+      # means the branch is still draining — a merged/idle branch shows no gauge.
+      def rate = poll&.dig("rate").to_f
+
+      def eta_seconds = poll&.dig("eta_seconds")
+
+      def throughput? = rate > 0
+
+      # Children dispatched but not yet started (idle, started_at nil) — how much of
+      # this branch hasn't been picked up yet. Capped/index-only like the other counts.
+      def never_started = capped(children.where(state: ChronoForge::Workflow.states[:idle], started_at: nil))
+
+      # The FULL (uncapped) pending / never-started counts the poller ALREADY records
+      # each pass — so the dashboard can show the real number instead of the capped
+      # "CAP+", with NO new query. nil until the branch has been polled; callers fall
+      # back to the capped count. (The poll's "never_started" is the never-started count.)
+      def exact_pending = poll&.dig("pending")
+
+      def exact_never_started = poll&.dig("never_started")
+
+      # Total spawned, counted once and cached by the poller when the branch sealed
+      # (see BranchProbe#spawned) — exact and free. nil until sealed+polled; the
+      # "Spawned" column then falls back to the capped live count.
+      def exact_spawned = poll&.dig("spawned")
+
+      # Dropped-child recovery: how many children the poller has rekicked, and when
+      # it last did (nil if never).
+      def rekicks = poll&.dig("rekick_total").to_i
+
+      def last_rekick_at = parse_time(poll&.dig("last_rekick_at"))
 
       private
 
