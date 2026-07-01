@@ -177,6 +177,27 @@ The dashboard's scale-aware design held up live: capped `5000+` counts (no
 `COUNT(*)` over 500k), keyset pagination, blocked-first triage — instant render
 throughout the run.
 
+## Poller behavior
+
+`BranchMergeJob` cadence is driven by **estimated time-to-drain** (from the prior
+poll's uncapped pending count), not backlog size. For a 500k fan-out draining at
+~200/s this is flat `max_interval` (5 min) polling through the long middle, then a
+smooth ramp over the final minutes, tightening to `min_interval` (~5s) for the
+last few thousand children — so the parent is woken within ~5s of the last child
+finishing rather than up to a full `max_interval` late. ~15 cheap polls across the
+run, one branch-scoped index count each (`[parent_execution_log_id, state]`); no
+new indexes. When nothing completes in an interval the fallback is motion-aware: a
+child still running holds the responsive floor (so a slow or single-child branch is
+never woken late), a dispatched-but-unpicked straggler backs off exponentially, and
+a fully blocked/waiting branch decays to `max_interval` instead of spinning.
+
+Rekick of dropped children is **gated on the pending delta**: a branch whose
+pending dropped since its last poll is still draining, so deeply-queued-but-healthy
+children are left alone; only a branch that has gone quiet has its never-started
+children rekicked, and a `touch` on each rekick debounces it to at most once per
+`REKICK_AFTER`. Rekick counts are stamped on the branch-log metadata for the
+dashboard.
+
 ## Environment caveats
 
 - Local Docker **Postgres 13**, default `shared_buffers` 128 MB, single disk,
