@@ -316,7 +316,7 @@ module ChronoForge
     def source_of(node)
       raw = node.respond_to?(:slice) ? node.slice : node.class.name.split("::").last
       # Collapse internal whitespace/newlines and truncate so guard labels stay
-      # renderable on a single Mermaid edge.
+      # short enough to render on a single edge.
       compact = raw.to_s.gsub(/\s+/, " ").strip
       (compact.length > 60) ? "#{compact[0, 59]}…" : compact
     end
