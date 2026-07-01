@@ -4,20 +4,20 @@
     {
       "id": 1,
       "subject": "Task 1: Debounced drain-aware rekick + observability (Fix 1)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Rekick a never-started child only when its branch is NOT draining (pending didn't drop since prior poll), at most once per REKICK_AFTER (touch debounce), and record rekick activity on branch-log metadata. Lands the shared foundation: load logs once, uncapped pending, superseded?(logs).\n\nDrain signal = pending-delta (NO query, NO started_at index). First poll (no prev_pending) doesn't gate; per-child staleness filter spares fresh children.\n\n**Files:**\n- Modify: lib/chrono_forge/branch_merge_job.rb\n- Test: test/branch_merge_job_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/branch_merge_job.rb\", \"test/branch_merge_job_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_merge_job_test.rb\", \"acceptanceCriteria\": [\"draining (pending dropped) suppresses rekick\", \"quiet branch still rekicks dropped child\", \"touch debounces re-rekick within REKICK_AFTER\", \"metadata records rekick stats\", \"all pre-existing tests pass\"], \"requiresUserVerification\": false}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: ETA + exponential-backoff poll cadence (Fix 2)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Drive reschedule delay from estimated time-to-drain (measured from prior poll's UNCAPPED pending), clamped [min,max]. When nothing completed this interval, use motion: :running holds floor (no regression), :dispatched backs off exponentially, :none -> max. Persist rate + eta_seconds per branch for the dashboard.\n\n**Files:**\n- Modify: lib/chrono_forge/branch_merge_job.rb (remove FACTOR+CAP, add ETA_FRACTION=0.5; motion from BranchProbe.running?/dispatched?; prev_pending/elapsed/prev_delay from metadata w/ size guard; new reschedule_delay(pending, rate, motion, prev_delay, min, max); record_poll! interval + rate + eta_seconds)\n- Modify: lib/chrono_forge/branch_probe.rb (add running?/dispatched?)\n- Modify: lib/chrono_forge/executor/methods/merge_branches.rb (stale FACTOR comment)\n- Test: test/branch_merge_job_test.rb\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/branch_merge_job.rb\", \"lib/chrono_forge/branch_probe.rb\", \"lib/chrono_forge/executor/methods/merge_branches.rb\", \"test/branch_merge_job_test.rb\"], \"verifyCommand\": \"bundle exec ruby -I test test/branch_merge_job_test.rb\", \"acceptanceCriteria\": [\"ETA scales with measured drain rate\", \"clamps to min and max\", \"running child holds floor (no regression)\", \"dispatched straggler backs off exponentially\", \"max when nothing progresses\", \"second poll records+uses throughput\", \"pre-existing cadence tests pass\"], \"requiresUserVerification\": false}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Update the scale-test doc",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Replace the 'needs a caveat' framing in docs/fanout-scale-test.md with a 'Poller behavior' note (pending-delta drain-aware rekick + touch debounce; ETA cadence with corrected 500k profile; no new indexes).\n\n**Files:**\n- Modify: docs/fanout-scale-test.md\n\n```json:metadata\n{\"files\": [\"docs/fanout-scale-test.md\"], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"doc reflects debounced drain-aware rekick and ETA cadence\"], \"requiresUserVerification\": false}\n```"
     },
