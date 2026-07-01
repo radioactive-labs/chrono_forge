@@ -49,7 +49,7 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 | Branches | Branch children |
 | --- | --- |
 | [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
-| Fan-out branches with capped dispatched/pending/blocked counts and merge state, plus in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children — blocked-first triage, capped filters, retry per child. |
+| Fan-out branches with exact **spawned / pending / never-started** counts (recorded by the poller — the immutable spawned total is counted once and cached when the branch seals) plus blocked count and merge state, and in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children with a **live stats header** (throughput/ETA, spawned, pending, never-started, dropped-child recovery) — blocked-first triage, capped state filters, retry per child. |
 
 **Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
 
