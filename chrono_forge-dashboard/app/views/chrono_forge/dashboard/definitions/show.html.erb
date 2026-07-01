@@ -1,0 +1,26 @@
+<%= link_to "‹ Back to workflow", workflow_path(@workflow), class: cf_chip("mb-2") %>
+
+<div class="mb-4">
+  <h1 class="text-lg font-semibold text-zinc-800">Definition graph</h1>
+  <p class="text-xs text-zinc-500"><%= @workflow.job_class %> — <%= @workflow.key %></p>
+</div>
+
+<% if @warnings.any? %>
+  <div class="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+    <p class="font-medium mb-1">Static analysis notes</p>
+    <ul class="list-disc pl-4 space-y-0.5">
+      <% @warnings.each do |w| %><li><%= w %></li><% end %>
+    </ul>
+  </div>
+<% end %>
+
+<div class="rounded border border-zinc-200 bg-white p-4 overflow-auto">
+  <pre class="mermaid"><%= @mermaid %></pre>
+</div>
+
+<script src="<%= "#{request.script_name}/assets/mermaid.min.js?v=#{ChronoForge::Dashboard.asset_digest("mermaid.min.js")}" %>"></script>
+<script>
+  (function () {
+    if (window.mermaid) { window.mermaid.initialize({ startOnLoad: true }); window.mermaid.run(); }
+  })();
+</script>
