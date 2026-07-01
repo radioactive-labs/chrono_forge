@@ -28,4 +28,27 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     d = defn(DefinitionFixtures::Linear)
     refute d.nodes.any? { |n| n.label.include?("context") }
   end
+
+  def test_conditional_body_reached_by_guarded_edge
+    d = defn(DefinitionFixtures::Conditional)
+    gift = d.nodes.find { |n| n.step_name == "durably_execute$gift" }
+    edge = d.edges.find { |e| e.to == gift.id }
+    assert_equal :conditional, edge.kind
+    assert_equal "vip?", edge.guard
+  end
+
+  def test_conditional_rejoins_skip_and_body_paths
+    d = defn(DefinitionFixtures::Conditional)
+    charge = d.nodes.find { |n| n.step_name == "durably_execute$charge" }
+    gift   = d.nodes.find { |n| n.step_name == "durably_execute$gift" }
+    approved = d.nodes.find { |n| n.step_name == "continue_if$approved" }
+    assert d.edges.any? { |e| e.from == gift.id && e.to == approved.id }
+    assert d.edges.any? { |e| e.from == charge.id && e.to == approved.id }
+  end
+
+  def test_continue_if_has_terminal_false_path
+    d = defn(DefinitionFixtures::Conditional)
+    approved = d.nodes.find { |n| n.step_name == "continue_if$approved" }
+    assert d.edges.any? { |e| e.from == approved.id && e.kind == :terminal }
+  end
 end

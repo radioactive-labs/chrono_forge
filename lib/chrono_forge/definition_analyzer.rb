@@ -44,16 +44,19 @@ module ChronoForge
       loc = @klass.instance_method(:perform).source_location
       return [nil, nil, {}] unless loc && File.readable?(loc.first)
 
-      result = Prism.parse_file(loc.first)
+      file, line = loc
+      result = Prism.parse_file(file)
       defs = {}
       perform = nil
       collect = ->(node) do
         return unless node.is_a?(Prism::DefNode)
         defs[node.name] = node
-        perform = node if node.name == :perform
+        # A file may hold several workflow classes (each with its own #perform);
+        # bind to the one whose `def` starts on this method's source line.
+        perform = node if node.name == :perform && node.location.start_line == line
       end
       each_def(result.value, &collect)
-      [loc.first, perform, defs]
+      [file, perform, defs]
     end
 
     # Yield every DefNode anywhere under `node` (workflows may nest in modules).
@@ -79,13 +82,104 @@ module ChronoForge
     end
 
     # Visit one statement; return the new "previous" id (unchanged if it emitted
-    # nothing).
+    # nothing). `prev` may be a single node id or a list of ids (the multiple
+    # exits of a conditional that rejoin at the next statement).
     def visit(stmt, prev)
-      if (call = durable_call(stmt))
-        return emit_durable(call, prev)
+      case stmt
+      when Prism::IfNode, Prism::UnlessNode
+        visit_conditional(stmt, prev)
+      when Prism::CaseNode
+        visit_case(stmt, prev)
+      else
+        if (call = durable_call(stmt))
+          id = emit_durable(call, prev)
+          id = attach_terminal(call, id) if call.name == :continue_if
+          id
+        else
+          prev
+        end
       end
-      prev
     end
+
+    # if/unless: walk the body under a guard, then expose BOTH the body exit(s)
+    # and the skip path (pre-`if` node, or the else-branch exits) so the next
+    # statement is reachable every way. Returns a list of exit ids.
+    def visit_conditional(node, prev)
+      guard = source_of(node.predicate)
+      before = @edges.size
+      body_exit = walk(node.statements, prev)
+      mark_entry_conditional(before, prev, guard)
+
+      exits = to_list(body_exit)
+      if (sub = branch_else(node))
+        before_else = @edges.size
+        else_stmts = sub.is_a?(Prism::ElseNode) ? sub.statements : sub
+        else_exit = walk(else_stmts, prev)
+        mark_entry_conditional(before_else, prev, negate(guard))
+        exits |= to_list(else_exit)
+      else
+        exits |= to_list(prev) # no else: skip path is the pre-`if` node
+      end
+      exits
+    end
+
+    def visit_case(node, prev)
+      exits = []
+      Array(node.conditions).each do |when_node|
+        guard = Array(when_node.conditions).map { |c| source_of(c) }.join(", ")
+        before = @edges.size
+        exit_id = walk(when_node.statements, prev)
+        mark_entry_conditional(before, prev, guard)
+        exits |= to_list(exit_id)
+      end
+      exits |=
+        if node.else_clause
+          to_list(walk(node.else_clause.statements, prev))
+        else
+          to_list(prev)
+        end
+      exits
+    end
+
+    # The else/elsif chain, across prism versions (IfNode uses #subsequent, older
+    # #consequent; Unless/Case expose #else_clause). Returns the node or nil.
+    def branch_else(node)
+      return node.subsequent if node.respond_to?(:subsequent)
+      return node.else_clause if node.respond_to?(:else_clause)
+      return node.consequent if node.respond_to?(:consequent)
+      nil
+    end
+
+    # The edges added since `before` that enter the body's first node (one per
+    # incoming prev) are the conditional entry: relabel them :conditional + guard.
+    def mark_entry_conditional(before, prev, guard)
+      prevs = to_list(prev)
+      entry = @edges[before..].select { |e| prevs.include?(e.from) }
+      return if entry.empty?
+      first_to = entry.first.to
+      entry.select { |e| e.to == first_to }.each do |e|
+        e.kind = :conditional
+        e.guard = guard
+      end
+    end
+
+    # continue_if's false path halts the workflow: a :terminal edge to the shared
+    # synthetic "halt" sink. Like "start", the sink is a virtual endpoint id, not
+    # a real node, so it never pollutes the durable-step node list.
+    def attach_terminal(_call, id)
+      add_edge(id, "halt", :terminal, "condition false")
+      id
+    end
+
+    # Best-effort source text of a predicate node (for guard labels). Falls back
+    # to the node type when slicing isn't available.
+    def source_of(node)
+      node.respond_to?(:slice) ? node.slice : node.class.name.split("::").last
+    end
+
+    def negate(guard) = "!(#{guard})"
+
+    def to_list(value) = value.is_a?(Array) ? value : [value]
 
     # A Prism::CallNode whose method is a recognized durable DSL call with no
     # explicit receiver (or `self`). Returns the CallNode or nil.
@@ -107,7 +201,7 @@ module ChronoForge
         step_name_pattern: ("#{prefix_for(call.name)}$" if dynamic),
         warnings: (dynamic ? ["#{call.name}: dynamic name — bound by prefix/ordinal"] : [])
       )
-      add_edge(prev, node.id, :seq)
+      to_list(prev).each { |p| add_edge(p, node.id, :seq) }
       node.id
     end
 

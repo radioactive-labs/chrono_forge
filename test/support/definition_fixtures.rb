@@ -12,4 +12,15 @@ module DefinitionFixtures
       merge_branches :b, :a
     end
   end
+
+  class Conditional
+    def perform
+      durably_execute :charge
+      if vip?
+        durably_execute :gift
+      end
+      continue_if :approved
+      durably_execute :ship
+    end
+  end
 end
