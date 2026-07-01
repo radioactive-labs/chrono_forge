@@ -74,7 +74,8 @@ module ChronoForge
       # throughput surfaced on the dashboard. Per branch for display; aggregated for
       # the ETA. Zero unless the branch actually drained (a no-headway / cold poll).
       # NOTE: the aggregate ETA blurs a heterogeneous multi-branch merge; acceptable
-      # (automerge is single-branch; clamp + per-poll re-estimate bound any skew).
+      # (the common case is single-branch; clamp + per-poll re-estimate bound any
+      # skew, and only poll timing is affected — the parent is still woken).
       drained = ->(pend, prev) { prev && elapsed && elapsed > 0 && pend < prev }
       rate_by_branch = pending_by_branch.to_h do |id, pend|
         prev = prev_pending_by_branch[id]

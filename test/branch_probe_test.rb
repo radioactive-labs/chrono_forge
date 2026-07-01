@@ -44,4 +44,28 @@ class BranchProbeTest < ActiveSupport::TestCase
     child!(state: :completed)
     assert_equal 3, ChronoForge::BranchProbe.incomplete(@log.id).count
   end
+
+  # running? — true iff a child is actively executing (drives the cadence's
+  # :running motion, which holds the responsive floor). A dispatched-but-unstarted
+  # or waiting/blocked child is NOT running.
+  def test_running_predicate
+    refute ChronoForge::BranchProbe.running?(@log.id)
+    child!(state: :idle, started_at: nil) # dispatched, not started
+    refute ChronoForge::BranchProbe.running?(@log.id)
+    child!(state: :running)
+    assert ChronoForge::BranchProbe.running?(@log.id)
+  end
+
+  # dispatched? — true iff a child is idle with started_at nil (dispatched but no
+  # worker has started it — the :dispatched motion). A running child, or an idle
+  # child that already ran and is parked on a wait (started_at SET), is NOT it.
+  def test_dispatched_predicate
+    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+    child!(state: :running)
+    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+    child!(state: :idle, started_at: 1.minute.ago) # ran, now waiting
+    refute ChronoForge::BranchProbe.dispatched?(@log.id)
+    child!(state: :idle, started_at: nil) # dispatched, never started
+    assert ChronoForge::BranchProbe.dispatched?(@log.id)
+  end
 end

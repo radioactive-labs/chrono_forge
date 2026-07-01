@@ -5,7 +5,8 @@ module ChronoForge
         # Join one or more named branches. Separate from dispatch so branches run
         # concurrently. Does one immediate check; if not done, hands off to the
         # lightweight BranchMergeJob and halts (the heavy parent is not replayed
-        # per poll). Cadence clamps between min/max, scaled by pending.
+        # per poll). Poll cadence is driven by estimated time-to-drain, clamped
+        # between min/max (see BranchMergeJob#reschedule_delay).
         def merge_branches(*names, min_interval: 5.seconds, max_interval: 5.minutes)
           names.each do |nm|
             validate_step_name_segment!(nm)  # rejects "$"
