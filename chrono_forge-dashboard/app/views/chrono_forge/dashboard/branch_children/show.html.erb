@@ -9,6 +9,45 @@
         form: {data: {confirm: "Re-enqueue every failed/stalled child of this branch?"}}, class: "cf-btn cf-btn-primary shrink-0" %>
 </div>
 
+<%# Live poll stats from the branch log's metadata (throughput/ETA while draining,
+    plus the never-started count and dropped-child recovery the poller records). %>
+<% if @branch.polled? %>
+  <dl class="mb-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+    <% if @branch.throughput? %>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-zinc-400">Throughput</dt>
+        <dd class="font-mono text-zinc-700"><%= @branch.rate < 1 ? @branch.rate.round(1) : number_with_delimiter(@branch.rate.round) %>/s</dd>
+      </div>
+      <% if @branch.eta_seconds %>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-zinc-400">ETA</dt>
+          <dd class="font-mono text-zinc-700"><%= cf_secs(@branch.eta_seconds) %></dd>
+        </div>
+      <% end %>
+    <% end %>
+    <% unless @branch.never_started.nil? %>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-zinc-400">Never started</dt>
+        <dd class="font-mono text-zinc-700"><%= number_with_delimiter(@branch.never_started) %></dd>
+      </div>
+    <% end %>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-zinc-400">Recovered</dt>
+      <dd class="font-mono text-zinc-700"><%= @branch.rekicks %><% if @branch.last_rekick_at %> <span class="text-zinc-400">· last <%= cf_ago(@branch.last_rekick_at) %></span><% end %></dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-zinc-400">Last check</dt>
+      <dd class="font-mono text-zinc-700"><%= cf_ago(@branch.last_polled_at) %> · <%= pluralize(@branch.polls, "poll") %></dd>
+    </div>
+    <% if @branch.next_poll_at %>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-zinc-400">Next check</dt>
+        <dd class="font-mono <%= @branch.poll_overdue? ? "text-rose-600" : "text-zinc-700" %>"><%= cf_when(@branch.next_poll_at) %></dd>
+      </div>
+    <% end %>
+  </dl>
+<% end %>
+
 <div>
   <% current = params.key?(:state) ? params[:state].to_s : "blocked" %>
   <% blocked = @stats["failed"].to_i + @stats["stalled"].to_i %>

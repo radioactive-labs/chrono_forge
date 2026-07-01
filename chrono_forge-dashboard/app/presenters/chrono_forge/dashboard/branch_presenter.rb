@@ -51,6 +51,25 @@ module ChronoForge
         t.present? && t < Time.current - POLL_OVERDUE_GRACE
       end
 
+      # Live throughput/ETA from the last poll (the poller measures the branch's
+      # completion rate each pass). The wake poll records rate 0, so a positive rate
+      # means the branch is still draining — a merged/idle branch shows no gauge.
+      def rate = poll&.dig("rate").to_f
+
+      def eta_seconds = poll&.dig("eta_seconds")
+
+      def throughput? = rate > 0
+
+      # Children dispatched but not yet started (from the poll's drain signal) — how
+      # much of this branch hasn't been picked up yet. Uncapped (the poller's count).
+      def never_started = poll&.dig("dispatched")
+
+      # Dropped-child recovery: how many children the poller has rekicked, and when
+      # it last did (nil if never).
+      def rekicks = poll&.dig("rekick_total").to_i
+
+      def last_rekick_at = parse_time(poll&.dig("last_rekick_at"))
+
       private
 
       def children = @log.spawned_workflows
