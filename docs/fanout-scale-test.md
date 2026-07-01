@@ -177,6 +177,13 @@ The dashboard's scale-aware design held up live: capped `5000+` counts (no
 `COUNT(*)` over 500k), keyset pagination, blocked-first triage — instant render
 throughout the run.
 
+On a branch's detail views the counts the poller already records render **exact**
+straight from the branch-log metadata — no live count: `pending` and
+`never-started` (recomputed each poll) and the total `spawned` (immutable once the
+branch is sealed, so it's counted **once** and cached). Only the mutable per-state
+chips (idle / completed / …) stay capped. So a 500k branch shows its real
+`spawned` / `pending` / `never-started` figures, not `5000+`.
+
 ## Poller behavior
 
 `BranchMergeJob` cadence is driven by **estimated time-to-drain** (from the prior

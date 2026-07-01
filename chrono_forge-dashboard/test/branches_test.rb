@@ -140,6 +140,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     draining = parent.execution_logs.create!(step_name: "branch$a",
       state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
       metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
+                            "spawned" => 100_000,
                             "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601, "polls" => 7}})
     3.times { |i| create_workflow(key: "bp-ns-#{i}", state: :idle, started_at: nil, parent_execution_log_id: draining.id) }
     b = ChronoForge::Dashboard::BranchPresenter.new(draining)
@@ -150,6 +151,7 @@ class BranchesPresenterTest < ActiveSupport::TestCase
     # The full (uncapped) counts the poller already recorded — no new query.
     assert_equal 90_000, b.exact_pending
     assert_equal 65_000, b.exact_never_started
+    assert_equal 100_000, b.exact_spawned, "total spawned, cached once at seal"
     assert_equal 12, b.rekicks
     assert b.last_rekick_at
 
@@ -215,6 +217,7 @@ class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
     bl = parent.execution_logs.create!(step_name: "branch$orders",
       state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago,
       metadata: {"poll" => {"rate" => 226.0, "eta_seconds" => 88, "pending" => 90_000, "never_started" => 65_000,
+                            "spawned" => 100_000,
                             "rekick_total" => 12, "last_rekick_at" => 2.minutes.ago.iso8601,
                             "polls" => 7, "last_polled_at" => 10.seconds.ago.iso8601}})
     create_workflow(key: "pc-stats-x", state: :running, job_class: "OrderWorkflow", parent_execution_log_id: bl.id)
@@ -225,6 +228,8 @@ class BranchChildrenControllerTest < ActionDispatch::IntegrationTest
     assert_match "Never started", response.body # never-started label
     assert_match "65,000", response.body        # exact never-started (full count from metadata)
     assert_match "90,000", response.body        # exact pending (full count from metadata)
+    assert_match "Spawned", response.body       # total-spawned label
+    assert_match "100,000", response.body       # exact spawned (cached once at seal)
     assert_match "Recovered", response.body     # dropped-child recovery
     assert_match "12", response.body            # rekick_total
   end

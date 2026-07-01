@@ -25,6 +25,12 @@
         </div>
       <% end %>
     <% end %>
+    <% if @branch.exact_spawned %>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-zinc-400">Spawned</dt>
+        <dd class="font-mono text-zinc-700"><%= number_with_delimiter(@branch.exact_spawned) %></dd>
+      </div>
+    <% end %>
     <% if @branch.exact_pending %>
       <div>
         <dt class="text-xs uppercase tracking-wide text-zinc-400">Pending</dt>

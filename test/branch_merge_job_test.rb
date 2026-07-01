@@ -171,10 +171,25 @@ class BranchMergeJobTest < ActiveJob::TestCase
     poll = @log.reload.metadata["poll"]
     assert poll, "poll state should be recorded on the branch log"
     assert_equal 1, poll["pending"]
+    assert_equal 1, poll["spawned"], "total spawned (all children) counted and cached"
     assert_equal true, poll["sealed"]
     assert poll["last_polled_at"], "last_polled_at should be recorded"
     assert poll["next_poll_at"], "next_poll_at should be set while still polling"
     assert_equal 1, poll["polls"]
+  end
+
+  # The total spawned count is immutable once the branch is sealed, so the poller
+  # counts it EXACTLY ONCE and caches it — a row appearing after the first poll must
+  # not change the cached figure (proving it isn't recounted every pass).
+  def test_caches_spawned_count_once_when_sealed
+    child!(state: :running)
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata.dig("poll", "spawned")
+
+    child!(state: :running) # a second child now exists
+    ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    assert_equal 1, @log.reload.metadata.dig("poll", "spawned"),
+      "spawned is cached once at seal, not recounted per poll"
   end
 
   # The poll state must not clobber spawn_each's cursors — both live in the same

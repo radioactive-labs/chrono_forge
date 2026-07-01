@@ -30,7 +30,7 @@
                 · <span class="text-zinc-400" title="<%= b.polls %> polls · next <%= b.next_poll_at&.iso8601 || "—" %>">polling</span>
               <% end %>
             </td>
-            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= cf_capped(b.spawned, b.cap) %></td>
+            <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_spawned ? number_with_delimiter(b.exact_spawned) : cf_capped(b.spawned, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_pending ? number_with_delimiter(b.exact_pending) : cf_capped(b.pending, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums text-zinc-600"><%= b.exact_never_started ? number_with_delimiter(b.exact_never_started) : cf_capped(b.never_started, b.cap) %></td>
             <td class="py-2 pr-4 text-right font-mono tabular-nums <%= "font-medium text-rose-600" if b.blocked > 0 %>"><%= cf_capped(b.blocked, b.cap) %></td>

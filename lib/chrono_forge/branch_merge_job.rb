@@ -57,9 +57,20 @@ module ChronoForge
       pending = pending_by_branch.values.sum
       sealed = sealed_by_branch.values.all?
 
+      # Total children spawned per branch. Immutable once the branch is SEALED
+      # (dispatch done), so we count it exactly ONCE and cache it on the metadata;
+      # every later poll (and the dashboard) reuses the cached value, never recounting.
+      # Unsealed (mid-spawn, count still climbing) => nil, and the dashboard falls back
+      # to its capped live count until the seal freezes the total.
+      logs_by_id = logs.index_by(&:id)
+      spawned_by_branch = branch_log_ids.to_h do |id|
+        cached = logs_by_id[id]&.metadata&.dig("poll", "spawned")
+        [id, cached || (sealed_by_branch[id] ? BranchProbe.spawned(id).count : nil)]
+      end
+
       if sealed && pending.zero?
         record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil, interval: nil,
-          rate_by_branch: {}, never_started_by_branch: {}, rekicked_by_branch: {})
+          rate_by_branch: {}, never_started_by_branch: {}, spawned_by_branch: spawned_by_branch, rekicked_by_branch: {})
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
@@ -118,7 +129,7 @@ module ChronoForge
       delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now,
         interval: delay, rate_by_branch: rate_by_branch, never_started_by_branch: never_started_by_branch,
-        rekicked_by_branch: rekicked_by_branch)
+        spawned_by_branch: spawned_by_branch, rekicked_by_branch: rekicked_by_branch)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
@@ -172,7 +183,7 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, never_started_by_branch:, rekicked_by_branch:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, never_started_by_branch:, spawned_by_branch:, rekicked_by_branch:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
         # Lock the row so this read-modify-write can't clobber a concurrent token
@@ -192,6 +203,7 @@ module ChronoForge
             "interval" => interval,
             "pending" => pend,
             "never_started" => never_started_by_branch[log.id],   # never-started count (rekick drain signal)
+            "spawned" => prev["spawned"] || spawned_by_branch[log.id],  # total spawned; immutable once sealed, so sticky
             "sealed" => sealed_by_branch[log.id],
             "rate" => rate.round(3),                               # children/s (round(3), not (2), so a
                                                                    # very slow but real drain still reads > 0)

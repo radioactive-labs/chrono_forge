@@ -72,6 +72,11 @@ module ChronoForge
 
       def exact_never_started = poll&.dig("never_started")
 
+      # Total spawned, counted once and cached by the poller when the branch sealed
+      # (see BranchProbe#spawned) — exact and free. nil until sealed+polled; the
+      # "Spawned" column then falls back to the capped live count.
+      def exact_spawned = poll&.dig("spawned")
+
       # Dropped-child recovery: how many children the poller has rekicked, and when
       # it last did (nil if never).
       def rekicks = poll&.dig("rekick_total").to_i

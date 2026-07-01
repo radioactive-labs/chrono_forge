@@ -55,6 +55,14 @@ module ChronoForge
     # picked up), NOT active work — so the poller backs off.
     def never_started?(branch_log_id) = never_started(branch_log_id).exists?
 
+    # All children spawned into this branch (every state) — the dispatch total. Fixed
+    # once the branch is sealed, so the poller counts it exactly once and caches it on
+    # the branch-log metadata. This is the dashboard's "Spawned" column. Distinct from
+    # #never_started, which is only the idle-and-unstarted subset.
+    def spawned(branch_log_id)
+      Workflow.where(parent_execution_log_id: branch_log_id)
+    end
+
     def done?(branch_log_id)
       sealed?(branch_log_id) && !incomplete(branch_log_id).exists?
     end
