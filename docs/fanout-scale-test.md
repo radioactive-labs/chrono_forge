@@ -216,10 +216,16 @@ and both defeat the point of the ETA cadence:
   mid-drain sample, so `rate` stays 0.
 
 Give the poller a **dedicated, un-starved queue** so it polls throughout the drain
-(then ETA engages and convergence is tight). For these runs that is the
-`:scale_poller` worker in `config/scale_queue.yml`; in production, route
-`BranchMergeJob` off the fan-out's own queue. This bit us live-driving 20k/100k —
-the first pass had the poller on `:scale` and every parent hung `idle` for 5 min.
+(then ETA engages and convergence is tight) via the first-class setting:
+
+```ruby
+ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers }
+```
+
+(and run a worker on that queue). It defaults to `:default`, which is fine when
+fan-outs run on their own queues. For these runs that queue is `:scale_poller`
+(see `config/scale_queue.yml`). This bit us live-driving 20k/100k — the first pass
+had the poller on `:scale` and every parent hung `idle` for 5 min.
 
 ## Environment caveats
 

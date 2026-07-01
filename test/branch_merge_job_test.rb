@@ -66,6 +66,18 @@ class BranchMergeJobTest < ActiveJob::TestCase
       "BranchMergeJob must retry transient DB errors so they do not orphan the parent"
   end
 
+  # The poller's queue is a first-class config (we own this job, not the user), read
+  # per-enqueue so a change takes effect without redefining the class — this is the
+  # supported way to keep the poller off a fan-out's saturated child queue.
+  def test_branch_merge_queue_is_configurable
+    ChronoForge.reset_configuration!
+    assert_equal "default", ChronoForge::BranchMergeJob.new.queue_name
+    ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers }
+    assert_equal "chrono_forge_pollers", ChronoForge::BranchMergeJob.new.queue_name
+  ensure
+    ChronoForge.reset_configuration!
+  end
+
   # A programming bug (e.g. the empty-input guard) must propagate loudly to the
   # backend's failed-job queue, NOT be silently retried-then-discarded.
   def test_empty_branch_log_ids_propagates_loudly

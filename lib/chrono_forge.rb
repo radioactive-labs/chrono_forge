@@ -13,4 +13,12 @@ module ChronoForge
   class Error < StandardError; end
 
   def self.ApplicationRecord = defined?(::ApplicationRecord) ? ::ApplicationRecord : ActiveRecord::Base
+
+  # Engine configuration (see ChronoForge::Configuration).
+  #   ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers }
+  def self.config = @config ||= Configuration.new
+
+  def self.configure = yield(config)
+
+  def self.reset_configuration! = @config = Configuration.new
 end

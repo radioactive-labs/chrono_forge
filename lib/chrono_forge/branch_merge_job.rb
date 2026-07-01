@@ -10,10 +10,16 @@ module ChronoForge
   # large fan-out's children it is starved behind the whole backlog and only gets a
   # worker slot near the end. It then polls once, at pending≈0, with no prior sample
   # (rate 0) and backs off to max_interval — so the parent's convergence lags by up
-  # to max_interval and no mid-drain throughput sample is ever recorded. Run it on a
-  # queue that is NOT saturated by the fan-out's own children so it polls throughout
-  # the drain (ETA cadence then converges tightly). See docs/fanout-scale-test.md.
+  # to max_interval and no mid-drain throughput sample is ever recorded. Set
+  # ChronoForge.config.branch_merge_queue to a queue NOT saturated by the fan-out's
+  # own children so it polls throughout the drain (ETA cadence then converges
+  # tightly). See ChronoForge::Configuration and docs/fanout-scale-test.md.
   class BranchMergeJob < ActiveJob::Base
+    # Resolved per-enqueue from config (a block, so changing the config takes effect
+    # without redefining the job — and it can't be silently reset by a code reload,
+    # unlike a queue_as monkey-patch in a to_prepare block).
+    queue_as { ChronoForge.config.branch_merge_queue }
+
     # The poller is the parent's only wake mechanism, so survive TRANSIENT
     # infrastructure errors (DB connection/timeout/deadlock) with backoff. Any
     # other error — a programming bug, a bad guard — is NOT retried: it propagates
