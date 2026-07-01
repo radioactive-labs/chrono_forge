@@ -38,13 +38,21 @@ module ChronoForge
       Workflow.where(parent_execution_log_id: branch_log_id, state: Workflow.states[:running]).exists?
     end
 
-    # A child was dispatched but no worker has started it yet (started_at nil). If
-    # this is the only motion left, it's a queued/rekicked-but-unpicked straggler
-    # (which may never be picked up), NOT active work — so the poller backs off.
-    def dispatched?(branch_log_id)
+    # Children dispatched but not yet started (idle, started_at nil) — the queue of
+    # never-started work for this branch. A DROP in this count between polls means
+    # workers are actively pulling it off the queue (so a still-queued child is in
+    # line, not dropped); the rekick gate keys off that. Distinct from total pending,
+    # which a wait/wait_until child completing would drop without any never-started
+    # child moving.
+    def dispatched(branch_log_id)
       Workflow.where(parent_execution_log_id: branch_log_id,
-        state: Workflow.states[:idle], started_at: nil).exists?
+        state: Workflow.states[:idle], started_at: nil)
     end
+
+    # A child was dispatched but no worker has started it yet. If this is the only
+    # motion left, it's a queued/rekicked-but-unpicked straggler (which may never be
+    # picked up), NOT active work — so the poller backs off.
+    def dispatched?(branch_log_id) = dispatched(branch_log_id).exists?
 
     def done?(branch_log_id)
       sealed?(branch_log_id) && !incomplete(branch_log_id).exists?

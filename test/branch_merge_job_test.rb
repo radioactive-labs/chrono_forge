@@ -332,24 +332,43 @@ class BranchMergeJobTest < ActiveJob::TestCase
     end
   end
 
-  # Fix 1: pending dropped since the prior poll => branch is draining => a stale
-  # idle never-started child is queued behind the drain, not dropped. No rekick.
+  # Fix 1: the never-started (dispatched) count dropped since the prior poll =>
+  # workers are consuming the branch's queue => a stale idle never-started child is
+  # in line, not dropped. No rekick.
   def test_does_not_rekick_while_branch_is_draining
-    @log.update!(metadata: {"poll" => {"pending" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
-    stale = child!(state: :idle, started_at: nil) # pending now = 1 < prior 5 => draining
+    @log.update!(metadata: {"poll" => {"dispatched" => 5, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # dispatched now = 1 < prior 5 => draining
     stale.update_column(:updated_at, 10.minutes.ago)
     assert_no_enqueued_jobs(only: NoopChild) do
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     end
   end
 
-  # Pending unchanged since the prior poll (branch gone quiet) => a genuinely
-  # dropped, stale never-started child IS rekicked.
+  # Never-started count unchanged since the prior poll (queue not being consumed)
+  # => a genuinely dropped, stale never-started child IS rekicked.
   def test_rekicks_when_branch_has_gone_quiet
-    @log.update!(metadata: {"poll" => {"pending" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
-    stale = child!(state: :idle, started_at: nil) # pending now = 1 == prior 1 => not draining
+    @log.update!(metadata: {"poll" => {"dispatched" => 1, "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 1}})
+    stale = child!(state: :idle, started_at: nil) # dispatched now = 1 == prior 1 => not draining
     stale.update_column(:updated_at, 10.minutes.ago)
     assert_enqueued_with(job: NoopChild, args: [stale.key]) do
+      ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
+    end
+  end
+
+  # Fix 1 (the point of gating on never-started, not total pending): a wait/
+  # wait_until child resuming + completing drops total pending, but that must NOT
+  # mask a genuinely-dropped never-started child behind it. The dropped child is
+  # still rekicked because the never-started count did not fall.
+  def test_rekicks_dropped_child_when_only_waits_drain_pending
+    @log.update!(metadata: {"poll" => {"pending" => 3, "dispatched" => 1,
+      "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 2}})
+    child!(state: :completed)                        # a wait that resumed + completed
+    child!(state: :idle, started_at: 20.minutes.ago) # a child still parked on a wait
+    dropped = child!(state: :idle, started_at: nil)  # genuinely dropped, never started
+    dropped.update_column(:updated_at, 10.minutes.ago)
+    # pending now = 2 (< prior 3 — the OLD pending gate would wrongly suppress) but
+    # dispatched = 1 (== prior 1: no never-started child was consumed) => rekick.
+    assert_enqueued_with(job: NoopChild, args: [dropped.key]) do
       ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     end
   end
@@ -383,16 +402,16 @@ class BranchMergeJobTest < ActiveJob::TestCase
 
   # rekick_total is a running counter, not a per-poll value: it accumulates across
   # successive rekicking polls. The first poll rekicks child A (debouncing it); a
-  # fresh stale child B on the second poll keeps pending from dropping (so the
-  # drain gate stays open) and is rekicked, carrying rekick_total 1 -> 2.
+  # fresh stale child B on the second poll keeps the never-started count from
+  # dropping (so the drain gate stays open) and is rekicked, carrying total 1 -> 2.
   def test_rekick_total_accumulates_across_polls
     a = child!(state: :idle, started_at: nil)
     a.update_column(:updated_at, 10.minutes.ago)
     ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)
     assert_equal 1, @log.reload.metadata["poll"]["rekick_total"]
 
-    # A is now debounced (touched fresh). Add a second stale child so pending stays
-    # at 2 >= prior 1 (branch not draining => gate open) and B gets rekicked.
+    # A is now debounced (touched fresh). Add a second stale child so the never-
+    # started count rises to 2 (>= prior 1, gate open) and B gets rekicked.
     b = child!(state: :idle, started_at: nil)
     b.update_column(:updated_at, 10.minutes.ago)
     ChronoForge::BranchMergeJob.perform_now("bmj-parent", "SingleSpawnWorkflow", [@log.id], 5, 300)

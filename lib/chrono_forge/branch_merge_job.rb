@@ -52,13 +52,22 @@ module ChronoForge
       sealed = sealed_by_branch.values.all?
 
       if sealed && pending.zero?
-        record_poll!(pending_by_branch, sealed_by_branch, token,
-          next_poll_at: nil, interval: nil, rate_by_branch: {}, rekicked_by_branch: {})
+        record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: nil, interval: nil,
+          rate_by_branch: {}, dispatched_by_branch: {}, rekicked_by_branch: {})
         parent_job_class.constantize.perform_later(parent_key)
         return
       end
 
-      rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)
+      # DISPATCHED (never-started) count per branch — the rekick drain signal. A
+      # drop since the prior poll means workers are consuming this branch's queue,
+      # so a still-queued child is in line; a flat count with stale never-started
+      # children is a dropped job to recover. Keyed off this, NOT total pending,
+      # which a wait/wait_until child completing would drop without any never-started
+      # child moving (masking a genuinely-dropped one behind staggered waits).
+      prev_dispatched_by_branch = logs.to_h { |l| [l.id, l.metadata&.dig("poll", "dispatched")] }
+      dispatched_by_branch = branch_log_ids.to_h { |id| [id, BranchProbe.dispatched(id).count] }
+
+      rekicked_by_branch = rekick_dropped_jobs(branch_log_ids, dispatched_by_branch, prev_dispatched_by_branch)
 
       # Cadence is driven by ESTIMATED TIME-TO-DRAIN, measured from the prior
       # poll's persisted pending. `motion` (EXISTS probes) is the fallback signal
@@ -96,13 +105,14 @@ module ChronoForge
       # EXISTS probes lazily keeps them off the hot drain path. See reschedule_delay.
       motion = if rate > 0 then nil
       elsif branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
-      elsif branch_log_ids.any? { |id| BranchProbe.dispatched?(id) } then :dispatched
+      elsif dispatched_by_branch.values.any?(&:positive?) then :dispatched
       else :none
       end
 
       delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now,
-        interval: delay, rate_by_branch: rate_by_branch, rekicked_by_branch: rekicked_by_branch)
+        interval: delay, rate_by_branch: rate_by_branch, dispatched_by_branch: dispatched_by_branch,
+        rekicked_by_branch: rekicked_by_branch)
       self.class.set(wait: delay.seconds)
         .perform_later(parent_key, parent_job_class, branch_log_ids, min_interval, max_interval, token)
     end
@@ -156,7 +166,7 @@ module ChronoForge
     # work still pending is the signal that the poller was dropped). This is purely
     # observational — replay and correctness never read it. It writes a "poll"
     # sub-key, leaving spawn_each's "cursors" metadata untouched.
-    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, rekicked_by_branch:)
+    def record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at:, interval:, rate_by_branch:, dispatched_by_branch:, rekicked_by_branch:)
       now = Time.current
       ExecutionLog.where(id: pending_by_branch.keys).find_each do |log|
         # Lock the row so this read-modify-write can't clobber a concurrent token
@@ -175,6 +185,7 @@ module ChronoForge
             "next_poll_at" => next_poll_at&.iso8601,
             "interval" => interval,
             "pending" => pend,
+            "dispatched" => dispatched_by_branch[log.id],   # never-started count (rekick drain signal)
             "sealed" => sealed_by_branch[log.id],
             "rate" => rate.round(3),                               # children/s (round(3), not (2), so a
                                                                    # very slow but real drain still reads > 0)
@@ -200,15 +211,18 @@ module ChronoForge
     # keep the :idle guard (a running/failed/stalled child must never be
     # re-dispatched). Re-enqueue of an :idle child a worker just grabbed is still
     # safe — the lock guard rejects the duplicate. Capped per run.
-    def rekick_dropped_jobs(branch_log_ids, pending_by_branch, prev_pending_by_branch)
+    def rekick_dropped_jobs(branch_log_ids, dispatched_by_branch, prev_dispatched_by_branch)
       cutoff = REKICK_AFTER.ago
       branch_log_ids.to_h do |id|
-        # Skip a branch that drained since its last poll: its pending dropped, so
-        # the queue is moving and idle never-started children are just in line,
-        # not dropped. With no prior sample (cold poll) we don't gate — the
+        # Skip a branch whose NEVER-STARTED count dropped since the last poll:
+        # workers are pulling its dispatched children off the queue, so a still-
+        # queued child is in line, not dropped. Deliberately NOT total pending —
+        # a wait/wait_until child completing would drop pending without any
+        # never-started child moving, masking a genuinely-dropped child behind
+        # staggered waits. With no prior sample (cold poll) we don't gate — the
         # per-child staleness filter below still spares freshly-dispatched rows.
-        prev = prev_pending_by_branch[id]
-        next [id, 0] if prev && pending_by_branch[id] < prev
+        prev = prev_dispatched_by_branch[id]
+        next [id, 0] if prev && dispatched_by_branch[id] < prev
 
         count = 0
         Workflow.where(parent_execution_log_id: id, state: Workflow.states[:idle], started_at: nil)

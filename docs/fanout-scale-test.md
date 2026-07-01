@@ -191,12 +191,15 @@ child still running holds the responsive floor (so a slow or single-child branch
 never woken late), a dispatched-but-unpicked straggler backs off exponentially, and
 a fully blocked/waiting branch decays to `max_interval` instead of spinning.
 
-Rekick of dropped children is **gated on the pending delta**: a branch whose
-pending dropped since its last poll is still draining, so deeply-queued-but-healthy
-children are left alone; only a branch that has gone quiet has its never-started
-children rekicked, and a `touch` on each rekick debounces it to at most once per
-`REKICK_AFTER`. Rekick counts are stamped on the branch-log metadata for the
-dashboard.
+Rekick of dropped children is **gated on the never-started (dispatched) count
+delta**: if that count fell since the last poll, workers are consuming the branch's
+queue, so deeply-queued-but-healthy children are left alone. It deliberately does
+NOT use total pending — a `wait_until` child resuming would drop pending without
+any never-started child moving, masking a genuinely-dropped child behind staggered
+waits. Only a branch whose never-started count has gone flat has its stale
+never-started children rekicked, and a `touch` on each rekick debounces it to at
+most once per `REKICK_AFTER`. Rekick counts are stamped on the branch-log metadata
+for the dashboard.
 
 ### ⚠️ Poller queue placement (a trap)
 
