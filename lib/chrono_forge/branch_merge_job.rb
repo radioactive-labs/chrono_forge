@@ -57,11 +57,7 @@ module ChronoForge
       # executing a child (hold the floor, it'll finish); :dispatched => the only
       # motion is a queued/rekicked-but-unpicked child (back off exponentially,
       # it may never be picked up); :none => blocked/waiting (max backstop).
-      # See reschedule_delay.
-      motion = if branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
-      elsif branch_log_ids.any? { |id| BranchProbe.dispatched?(id) } then :dispatched
-      else :none
-      end
+      # See reschedule_delay. Computed lazily below, only off the drain path.
       prior = logs.map { |l| l.metadata&.dig("poll") }
       # Only trust the AGGREGATE prev_pending when every requested branch log is
       # loaded AND carries a prior sample — otherwise `pending` (over all
@@ -85,6 +81,14 @@ module ChronoForge
         [id, drained.call(pend, prev) ? (prev - pend) / elapsed.to_f : 0.0]
       end
       rate = drained.call(pending, prev_pending) ? (prev_pending - pending) / elapsed.to_f : 0.0
+
+      # Only needed when the ETA branch won't be taken (rate == 0); computing the
+      # EXISTS probes lazily keeps them off the hot drain path. See reschedule_delay.
+      motion = if rate > 0 then nil
+      elsif branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
+      elsif branch_log_ids.any? { |id| BranchProbe.dispatched?(id) } then :dispatched
+      else :none
+      end
 
       delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
       record_poll!(pending_by_branch, sealed_by_branch, token, next_poll_at: delay.seconds.from_now,
