@@ -12,8 +12,6 @@ module ChronoForge
       Merge = Struct.new(:names, :state, :started_at, :last_polled_at, :next_poll_at, :polls, :rate, :eta_seconds) do
         def merging? = state == :merging
 
-        def merged? = state == :merged
-
         # A next check scheduled in the past while still merging means the poller
         # was dropped (or is overdue) — the join is stuck until it's re-armed.
         def poll_overdue? = merging? && next_poll_at && next_poll_at.past?
