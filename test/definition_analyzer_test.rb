@@ -182,4 +182,44 @@ class DefinitionAnalyzerTest < ActiveSupport::TestCase
     assert_includes names, "durably_execute$risky"
     assert_includes names, "durably_execute$fallback"
   end
+
+  # Durable calls on the RHS of an assignment (local/ivar/multi-assign) still emit.
+  def test_assigned_durable_calls_are_not_dropped
+    names = defn(DefinitionFixtures::Assigned).nodes.map(&:step_name)
+    assert_equal %w[durably_execute$charge wait_until$funds_cleared durably_execute$ship], names
+  end
+
+  # Durable operands of && / || still emit.
+  def test_boolean_operand_durable_calls_are_not_dropped
+    names = defn(DefinitionFixtures::Boolean).nodes.map(&:step_name)
+    assert_equal %w[durably_execute$notify wait_until$warm], names
+  end
+
+  # case/in (CaseMatchNode) branch bodies are walked; patterns become guards.
+  def test_case_in_branches_are_walked
+    d = defn(DefinitionFixtures::CaseIn)
+    ship = d.nodes.find { |n| n.step_name == "durably_execute$ship" }
+    unblock = d.nodes.find { |n| n.step_name == "continue_if$unblocked" }
+    assert ship, "expected the :ready branch step"
+    assert unblock, "expected the :blocked branch step"
+    assert_equal ":ready", d.edges.find { |e| e.to == ship.id }.guard
+  end
+
+  # A perform with no durable calls yields zero nodes plus an explanatory warning,
+  # so the graph page shows a readable empty state instead of nothing.
+  def test_empty_perform_warns_with_no_nodes
+    d = defn(DefinitionFixtures::Empty)
+    assert_empty d.nodes
+    assert d.warnings.any? { |w| w.match?(/no durable steps/i) }
+  end
+
+  # merge_branches with a non-literal name among literals is dynamic, not a merge
+  # node with a nil step_name that silently never binds.
+  def test_mixed_merge_names_are_dynamic_not_nil_merge
+    node = defn(DefinitionFixtures::MixedMerge).nodes.find { |n| n.label.include?("merge") }
+    assert node, "expected a merge node"
+    assert_equal :dynamic, node.kind
+    assert_nil node.step_name
+    assert node.warnings.any? { |w| w.match?(/dynamic/i) }
+  end
 end

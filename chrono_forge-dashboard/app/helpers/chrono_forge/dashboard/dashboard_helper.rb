@@ -78,6 +78,12 @@ module ChronoForge
         (secs % 60 == 0) ? "#{secs / 60}m" : "#{secs}s"
       end
 
+      # Whether the main region opts into auto-refresh. A page sets
+      # @cf_disable_polling to opt OUT (e.g. the definition graph, whose live
+      # Cytoscape canvas can't survive the poll's innerHTML region swap). Without a
+      # [data-poll-region] the JS never starts a poll timer for the page.
+      def cf_poll_region? = !@cf_disable_polling
+
       # A timestamp shown relative ("3 minutes ago") or absolute (raw ISO8601)
       # per the viewer's preference, with the other form available on hover.
       def cf_ago(t)

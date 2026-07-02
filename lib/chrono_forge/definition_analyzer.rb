@@ -44,6 +44,10 @@ module ChronoForge
 
       @defs = defs # name(Symbol) => Prism::DefNode, for same-class helper tracing
       walk(method_node.body, "start") # builds @nodes/@edges as a side effect
+      if @nodes.empty?
+        @warnings << "no durable steps found in this workflow's perform — it may be " \
+          "empty, or drive its steps through code this static analysis can't follow"
+      end
       Definition.new(nodes: @nodes, edges: @edges, warnings: @warnings)
     rescue => e
       unavailable("analysis error: #{e.class}: #{e.message}")
@@ -139,10 +143,25 @@ module ChronoForge
       case stmt
       when Prism::IfNode, Prism::UnlessNode
         visit_conditional(stmt, prev)
-      when Prism::CaseNode
+      when Prism::CaseNode, Prism::CaseMatchNode
         visit_case(stmt, prev)
       when Prism::BeginNode
         visit_begin(stmt, prev)
+      when Prism::LocalVariableWriteNode, Prism::InstanceVariableWriteNode,
+        Prism::ClassVariableWriteNode, Prism::GlobalVariableWriteNode,
+        Prism::ConstantWriteNode, Prism::MultiWriteNode
+        # A durable call on an assignment's RHS (result = durably_execute :fetch)
+        # must still appear; unwrap to the value expression and visit it.
+        visit(stmt.value, prev)
+      when Prism::ArrayNode
+        # An implicit array (e.g. a multi-assign RHS `a, b = durably_execute(:x), 1`)
+        # — visit each element so a durable one is surfaced.
+        stmt.elements.reduce(prev) { |p, e| visit(e, p) }
+      when Prism::AndNode, Prism::OrNode
+        # Short-circuit boolean: the left always runs, the right conditionally.
+        # Surface both operands in order so a durable one (ok? || wait_until :warm)
+        # isn't dropped.
+        visit(stmt.right, visit(stmt.left, prev))
       when Prism::ReturnNode
         # An early `return` exits the run: a :terminal edge to the shared "halt"
         # sink from each live predecessor. When the return sits inside an if/unless
@@ -262,11 +281,10 @@ module ChronoForge
 
     def visit_case(node, prev)
       exits = []
-      Array(node.conditions).each do |when_node|
-        guard = Array(when_node.conditions).map { |c| source_of(c) }.join(", ")
+      Array(node.conditions).each do |clause|
         before = @edges.size
-        exit_id = walk(when_node.statements, prev)
-        mark_entry_conditional(before, prev, guard)
+        exit_id = walk(clause.statements, prev)
+        mark_entry_conditional(before, prev, clause_guard(clause))
         exits |= to_list(exit_id)
       end
       exits |=
@@ -276,6 +294,15 @@ module ChronoForge
           to_list(prev)
         end
       exits
+    end
+
+    # Guard text for one case clause: the "a, b" condition list of a `when`, or the
+    # pattern of a case/in `in` clause.
+    def clause_guard(clause)
+      case clause
+      when Prism::InNode then source_of(clause.pattern)
+      else Array(clause.conditions).map { |c| source_of(c) }.join(", ")
+      end
     end
 
     # The else/elsif chain, across prism versions (IfNode uses #subsequent, older
@@ -338,6 +365,10 @@ module ChronoForge
       kind = DURABLE.fetch(call.name)
       name, dynamic = resolved_name(call)
       step_name = dynamic ? nil : step_name_for(call.name, name, call)
+      # merge_branches only binds when EVERY branch name is literal; if step_name_for
+      # couldn't resolve them all it returns nil. Treat that as dynamic (unbindable)
+      # rather than a merge node with a nil step_name that silently never matches.
+      dynamic ||= step_name.nil?
       node = add_node(
         kind: dynamic ? :dynamic : kind,
         label: ((kind == :merge) ? merge_label(call) : label_for(call.name, name)),

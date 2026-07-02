@@ -4,7 +4,7 @@
 # These fixtures DELIBERATELY use non-idiomatic syntax (unless/else, explicit
 # begin/rescue, parenthesised/multiline predicates) — that syntax is exactly what
 # the analyzer is being tested against, so standardrb must not rewrite it away.
-# standard:disable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses
+# standard:disable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses, Lint/Void, Lint/UselessAssignment
 module DefinitionFixtures
   class Linear
     def perform
@@ -171,6 +171,51 @@ module DefinitionFixtures
     end
   end
 
+  # A durable call on an assignment's RHS (local, ivar, and multi-assign) must
+  # still be emitted, not silently dropped.
+  class Assigned
+    def perform
+      result = durably_execute :charge
+      @cleared = wait_until :funds_cleared
+      a, b = durably_execute(:ship), 1
+    end
+  end
+
+  # Durable operands of && / || must be surfaced, not dropped.
+  class Boolean
+    def perform
+      ready? && durably_execute(:notify)
+      cached? || wait_until(:warm)
+    end
+  end
+
+  # case/in (pattern matching) parses to a CaseMatchNode, not a CaseNode; its
+  # branch bodies must still be walked.
+  class CaseIn
+    def perform
+      case status
+      in :ready
+        durably_execute :ship
+      in :blocked
+        continue_if :unblocked
+      end
+    end
+  end
+
+  # merge_branches with a mix of literal and non-literal names can't bind to a
+  # runtime step, so it must be flagged dynamic (not a merge with a nil name).
+  class MixedMerge
+    def perform
+      merge_branches(:a, other)
+    end
+  end
+
+  # An empty perform (or one with no durable calls) yields zero nodes and a note.
+  class Empty
+    def perform
+    end
+  end
+
   # Early `return`s (guarded and inside an if) become terminal edges to "halt";
   # the main flow continues from the skip path.
   class EarlyReturn
@@ -184,4 +229,4 @@ module DefinitionFixtures
     end
   end
 end
-# standard:enable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses
+# standard:enable Style/UnlessElse, Style/RedundantBegin, Style/ParenthesesAroundCondition, Style/RedundantParentheses, Lint/Void, Lint/UselessAssignment

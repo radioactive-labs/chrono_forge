@@ -171,4 +171,30 @@ W.create!(key: "batch-7$fulfillment$order_98", job_class: "OrderWorkflow", state
 W.create!(key: "batch-7$fulfillment$order_99", job_class: "OrderWorkflow", state: W.states[:stalled],
   context: {}, kwargs: {}, options: {}, started_at: 28.minutes.ago, parent_execution_log_id: fo_branch.id)
 
+# Scheduled-payment recurrence — the definition-graph screenshot fixture. The run
+# took the auto-charge "payment reminder first" branch, so those steps are done,
+# the other two reminder branches stay not-reached (dimmed), and the final charge
+# failed. Two guarded early-returns (not-running, past-dismiss) become halt exits.
+sp = W.create!(key: "scheduled_payment_recurrence_5521_1782", job_class: "ScheduledPaymentRecurrenceWorkflow",
+  state: W.states[:failed],
+  context: {"scheduled_payment_id" => 5521, "payment_reminder_sent_at" => 26.hours.ago.iso8601,
+            "auto_charge_reminder_sent_at" => 24.hours.ago.iso8601},
+  kwargs: {"scheduled_payment_id" => 5521, "scheduled_time" => 2.days.ago.iso8601},
+  options: {}, started_at: 3.days.ago)
+E.create!(workflow: sp, step_name: "wait$wait_payment_reminder", state: estate(:completed),
+  attempts: 1, started_at: 3.days.ago, completed_at: 26.hours.ago)
+E.create!(workflow: sp, step_name: "durably_execute$send_payment_reminder", state: estate(:completed),
+  attempts: 1, started_at: 26.hours.ago, completed_at: 26.hours.ago + 2)
+E.create!(workflow: sp, step_name: "wait$wait_auto_charge_reminder", state: estate(:completed),
+  attempts: 1, started_at: 26.hours.ago, completed_at: 24.hours.ago)
+E.create!(workflow: sp, step_name: "durably_execute$send_auto_charge_reminder", state: estate(:completed),
+  attempts: 1, started_at: 24.hours.ago, completed_at: 24.hours.ago + 2)
+E.create!(workflow: sp, step_name: "wait$wait_for_payment_time", state: estate(:completed),
+  attempts: 1, started_at: 24.hours.ago, completed_at: 2.days.ago)
+E.create!(workflow: sp, step_name: "durably_execute$process_payment", state: estate(:failed),
+  attempts: 3, started_at: 2.days.ago, error_class: "Payments::GatewayError")
+L.create!(workflow: sp, step_name: "durably_execute$process_payment", attempt: 3,
+  error_class: "Payments::GatewayError", error_message: "gateway declined: issuer unavailable",
+  backtrace: "app/services/payments.rb:88\napp/jobs/scheduled_payment_recurrence_workflow.rb:52")
+
 run Combustion::Application

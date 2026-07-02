@@ -20,10 +20,13 @@ module ChronoForge
       def node_elements
         real_ids = @nodes.map { |n| n[:id] }.to_set
         real = @nodes.map do |n|
-          {
-            data: {id: n[:id], label: n[:label].to_s, step_name: n[:step_name]},
-            classes: "kind-#{n[:kind]} status-#{n[:status]}"
-          }
+          data = {id: n[:id], label: n[:label].to_s, step_name: n[:step_name]}
+          # Run aggregates the overlay computed for this node: a repeat's execution
+          # count and a branch fan-out's per-state child tally. Forwarded so the
+          # client can label them (nil/absent for other kinds).
+          data[:repetitions] = n[:repetitions] if n[:repetitions]
+          data[:counts] = n[:counts] if n[:counts]&.any?
+          {data: data, classes: "kind-#{n[:kind]} status-#{n[:status]}"}
         end
         # start/halt (and any other virtual endpoint) are edge targets but not in
         # the node list; Cytoscape rejects edges to missing nodes, so synthesize

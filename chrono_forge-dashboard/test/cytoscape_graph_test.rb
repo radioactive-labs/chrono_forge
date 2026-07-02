@@ -17,6 +17,22 @@ class CytoscapeGraphTest < ActiveSupport::TestCase
     assert_equal [{data: {id: "e0", source: "n1", target: "n2", label: ""}, classes: "kind-seq"}], g[:edges]
   end
 
+  # Run aggregates the overlay computed (repeat count, fan-out tally) are forwarded
+  # into node data so the client can render them; absent for nodes without them.
+  def test_forwards_run_aggregates_and_omits_when_absent
+    nodes = [
+      {id: "r1", kind: :repeat, label: "repeat digest", step_name: "durably_repeat$digest", status: :active, repetitions: 3},
+      {id: "b1", kind: :branch, label: "branch ship", step_name: "branch$ship", status: :done, counts: {"completed" => 4, "failed" => 1}},
+      {id: "e1", kind: :execute, label: "charge", step_name: "durably_execute$charge", status: :done}
+    ]
+    g = ChronoForge::Dashboard::CytoscapeGraph.new(nodes, []).to_h
+    by = g[:nodes].index_by { |n| n[:data][:id] }
+    assert_equal 3, by["r1"][:data][:repetitions]
+    assert_equal({"completed" => 4, "failed" => 1}, by["b1"][:data][:counts])
+    refute by["e1"][:data].key?(:repetitions)
+    refute by["e1"][:data].key?(:counts)
+  end
+
   # Guards with ( ) and < are just JSON strings here — no escaping, no grammar.
   def test_guard_text_is_verbatim_in_edge_data
     nodes = [{id: "n1", kind: :wait, label: "w", step_name: nil, status: :not_reached}]

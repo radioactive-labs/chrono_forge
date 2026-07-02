@@ -48,7 +48,7 @@ class OnboardingWorkflow < ApplicationJob
 end
 ```
 
-There is a real trade-off. Because the flow is ordinary code, ChronoForge can show the steps that **have run** (a replay/history view), but not a roadmap of steps that *haven't* run yet, which a declarative engine can. For workflows whose path isn't fixed in advance, that's a trade worth making; for a simple, fixed sequence ("send email, wait 2 days, send another"), a declarative DSL may read more cleanly, and that's a fine reason to reach for one.
+There is a trade-off, though a smaller one than it used to be. A declarative engine can show the steps a run *hasn't* reached yet; plain imperative code can't. The [definition graph](#-dashboard) closes most of that gap. It reads your `perform` with Prism (without running it) and draws the steps the run will take, with live status on each. The view is best-effort: a computed step name or a data-dependent loop collapses to one `dynamic` node. For a simple, fixed sequence ("send email, wait 2 days, send another") a declarative DSL can still read more cleanly, and that's a fine reason to use one.
 
 ### How it compares
 
@@ -71,7 +71,7 @@ A few deliberate choices behind that table:
 - **No extra infrastructure.** ChronoForge is a gem over your existing database and ActiveJob backend. There's no separate server or daemon to operate, unlike Temporal.
 - **Large-scale fan-out is built in.** `branch` with `spawn`/`spawn_each` fans a workflow out into child workflows that run concurrently and join when their results are needed, streaming ActiveRecord relations in constant memory for large sets. Among the Ruby-native engines here, only ChronoForge offers this without a separate orchestration server (Temporal does, server-side).
 - **Recovery is built into the model.** Steps are append-only history, so a crashed step leaves the workflow `stalled`, recoverable directly with `retry_later`.
-- **A real dashboard, free.** ChronoForge's [mountable dashboard](#-dashboard) — workflow list, step-replay timeline, context inspector, retry/unlock — ships as a separate MIT gem at no cost. Of the engines here only Temporal also offers a first-class UI; GenevaDrive's is a paid add-on, AcidicJob has none, and ActiveJob Continuations lean on a generic jobs dashboard like Mission Control.
+- **A real dashboard, free.** ChronoForge's [mountable dashboard](#-dashboard) — workflow list, step-replay timeline, a per-run **definition graph** (the steps a run will take, read from `perform`, with live status on each), context inspector, retry/unlock — ships as a separate MIT gem.
 - **MIT licensed.** Permissive and dependency-policy-friendly.
 - **ActiveJob Continuations solve a narrower problem.** Rails 8.1's built-in [continuations](https://api.rubyonrails.org/classes/ActiveJob/Continuation.html) make a *single* long job survive interruptions: you wrap work in `step` blocks and track a `cursor`, and at each checkpoint the job asks the queue adapter whether it's `stopping?`, re-enqueuing to resume from the last completed step/cursor — no gem, no tables. They deliberately stop short of being a workflow engine: there's no durable waiting on time, conditions, or external events; no periodic steps; no parallel fan-out; and no persisted, queryable history. Reach for continuations to make one big job restart-safe; reach for ChronoForge when a process spans steps that wait, recur, fan out, and need recovery and visibility. They also compose — a ChronoForge workflow *is* ActiveJob work.
 
@@ -95,6 +95,10 @@ A few deliberate choices behind that table:
 ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, a per-run **definition graph** (the durable steps a workflow will run, statically parsed from `perform`, with live run status overlaid), context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
 
 [![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
+
+The per-run **definition graph**: the steps a workflow will run, read from `perform`, with the run's status shown on each node.
+
+[![Definition graph](chrono_forge-dashboard/docs/screenshots/definition-graph-scheduled-payment.png)](chrono_forge-dashboard/README.md#screenshots)
 
 ```ruby
 # Gemfile

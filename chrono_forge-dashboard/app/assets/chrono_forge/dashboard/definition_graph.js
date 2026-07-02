@@ -12,6 +12,12 @@
   var graph;
   try { graph = JSON.parse(el.getAttribute("data-graph")); } catch (e) { return; }
 
+  // Escape before writing into innerHTML: labels, step names and guard text are
+  // author-controlled source strings (step-name validation only forbids "$"), and
+  // guards legitimately contain "<"/">", so they must not be treated as markup.
+  var ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"};
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
+
   // Node shape per durable kind (a legend in the view maps these back to names).
   var SHAPE = {
     execute: "round-rectangle", wait: "round-rectangle", wait_until: "round-rectangle",
@@ -43,6 +49,8 @@
     if (kind === "endpoint") { n.data.display = n.data.label; return; }
     var lbl = n.data.label || "";
     var name = lbl.indexOf(" ") > -1 ? lbl.slice(lbl.indexOf(" ") + 1) : lbl;
+    // A repeat carries how many times it has run so far; show it inline (×N).
+    if (n.data.repetitions) name += "  ×" + n.data.repetitions;
     n.data.display = (KIND_WORD[kind] ? KIND_WORD[kind].toUpperCase() + "\n" : "") + name;
   });
 
@@ -125,17 +133,26 @@
       var d = n.data(), cls = n.classes() || [];
       var kind = (cls.join(" ").match(/kind-(\w+)/) || [])[1] || "";
       var status = (cls.join(" ").match(/status-(\w+)/) || [])[1] || "";
+      // Run aggregates: a repeat's execution count, and a fan-out's per-state
+      // child tally ("2 completed · 1 failed") — rendered only when present.
+      var extra = "";
+      if (d.repetitions) extra += '<div class="mt-0.5 text-zinc-500">' + esc(d.repetitions) + " repetition" + (d.repetitions === 1 ? "" : "s") + "</div>";
+      if (d.counts) {
+        var parts = Object.keys(d.counts).map(function (k) { return esc(d.counts[k]) + " " + esc(k); });
+        if (parts.length) extra += '<div class="mt-0.5 text-zinc-500">' + parts.join(" &middot; ") + "</div>";
+      }
       detail.innerHTML =
-        '<div class="font-medium text-zinc-800">' + (d.label || d.id) + "</div>" +
-        '<div class="text-zinc-500">' + kind + (status ? ' &middot; <span class="font-medium">' + status.replace("_", " ") + "</span>" : "") + "</div>" +
-        (d.step_name ? '<div class="mt-0.5 font-mono text-[11px] text-zinc-500">' + d.step_name + "</div>" : "");
+        '<div class="font-medium text-zinc-800">' + esc(d.label || d.id) + "</div>" +
+        '<div class="text-zinc-500">' + esc(kind) + (status ? ' &middot; <span class="font-medium">' + esc(status.replace("_", " ")) + "</span>" : "") + "</div>" +
+        (d.step_name ? '<div class="mt-0.5 font-mono text-[11px] text-zinc-500">' + esc(d.step_name) + "</div>" : "") +
+        extra;
     }
   });
   cy.on("tap", "edge", function (evt) {
     var g = evt.target.data("label");
     if (detail) {
       detail.innerHTML = g && g.length
-        ? '<div class="text-zinc-500">guard</div><div class="font-mono text-[11px] text-zinc-700">' + g + "</div>"
+        ? '<div class="text-zinc-500">guard</div><div class="font-mono text-[11px] text-zinc-700">' + esc(g) + "</div>"
         : '<span class="text-zinc-400">unconditional edge</span>';
     }
   });

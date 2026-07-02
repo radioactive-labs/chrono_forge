@@ -59,7 +59,7 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 
 [![Definition graph](docs/screenshots/definition-graph.png)](docs/screenshots/definition-graph.png)
 
-A real production workflow — a scheduled-payment recurrence whose three reminder-ordering branches reconverge on the charge, with guarded early-`return` exits and a failed final `process_payment`:
+A scheduled-payment recurrence with three reminder-ordering branches that reconverge on the charge. This run took the auto-charge branch (green); the other two branches were never reached (dimmed), the past-dismiss guard exits early to `halt`, and the final `process_payment` failed:
 
 [![Definition graph — scheduled payment](docs/screenshots/definition-graph-scheduled-payment.png)](docs/screenshots/definition-graph-scheduled-payment.png)
 
@@ -119,7 +119,7 @@ end
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `polling_interval` | `15` | Seconds between auto-refreshes (the default). Every page refreshes in place — preserving filter text, focus, and scroll — so a draining fan-out's live throughput/ETA and counts update without a manual reload. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
+| `polling_interval` | `15` | Seconds between auto-refreshes (the default). Most pages refresh in place (preserving filter text, focus, and scroll), so a draining fan-out's live throughput/ETA and counts update without a manual reload. The definition graph opts out: its interactive Cytoscape canvas can't survive an in-place swap, so it reloads fully instead and hides the refresh control. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
 | `polling_interval_options` | `[0, 5, 10, 15, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
@@ -128,7 +128,7 @@ end
 
 - **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state
 - **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step
-- **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / running / pending / not-yet-reached / failed, plus fan-out and repeat aggregates). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. A workflow whose source can't be analyzed degrades to a warning, never an error.
+- **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / in progress / pending / not-yet-reached / failed / unmapped, with per-node repeat counts and fan-out child tallies). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. It also follows durable calls into helper methods in the same class, assignments, `&&`/`||`, and `case`/`in`, so a step one expression deep isn't missed. A workflow whose source can't be analyzed, or whose `perform` has no durable steps, degrades to a note, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
@@ -147,7 +147,7 @@ bundle exec rake tailwind:build
 
 Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
 
-**One exception:** the **Definition graph** page loads [Cytoscape](https://js.cytoscape.org) + [dagre](https://github.com/dagrejs/dagre) to lay out the DAG client-side (~670 KB total, loaded only on that page). All three libraries plus the init module (`definition_graph.js`) are vendored into the gem and served from the engine — no external host / CDN, and no inline `<script>` (the init is an external file), so the page stays CSP-friendly. The graph is passed as JSON in a `data-` attribute and consumed directly, so node labels and guard text need no escaping. Every other page remains dependency-free vanilla JS.
+**One exception:** the **Definition graph** page loads [Cytoscape](https://js.cytoscape.org) + [dagre](https://github.com/dagrejs/dagre) to lay out the DAG client-side (~670 KB total, loaded only on that page). All three libraries plus the init module (`definition_graph.js`) are vendored into the gem and served from the engine — no external host / CDN, and no inline `<script>` (the init is an external file), so the page stays CSP-friendly. The graph is passed as JSON in a `data-` attribute (ERB-escaped in, `JSON.parse`d out) and Cytoscape renders labels onto a canvas, so the graph itself has no HTML-injection surface. Unlike the old Mermaid text grammar, guards containing `()`, `<`, and `&&` round-trip untouched. The one place author-controlled text (labels, step names, guards) reaches the DOM is the tap-to-inspect detail panel, which HTML-escapes it before insertion. Every other page remains dependency-free vanilla JS.
 
 ## Development
 

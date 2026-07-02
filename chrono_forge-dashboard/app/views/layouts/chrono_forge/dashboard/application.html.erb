@@ -26,15 +26,19 @@
         <a href="<%= analytics_path %>" class="<%= controller_name == "analytics" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Analytics</a>
       </nav>
       <div class="ml-auto flex flex-wrap items-center gap-2">
-        <% current_poll = cf_poll_interval %>
-        <label class="flex items-center gap-1 text-xs text-zinc-400" title="Auto-refresh">
-          <span>refresh</span>
-          <select data-poll-select class="rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-700">
-            <% (cf_poll_options | [current_poll]).sort.each do |secs| %>
-              <option value="<%= secs %>" <%= "selected" if secs == current_poll %>><%= cf_poll_label(secs) %></option>
-            <% end %>
-          </select>
-        </label>
+        <%# Hidden on pages that opt out of auto-refresh (cf_poll_region? false), so
+            a control that does nothing there doesn't confuse. %>
+        <% if cf_poll_region? %>
+          <% current_poll = cf_poll_interval %>
+          <label class="flex items-center gap-1 text-xs text-zinc-400" title="Auto-refresh">
+            <span>refresh</span>
+            <select data-poll-select class="rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-700">
+              <% (cf_poll_options | [current_poll]).sort.each do |secs| %>
+                <option value="<%= secs %>" <%= "selected" if secs == current_poll %>><%= cf_poll_label(secs) %></option>
+              <% end %>
+            </select>
+          </label>
+        <% end %>
         <div class="flex items-center gap-0.5 rounded-md border border-zinc-200 p-0.5 text-xs" title="Timestamp display">
           <button type="button" data-time-set="relative" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "text-zinc-500 hover:text-zinc-900" : "bg-zinc-900 text-white" %>">relative</button>
           <button type="button" data-time-set="absolute" class="rounded px-2 py-0.5 <%= cf_absolute_time? ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900" %>">absolute</button>
@@ -43,9 +47,10 @@
     </div>
   </header>
   <%# data-poll-region: the JS auto-refreshes this region in place (preserving
-      filter text, focus, and scroll). Marking <main> makes EVERY page refresh —
-      the nav and the refresh/time controls sit in <header>, outside the swap. %>
-  <main class="mx-auto max-w-6xl px-4 py-6" data-poll-region>
+      filter text, focus, and scroll). Marking <main> makes pages refresh — the
+      nav and the refresh/time controls sit in <header>, outside the swap. A page
+      can opt out (cf_poll_region? false) when an in-place swap would break it. %>
+  <main class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
     <%= yield %>
   </main>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>
