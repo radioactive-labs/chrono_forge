@@ -2,6 +2,34 @@
 
 All notable changes to `chrono_forge-dashboard` are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] - 2026-07-04
+
+### Bug Fixes
+
+- Preserve filter input and focus across polling refresh
+- Converge merges promptly via drain-ETA cadence and never-started-count rekick ([#12](https://github.com/radioactive-labs/chrono_forge/issues/12))
+- Overlay/analyzer correctness, detail-panel XSS, and UX polish
+
+### Documentation
+
+- Refresh dashboard screenshots, badges; fix upgrade note and API reference
+- Restructure READMEs — promote branches, refine cadence note, dashboard cross-link
+
+### Features
+
+- Hide branch children by default with a filter toggle
+- Blocked filter on the index + state dots on branch chips
+- Surface merge poll schedule on the branches panel
+- Workflow definition graph with static DAG and live run overlay ([#13](https://github.com/radioactive-labs/chrono_forge/issues/13))
+
+### Miscellaneous Tasks
+
+- Replace bin/release with per-gem rake release flow
+
+### Styling
+
+- Apply standardrb blank-line formatting to existing files
+
 ## [0.1.0] - 2026-06-27
 
 Initial release — a free, mountable, server-rendered dashboard for ChronoForge workflows. Requires `chrono_forge >= 0.10.0` (for the branches feature and the `durably_repeat` fast-forward catch-up it surfaces). Adds no migrations of its own, no host asset pipeline, and no new indexes on hot tables (branch views read the core's `parent_execution_log_id` index).
