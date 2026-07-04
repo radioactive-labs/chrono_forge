@@ -64,8 +64,7 @@ degradation as the tables grew. The path has a **stable steady-state ceiling**.
 
 ## Part 2 — Benchmark: baseline vs commit-consolidation
 
-**Baseline** is the current released engine (v0.10). **Consolidation** is the
-unreleased patch targeted for **v0.12** that cuts per-child write cost without
+**Baseline** is (v0.10). **Consolidation** is the patch released in **v0.11** that cuts per-child write cost without
 changing behaviour. It (a) folds `started_at` into the lock-acquire
 transaction, (b) collapses `complete_workflow!`'s three separate commits — marker
 INSERT + `workflow.completed!` UPDATE + marker UPDATE — into one transaction, and
