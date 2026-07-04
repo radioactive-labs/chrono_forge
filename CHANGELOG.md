@@ -1,3 +1,38 @@
+## [0.11.0] - 2026-07-04
+
+### Bug Fixes
+
+- Back off BranchMergeJob polling for non-progressing children
+- Leave prepare uncommitted for review; publish commits
+- Converge merges promptly via drain-ETA cadence and never-started-count rekick ([#12](https://github.com/radioactive-labs/chrono_forge/issues/12))
+- Overlay/analyzer correctness, detail-panel XSS, and UX polish
+
+### Documentation
+
+- Refresh dashboard screenshots, badges; fix upgrade note and API reference
+- Restructure READMEs — promote branches, refine cadence note, dashboard cross-link
+- Add ActiveJob Continuations, Rails-version, and dashboard rows to comparison
+- Correct "workflow is just a Ruby method" framing
+- Add ChronoForge equivalent of the step DSL; fix step-vs-workflow framing
+
+### Features
+
+- Add bulk merge / merge_once for context ([#11](https://github.com/radioactive-labs/chrono_forge/issues/11))
+- Workflow definition graph with static DAG and live run overlay ([#13](https://github.com/radioactive-labs/chrono_forge/issues/13))
+
+### Miscellaneous Tasks
+
+- Add cliff-driven release script for both gems
+- Replace bin/release with per-gem rake release flow
+
+### Performance
+
+- Consolidate per-child commits and flatten log writes
+
+### Styling
+
+- Apply standardrb blank-line formatting to existing files
+
 ## [0.10.0] - 2026-06-27
 
 ### Added
