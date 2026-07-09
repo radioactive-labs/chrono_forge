@@ -105,6 +105,13 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match 'data-poll-interval="30"', response.body
   end
 
+  # The index opts into the polling morph refresh (counterpart to the definition
+  # graph, which opts out). The JS gates on this attribute.
+  test "index carries the data-poll-region hook" do
+    get "/chrono_forge/workflows"
+    assert_match(/data-poll-region/, response.body)
+  end
+
   test "plain idle workflow stays idle, not scheduled" do
     create_workflow(key: "idle-1", state: :idle)
     get "/chrono_forge/workflows"

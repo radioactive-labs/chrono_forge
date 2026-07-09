@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <%= csrf_meta_tags %>
   <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css?v=#{ChronoForge::Dashboard.asset_digest("dashboard.css")}" %>">
+  <%# Turbo drives all navigation and form submits (SPA-style, no full reloads).
+      It lives in <head> so Turbo Drive keeps it across body swaps and never
+      re-initialises it — a body <script> would re-run on every visit. %>
+  <script src="<%= request.script_name %>/assets/turbo.min.js?v=<%= ChronoForge::Dashboard.asset_digest("turbo.min.js") %>"></script>
 </head>
-<%# data-turbo="false" keeps Turbo Drive from hijacking links/forms: navigation
-    and action POSTs stay native (no 303-redirect requirement). Turbo is loaded
-    solely for its morph stream, which the poll loop uses to refresh the region
-    in place — see dashboard.js. %>
-<body data-turbo="false" class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
+<body class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
   <% if flash.any? %>
     <div class="pointer-events-none fixed right-4 top-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
       <% flash.each do |type, msg| %>
@@ -58,7 +58,6 @@
   <main id="cf-poll-region" class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
     <%= yield %>
   </main>
-  <script src="<%= "#{request.script_name}/assets/turbo.min.js?v=#{ChronoForge::Dashboard.asset_digest("turbo.min.js")}" %>"></script>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>
 </body>
 </html>

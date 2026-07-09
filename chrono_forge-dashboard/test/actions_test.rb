@@ -12,7 +12,8 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_enqueued_jobs 1 do
       post "/chrono_forge/workflows/#{wf.id}/retry"
     end
-    assert_response :redirect
+    # 303 (not 302) so Turbo follows the redirect with GET after the POST.
+    assert_response :see_other
   end
 
   test "retry on a running workflow flashes instead of 500" do
@@ -20,7 +21,7 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_no_enqueued_jobs do
       post "/chrono_forge/workflows/#{wf.id}/retry"
     end
-    assert_response :redirect
+    assert_response :see_other
     follow_redirect!
     assert_match(/cannot retry|not.*retry/i, response.body)
     # Rendered as a floating, auto-dismissing toast (out of document flow).
@@ -33,7 +34,7 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_enqueued_jobs 1 do
       post "/chrono_forge/workflows/#{wf.id}/resume"
     end
-    assert_response :redirect
+    assert_response :see_other
   end
 
   test "resume rejects a non-idle workflow" do
@@ -62,5 +63,6 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_enqueued_jobs 2 do
       post "/chrono_forge/workflows/bulk_retry"
     end
+    assert_response :see_other
   end
 end
