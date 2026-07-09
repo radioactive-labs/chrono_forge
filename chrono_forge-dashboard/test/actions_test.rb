@@ -55,13 +55,38 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert wf.idle?
   end
 
-  test "bulk retry enqueues for all failed and stalled, not others" do
+  # The retries are fanned out by a single background job so the request returns
+  # fast even with thousands of blocked workflows — the POST enqueues one job.
+  test "bulk retry enqueues a single background job and reports the count" do
     create_workflow(key: "b1", state: :failed)
     create_workflow(key: "b2", state: :stalled)
     create_workflow(key: "b3", state: :completed)
     create_workflow(key: "b4", state: :running)
-    assert_enqueued_jobs 2 do
+    assert_enqueued_with(job: ChronoForge::Dashboard::BulkRetryJob) do
       post "/chrono_forge/workflows/bulk_retry"
+    end
+    assert_response :see_other
+    follow_redirect!
+    assert_match(/Retrying 2 blocked/, response.body)
+  end
+
+  test "bulk retry with nothing blocked enqueues no job" do
+    create_workflow(key: "ok", state: :completed)
+    assert_no_enqueued_jobs do
+      post "/chrono_forge/workflows/bulk_retry"
+    end
+    assert_response :see_other
+    follow_redirect!
+    assert_match(/no blocked workflows/i, response.body)
+  end
+
+  test "branch bulk retry enqueues a background job scoped to the branch" do
+    parent = create_workflow(key: "bp", state: :idle)
+    bl = parent.execution_logs.create!(step_name: "branch$x",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 1, started_at: 1.hour.ago)
+    create_workflow(key: "bc", state: :failed, parent_execution_log_id: bl.id)
+    assert_enqueued_with(job: ChronoForge::Dashboard::BulkRetryJob, args: [bl.id]) do
+      post "/chrono_forge/workflows/#{parent.id}/branches/#{bl.id}/bulk_retry"
     end
     assert_response :see_other
   end

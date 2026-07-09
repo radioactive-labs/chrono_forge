@@ -25,29 +25,25 @@ module ChronoForge
         redirect_to workflow_path(workflow), notice: "Re-enqueued #{workflow.key}.", status: :see_other
       end
 
-      # Both failed and stalled workflows are retryable, so bulk retry covers
-      # both (matching the per-workflow Retry, which uses `retryable?`).
-      RETRYABLE_STATES = %i[failed stalled].map { |s| ChronoForge::Workflow.states[s] }.freeze
-
+      # Retry every blocked (failed/stalled) workflow. The fan-out runs in a
+      # background job so the request returns fast even with a huge backlog; the
+      # count is taken up front for the flash (BulkRetryJob does the enqueueing).
       def bulk_retry
-        n = 0
-        ChronoForge::Workflow.where(state: RETRYABLE_STATES).find_each do |wf|
-          wf.retry_later
-          n += 1
-        end
-        redirect_to workflows_path, notice: "Re-enqueued #{n} workflow(s).", status: :see_other
+        n = BulkRetryJob.retryable.count
+        return redirect_to(workflows_path, notice: "No blocked workflows to retry.", status: :see_other) if n.zero?
+        BulkRetryJob.perform_later
+        redirect_to workflows_path, notice: "Retrying #{n} blocked workflow(s) in the background.", status: :see_other
       end
 
-      # Retry every blocked (failed/stalled) child of one branch.
+      # Retry every blocked (failed/stalled) child of one branch, in the background.
       def bulk_retry_branch
         parent = ChronoForge::Workflow.find(params[:workflow_id])
         branch_log = parent.execution_logs.find(params[:id])
-        n = 0
-        branch_log.spawned_workflows.where(state: RETRYABLE_STATES).find_each do |wf|
-          wf.retry_later
-          n += 1
-        end
-        redirect_to workflow_branch_path(parent, branch_log), notice: "Re-enqueued #{n} child workflow(s).", status: :see_other
+        n = BulkRetryJob.retryable(branch_log).count
+        redirect = ->(msg) { redirect_to workflow_branch_path(parent, branch_log), notice: msg, status: :see_other }
+        return redirect.call("No blocked child workflows to retry.") if n.zero?
+        BulkRetryJob.perform_later(branch_log.id)
+        redirect.call("Retrying #{n} child workflow(s) in the background.")
       end
 
       private

@@ -5,8 +5,11 @@
     <h1 class="text-lg font-semibold tracking-tight">Branch <span class="break-all font-mono"><%= @branch.name %></span></h1>
     <p class="mt-1 break-all text-sm text-zinc-500">children of <span class="font-mono"><%= @workflow.key %></span></p>
   </div>
+  <%# Disable + relabel while submitting, and survive the poll morph — see the
+      matching button on the workflows index for the full rationale. %>
   <%= button_to "Retry all blocked", bulk_retry_workflow_branch_path(@workflow, @branch_log), method: :post,
-        form: {data: {confirm: "Re-enqueue every failed/stalled child of this branch?"}}, class: "cf-btn cf-btn-primary shrink-0" %>
+        form: {data: {confirm: "Re-enqueue every failed/stalled child of this branch?", cf_poll_preserve: true}},
+        data: {turbo_submits_with: "Retrying…"}, class: "cf-btn cf-btn-primary shrink-0" %>
 </div>
 
 <%# Live poll stats from the branch log's metadata (throughput/ETA while draining,

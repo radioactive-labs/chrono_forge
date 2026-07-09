@@ -1,7 +1,11 @@
 <div class="mb-5 flex items-center justify-between">
   <h1 class="text-lg font-semibold tracking-tight">Workflows</h1>
+  <%# data-turbo-submits-with disables + relabels the button while the POST runs;
+      data-cf-poll-preserve on the form makes the poll morph skip it, so a tick
+      mid-request can't reconcile the button back to enabled (see dashboard.js). %>
   <%= button_to "Retry blocked", bulk_retry_workflows_path, method: :post,
-        form: {data: {confirm: "Re-enqueue every blocked (failed and stalled) workflow?"}}, class: "cf-btn" %>
+        form: {data: {confirm: "Re-enqueue every blocked (failed and stalled) workflow?", cf_poll_preserve: true}},
+        data: {turbo_submits_with: "Retrying…"}, class: "cf-btn" %>
 </div>
 
 <div>

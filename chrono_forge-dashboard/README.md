@@ -133,7 +133,7 @@ end
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
 - **Wait-states view**: lists workflows in a wait state, with age flagged if above `long_wait_threshold`
-- **Recovery actions**: retry a stalled or failed workflow, force-unlock a stuck running workflow (with a duplicate-execution warning), bulk retry all failed workflows
+- **Recovery actions**: retry a stalled or failed workflow, force-unlock a stuck running workflow (with a duplicate-execution warning), bulk retry all blocked workflows (fanned out by a background job, so the request stays fast with a large backlog)
 
 ## Frontend
 
