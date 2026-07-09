@@ -1,3 +1,13 @@
+## [0.12.0] - 2026-07-09
+
+### Documentation
+
+- Document the stalled-workflow reaper and fix broken README anchors
+
+### Features
+
+- Reap workflows stranded in running by hard-killed workers
+
 ## [0.11.0] - 2026-07-04
 
 ### Bug Fixes
