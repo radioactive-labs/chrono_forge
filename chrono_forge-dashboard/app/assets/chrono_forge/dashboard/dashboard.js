@@ -43,7 +43,18 @@
         return;
       }
       var el = e.target.closest("[data-autosubmit]");
-      if (el && el.form) el.form.requestSubmit();
+      if (el && el.form) {
+        // A checkbox paired with a same-name hidden field (the "unchecked
+        // submits 0" trick) would otherwise put `name=0&name=1` in the query
+        // string when checked. Disable the hidden twin while checked so the URL
+        // carries a single value.
+        if (el.type === "checkbox") {
+          el.form.querySelectorAll('input[type="hidden"][name="' + el.name + '"]').forEach(function (h) {
+            h.disabled = el.checked;
+          });
+        }
+        el.form.requestSubmit();
+      }
     });
 
     // Confirm destructive actions: any form with data-confirm.
