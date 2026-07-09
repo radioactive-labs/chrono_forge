@@ -80,7 +80,7 @@ module ChronoForge
 
       # Whether the main region opts into auto-refresh. A page sets
       # @cf_disable_polling to opt OUT (e.g. the definition graph, whose live
-      # Cytoscape canvas can't survive the poll's innerHTML region swap). Without a
+      # Cytoscape canvas can't survive the poll's morph region refresh). Without a
       # [data-poll-region] the JS never starts a poll timer for the page.
       def cf_poll_region? = !@cf_disable_polling
 

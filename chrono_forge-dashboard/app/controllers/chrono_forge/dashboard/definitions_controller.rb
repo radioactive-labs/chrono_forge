@@ -6,9 +6,9 @@ module ChronoForge
     # 500, so the page always renders.
     class DefinitionsController < BaseController
       def show
-        # Opt out of the auto-refresh region swap: it replaces the page's HTML in
-        # place, which wipes the live Cytoscape canvas (injected <script>s don't
-        # re-run), leaving a blank graph. This page reloads fully instead.
+        # Opt out of the auto-refresh region morph: reconciling the region's HTML
+        # wipes the live Cytoscape canvas (injected <script>s don't re-run),
+        # leaving a blank graph. This page reloads fully instead.
         @cf_disable_polling = true
         @workflow = ChronoForge::Workflow.find(params[:id])
         definition = analyze(@workflow)

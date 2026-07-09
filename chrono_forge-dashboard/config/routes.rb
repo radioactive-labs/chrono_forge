@@ -20,6 +20,6 @@ ChronoForge::Dashboard::Engine.routes.draw do
   # Explicit allowlist (mirrors AssetsController::TYPES) so unknown assets 404 at
   # the routing layer rather than reaching the controller.
   get "assets/:file", to: "assets#show", constraints: {
-    file: /(dashboard\.(css|js)|cytoscape\.min\.js|dagre\.min\.js|cytoscape-dagre\.js|definition_graph\.js)/
+    file: /(dashboard\.(css|js)|turbo\.min\.js|cytoscape\.min\.js|dagre\.min\.js|cytoscape-dagre\.js|definition_graph\.js)/
   }
 end

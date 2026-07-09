@@ -119,7 +119,7 @@ end
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `polling_interval` | `15` | Seconds between auto-refreshes (the default). Most pages refresh in place (preserving filter text, focus, and scroll), so a draining fan-out's live throughput/ETA and counts update without a manual reload. The definition graph opts out: its interactive Cytoscape canvas can't survive an in-place swap, so it reloads fully instead and hides the refresh control. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
+| `polling_interval` | `15` | Seconds between auto-refreshes (the default). Most pages refresh in place (preserving filter text, focus, and scroll), so a draining fan-out's live throughput/ETA and counts update without a manual reload. The definition graph opts out: its interactive Cytoscape canvas can't survive an in-place morph, so it reloads fully instead and hides the refresh control. A viewer can override the interval with the nav "refresh" control (stored in a cookie). `0` disables. |
 | `polling_interval_options` | `[0, 5, 10, 15, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
@@ -137,7 +137,7 @@ end
 
 ## Frontend
 
-The dashboard is server-rendered. It serves one CSS file and one JS file directly from the engine. **The host needs no npm, no build step, and no asset-pipeline configuration** — the compiled stylesheet ships with the gem. The JS is dependency-free vanilla. CSP-compatible (no external hosts or inline handlers).
+The dashboard is server-rendered. It serves its CSS and JS directly from the engine. **The host needs no npm, no build step, and no asset-pipeline configuration** — the compiled stylesheet ships with the gem. The interactive layer is dependency-free vanilla JS, with one vendored library — [Turbo](https://turbo.hotwired.dev) (~94 KB, Turbo 8) — loaded on every page purely as a morphing engine for the auto-refresh (see below). Turbo Drive is disabled (`data-turbo="false"` on `<body>`), so navigation and action POSTs stay ordinary full-page requests; nothing else about the page becomes Turbo-driven. CSP-compatible (no external hosts or inline handlers).
 
 Styles are written with [Tailwind CSS](https://tailwindcss.com) and precompiled into the shipped `dashboard.css`. Contributors editing views or styles rebuild it with the standalone compiler (no Node required):
 
@@ -147,7 +147,9 @@ bundle exec rake tailwind:build
 
 Assets are cache-busted by a content digest, so a gem upgrade is picked up without a hard refresh.
 
-**One exception:** the **Definition graph** page loads [Cytoscape](https://js.cytoscape.org) + [dagre](https://github.com/dagrejs/dagre) to lay out the DAG client-side (~670 KB total, loaded only on that page). All three libraries plus the init module (`definition_graph.js`) are vendored into the gem and served from the engine — no external host / CDN, and no inline `<script>` (the init is an external file), so the page stays CSP-friendly. The graph is passed as JSON in a `data-` attribute (ERB-escaped in, `JSON.parse`d out) and Cytoscape renders labels onto a canvas, so the graph itself has no HTML-injection surface. Unlike the old Mermaid text grammar, guards containing `()`, `<`, and `&&` round-trip untouched. The one place author-controlled text (labels, step names, guards) reaches the DOM is the tap-to-inspect detail panel, which HTML-escapes it before insertion. Every other page remains dependency-free vanilla JS.
+**One exception:** the **Definition graph** page loads [Cytoscape](https://js.cytoscape.org) + [dagre](https://github.com/dagrejs/dagre) to lay out the DAG client-side (~670 KB total, loaded only on that page). All three libraries plus the init module (`definition_graph.js`) are vendored into the gem and served from the engine — no external host / CDN, and no inline `<script>` (the init is an external file), so the page stays CSP-friendly. The graph is passed as JSON in a `data-` attribute (ERB-escaped in, `JSON.parse`d out) and Cytoscape renders labels onto a canvas, so the graph itself has no HTML-injection surface. Unlike the old Mermaid text grammar, guards containing `()`, `<`, and `&&` round-trip untouched. The one place author-controlled text (labels, step names, guards) reaches the DOM is the tap-to-inspect detail panel, which HTML-escapes it before insertion. Cytoscape and dagre load only on that page.
+
+**Auto-refresh:** the polling refresh updates the list/stats region with a Turbo **morph** stream (`<turbo-stream action="update" method="morph">`) rather than replacing its `innerHTML`. idiomorph mutates the existing nodes in place, so a table's horizontal scroll and the filter inputs' value, caret, and focus all survive a tick with no manual bookkeeping. The filter text inputs carry `data-cf-poll-preserve`; a `turbo:before-morph-element` listener skips them so an in-progress query is never reset to the last-submitted value. This is the only reason Turbo is loaded; Drive stays off.
 
 ## Development
 

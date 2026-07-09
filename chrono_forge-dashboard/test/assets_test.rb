@@ -17,15 +17,26 @@ class AssetsTest < ActionDispatch::IntegrationTest
     assert_includes ["application/javascript", "text/javascript"], response.media_type
   end
 
-  # The polling refresh swaps the list region's innerHTML. Without preserving the
-  # filter inputs, every tick wipes whatever is being typed and drops focus.
-  # There is no JS test harness, so this is a structural guard: the preservation
-  # logic must ship in the served script. Behavior is verified in a real browser.
-  test "polling js preserves in-progress filter input across refresh" do
+  test "serves vendored turbo with immutable cache header" do
+    get "/chrono_forge/assets/turbo.min.js"
+    assert_response :success
+    assert_includes ["application/javascript", "text/javascript"], response.media_type
+    assert_match "max-age", response.headers["Cache-Control"]
+    assert_includes response.body, "Turbo 8", "must ship a Turbo 8 build (morph stream support)"
+  end
+
+  # The polling refresh updates the list region via a Turbo morph stream rather
+  # than an innerHTML swap, so idiomorph preserves in-progress filter text, focus,
+  # caret, and scroll in place — no manual preservation needed. There is no JS test
+  # harness, so this is a structural guard: the served script must drive the refresh
+  # through the morph stream. Behavior is verified in a real browser.
+  test "polling js refreshes the region via a turbo morph stream" do
     get "/chrono_forge/assets/dashboard.js"
     assert_response :success
-    assert_includes response.body, "isTextEntry",
-      "dashboard.js must preserve text-input value/focus across the polling innerHTML swap"
+    assert_includes response.body, "renderStreamMessage",
+      "dashboard.js must refresh the poll region through Turbo's morph stream"
+    assert_includes response.body, 'method="morph"',
+      "the poll refresh must morph (method=\"morph\"), not innerHTML-swap, so input/scroll survive in place"
   end
 
   test "unknown asset 404s" do

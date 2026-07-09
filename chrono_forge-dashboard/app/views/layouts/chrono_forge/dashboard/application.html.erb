@@ -6,7 +6,11 @@
   <%= csrf_meta_tags %>
   <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css?v=#{ChronoForge::Dashboard.asset_digest("dashboard.css")}" %>">
 </head>
-<body class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
+<%# data-turbo="false" keeps Turbo Drive from hijacking links/forms: navigation
+    and action POSTs stay native (no 303-redirect requirement). Turbo is loaded
+    solely for its morph stream, which the poll loop uses to refresh the region
+    in place — see dashboard.js. %>
+<body data-turbo="false" class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
   <% if flash.any? %>
     <div class="pointer-events-none fixed right-4 top-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
       <% flash.each do |type, msg| %>
@@ -46,13 +50,15 @@
       </div>
     </div>
   </header>
-  <%# data-poll-region: the JS auto-refreshes this region in place (preserving
-      filter text, focus, and scroll). Marking <main> makes pages refresh — the
-      nav and the refresh/time controls sit in <header>, outside the swap. A page
-      can opt out (cf_poll_region? false) when an in-place swap would break it. %>
-  <main class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
+  <%# data-poll-region / id: the JS morph-refreshes this region in place (idiomorph
+      preserves filter text, focus, and scroll). Marking <main> makes pages refresh
+      — the nav and the refresh/time controls sit in <header>, outside the morph. A
+      page can opt out (cf_poll_region? false) when an in-place refresh would break
+      it. %>
+  <main id="cf-poll-region" class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
     <%= yield %>
   </main>
+  <script src="<%= "#{request.script_name}/assets/turbo.min.js?v=#{ChronoForge::Dashboard.asset_digest("turbo.min.js")}" %>"></script>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>
 </body>
 </html>
