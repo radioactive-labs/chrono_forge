@@ -90,7 +90,7 @@ A few deliberate choices behind that table:
 - **ActiveJob Integration**: Compatible with all ActiveJob backends, though database-backed processors (like Solid Queue) provide the most reliable experience for long-running workflows
 - **Retention & Cleanup**: A schedulable job to prune finished workflows and the unbounded logs that periodic tasks accumulate (see [Cleanup & Retention](#-cleanup--retention))
 
-## 🖥️ Dashboard
+## 🖥 Dashboard
 
 ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, a per-run **definition graph** (the durable steps a workflow will run, statically parsed from `perform`, with live run status overlaid), context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
 
@@ -344,7 +344,15 @@ end
 - **Idempotent**: Same operation won't be executed twice during replays
 - **Automatic Retries**: Failed executions retry per a unified `RetryPolicy` (exponential backoff with jitter; the step default caps at 30s over 3 attempts)
 - **Error Tracking**: All failures are logged with detailed error information
-- **Configurable**: Pass a `retry_policy:` per call, or set a class-wide default with the `retry_policy` DSL (see [Retry Policies](#retry-policies))
+- **Configurable**: Pass a `retry_policy:` per call, or set a class-wide default with the `retry_policy` DSL (see [Retry Policies](#-retry-policies))
+
+> **Write your side effects to be idempotent.** A step short-circuits on replay only
+> once its log row reaches `completed`. If a worker is hard-killed (SIGKILL/OOM/eviction)
+> *after* a step's side effect commits but *before* its log is marked `completed`, the
+> step re-runs when the workflow is resumed (including by the [reaper](#recovering-stranded-workflows-hard-killed-workers)).
+> Make external side effects safe to repeat — use a natural/unique key with
+> `create_or_find_by`, an upsert, or a rescue on the uniqueness violation — rather than
+> assuming exactly-once execution.
 
 #### 🔁 Retry Policies
 
@@ -918,6 +926,7 @@ stateDiagram-v2
 - **Identifiers**: Has locked_at and locked_by values set
 - **Behavior**: Protected against concurrent execution
 - **Duration**: Should be brief unless performing long operations
+- **Note**: A workflow whose worker was hard-killed mid-pass stays stuck here with a stale lock. See [Recovering stranded workflows](#recovering-stranded-workflows-hard-killed-workers).
 
 #### Completed
 - **Description**: The workflow has successfully executed all steps
@@ -966,24 +975,59 @@ ChronoForge::Workflow.failed.find_each(&:retry_later)
 The class-level form (`MyWorkflow.retry_now(key)` / `retry_later(key)`) still
 works if you have the class and key rather than the record.
 
-#### Monitoring Running Workflows
+#### Recovering stranded workflows (hard-killed workers)
 
-Long-running workflows might indicate issues:
+When a worker is **hard-killed** mid-pass — SIGKILL from a deploy/rollout, an OOM kill,
+a node eviction, or a SolidQueue heartbeat prune — Ruby's `ensure` block does not run.
+The executor releases the workflow's lock and publishes the resume continuation in that
+`ensure`, so a hard kill leaves the workflow stuck in `running` with a stale lock **and**
+nothing scheduled to wake it. It is fully resumable (a resuming pass steals the stale
+lock and replays completed steps as no-ops), but nothing re-enqueues it on its own:
+`retry_now`/`retry_later` refuse a `running` workflow, and a dashboard "force unlock"
+clears the lock but enqueues no job.
+
+`ChronoForge::Workflow.reap_stalled` reconciles these. It finds every workflow in
+`running` whose lock is older than `reap_stale_after` (top-level workflows **and** branch
+children) and re-enqueues it, returning the number reaped:
 
 ```ruby
-# Find workflows running for too long
-long_running = ChronoForge::Workflow.where(state: :running)
-                                   .where('locked_at < ?', 30.minutes.ago)
+ChronoForge::Workflow.reap_stalled
+# => 3   (also logs "ChronoForge reaped 3 stalled workflow(s)")
 
-long_running.each do |workflow|
-  # Log potential issues for investigation
-  Rails.logger.warn "Workflow #{workflow.key} has been running for >30 minutes"
-  
-  # Optionally force unlock if you suspect deadlock
-  # CAUTION: Only do this if you're certain the job is stuck
-  # workflow.update!(locked_at: nil, locked_by: nil, state: :idle)
+# Override the threshold for a one-off sweep:
+ChronoForge::Workflow.reap_stalled(stale_after: 15.minutes)
+```
+
+It is **not** run automatically — schedule it from your own scheduler, the same way you
+schedule `ChronoForge::Cleanup`. For example, a SolidQueue recurring task:
+
+```yaml
+# config/recurring.yml
+reap_stalled_workflows:
+  command: "ChronoForge::Workflow.reap_stalled"
+  schedule: "every 5 minutes"
+```
+
+Re-enqueue is safe under concurrency: overlapping sweeps (or a re-enqueue landing while
+the old stale lock still shows) at worst enqueue a duplicate, which loses the
+lock-acquisition race and no-ops. Because reaping replays the interrupted pass, steps
+with external side effects must be idempotent — see the note under
+[Durable Execution](#-durable-execution).
+
+`reap_stale_after` defaults to **3× `max_duration`** (30 minutes out of the box). Both are
+configurable, and because the reap threshold derives from `max_duration` it always stays
+safely above the lock-steal threshold — raise one and the other follows:
+
+```ruby
+ChronoForge.configure do |c|
+  c.max_duration    = 10.minutes  # how long one pass may hold its lock before it's stealable
+  c.reap_stale_after = 45.minutes # optional: pin the reap threshold explicitly (else 3x max_duration)
 end
 ```
+
+> **Not covered:** a workflow parked on a branch merge whose `BranchMergeJob` poller was
+> itself hard-killed sits `idle` (not `running`), so the reaper does not sweep it. That is
+> a distinct failure mode.
 
 ## 🧹 Cleanup & Retention
 
