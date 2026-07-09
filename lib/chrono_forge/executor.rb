@@ -394,7 +394,7 @@ module ChronoForge
     end
 
     def max_duration
-      10.minutes
+      ChronoForge.config.max_duration
     end
   end
 end
