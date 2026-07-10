@@ -114,6 +114,8 @@ ChronoForge::Dashboard.configure do |c|
   c.polling_interval_options = [0, 5, 10, 15, 30, 60, 300] # selectable intervals in the nav "refresh" control
   c.page_size                = 50                     # workflows per page
   c.long_wait_threshold      = 3600                   # seconds; wait-state ages above this are flagged
+  c.long_run_threshold       = 3600                   # seconds; running longer than this is flagged as long-running
+  c.long_run_thresholds      = {"BatchImportWorkflow" => 7200} # per-class overrides (nil opts a class out)
 end
 ```
 
@@ -123,11 +125,13 @@ end
 | `polling_interval_options` | `[0, 5, 10, 15, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
+| `long_run_threshold` | `3600` | Seconds a running workflow may run before it's flagged as long-running (on the list and the flow view). `nil`/`0` disables. |
+| `long_run_thresholds` | `{}` | Per-workflow-class overrides for `long_run_threshold`, e.g. `{"BatchImportWorkflow" => 7200}`. An explicit `nil` opts a class out. |
 
 ## Features
 
 - **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state
-- **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step
+- **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step. The timeline is ranked for scanning — a summary banner names where a blocked run stopped and why, durations get a proportional meter (long steps stand out), attempts read in words per step kind (a retried execution vs. a polled wait, hidden when there's nothing to say), and a step or run still going past its threshold turns amber/rose so a stuck flow is visible at a glance
 - **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / in progress / pending / not-yet-reached / failed / unmapped, with per-node repeat counts and fan-out child tallies). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. It also follows durable calls into helper methods in the same class, assignments, `&&`/`||`, and `case`/`in`, so a step one expression deep isn't missed. A workflow whose source can't be analyzed, or whose `perform` has no durable steps, degrades to a note, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context
 - **Per-step error logs**: errors attributed to the step and attempt that raised them

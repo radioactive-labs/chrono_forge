@@ -1,45 +1,91 @@
+<%# Longest completed step, so the duration meters below share one scale. %>
+<% entries = timeline.entries %>
+<% max_dur = entries.filter_map { |e| (e.completed_at - e.started_at).to_i if e.started_at && e.completed_at }.max || 1 %>
 <ol class="cf-timeline">
-  <% entries = timeline.entries %>
-  <% entries.each_with_index do |e, i| %>
+  <% entries.each do |e| %>
     <% current = timeline.current_position&.id == e.id %>
+    <% failed = e.status == "failed" %>
+    <% done = e.status == "completed" %>
+    <% pending = !failed && !done %>
+    <% secs = ((e.completed_at - e.started_at).to_i if e.started_at && e.completed_at) %>
+    <% waiting = pending && %w[wait continue sleep repeat_coordination].include?(e.kind.to_s) %>
+    <% since = e.started_at || e.last_executed_at %>
+    <% stuck = pending && cf_overdue?(timeline.workflow.job_class, since) %>
     <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">
-      <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white"></span>
-      <div class="<%= "-ml-2 rounded-md bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200" if current %>">
-        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-400"><%= cf_kind_label(e.kind) %></span>
+      <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white <%= "animate-pulse" if pending && !waiting %>"></span>
+      <div class="<%= "-ml-2.5 rounded-md border px-2.5 py-2 " + (failed ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50") if failed || current %>">
+
+        <%# Row 1 — what step, and how long it took (or has been going). %>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-500"><%= cf_kind_label(e.kind) %></span>
           <span class="font-mono text-sm font-medium text-zinc-900"><%= e.name %></span>
-          <span class="text-xs <%= cf_status_color(e.status) %>"><%= e.status %></span>
-          <span class="font-mono text-xs text-zinc-400">×<%= e.attempts %></span>
-          <% if e.started_at && e.completed_at %>
-            <span class="font-mono text-xs text-zinc-400">· <%= cf_duration(e.started_at, e.completed_at) %></span>
+          <span class="grow"></span>
+          <% if secs %>
+            <span class="inline-flex items-center gap-2">
+              <span class="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 align-middle" title="<%= cf_secs(secs) %>">
+                <span class="cf-bar <%= cf_duration_bar(secs, max_dur) %> block rounded-full <%= cf_slow_step?(secs) ? "bg-amber-400" : "bg-zinc-400" %>"></span>
+              </span>
+              <span class="w-14 text-right font-mono text-xs <%= cf_slow_step?(secs) ? "font-semibold text-amber-600" : "text-zinc-500" %>"><%= cf_secs(secs) %></span>
+            </span>
+          <% elsif pending && since %>
+            <span class="font-mono text-xs <%= stuck ? "font-semibold text-rose-600" : "text-zinc-500" %>" title="<%= since.iso8601 %>">
+              <%= waiting ? "waiting" : "running" %> <%= cf_duration(since, Time.current) %><%= " ⚠" if stuck %>
+            </span>
+          <% elsif failed %>
+            <span class="font-mono text-xs text-zinc-400"><%= cf_ago(e.started_at) %></span>
           <% end %>
         </div>
-        <% if e.started_at || e.last_executed_at %>
-          <div class="mt-0.5 font-mono text-[11px] text-zinc-400">
-            <% if e.started_at %>started <%= cf_ago(e.started_at) %><% end %>
-            <% if e.completed_at %> · finished <%= cf_ago(e.completed_at) %><% elsif e.last_executed_at %> · last run <%= cf_ago(e.last_executed_at) %><% end %>
-          </div>
-        <% end %>
+
+        <%# Row 2 — status, attempts (in words), and one meaningful timestamp. %>
+        <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <% if done %>
+            <span class="cf-pill cf-pill-completed">done</span>
+          <% elsif failed %>
+            <span class="cf-pill cf-pill-failed">failed</span>
+          <% elsif waiting %>
+            <span class="cf-pill cf-pill-stalled">waiting</span>
+          <% else %>
+            <span class="cf-pill cf-pill-running">running</span>
+          <% end %>
+
+          <% if (note = cf_attempts_note(e.kind, e.attempts, e.status)) %>
+            <% tone = {muted: "border-zinc-200 bg-zinc-50 text-zinc-500", warn: "border-amber-200 bg-amber-50 text-amber-700", crit: "border-rose-200 bg-rose-50 text-rose-700"}[note[:tone]] %>
+            <span class="rounded border px-1.5 py-0.5 font-mono text-[11px] <%= tone %>" title="attempts recorded for this step"><%= note[:text] %></span>
+          <% end %>
+
+          <span class="font-mono text-[11px] text-zinc-400">
+            <% if done && e.completed_at %>finished <%= cf_ago(e.completed_at) %>
+            <% elsif e.started_at %>started <%= cf_ago(e.started_at) %>
+            <% elsif e.last_executed_at %>last run <%= cf_ago(e.last_executed_at) %><% end %>
+          </span>
+        </div>
+
+        <%# Metadata (wait deadlines, resume times, …). %>
         <% pairs = cf_meta_pairs(e.metadata) %>
         <% if pairs.any? %>
-          <dl class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px]">
+          <dl class="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px]">
             <% pairs.each do |label, value| %>
               <div class="min-w-0"><span class="text-zinc-400"><%= label %>:</span> <span class="text-zinc-600"><%= truncate(value, length: 80) %></span></div>
             <% end %>
           </dl>
         <% end %>
+
         <% if e.missing_error_id %>
           <div class="mt-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 font-mono text-xs text-zinc-500">
             error log #<%= e.missing_error_id %> is no longer available
           </div>
         <% end %>
         <% if e.errors.any? %>
-          <%= render partial: "error_card", collection: e.errors, as: :err %>
+          <div class="mt-1.5 flex flex-col gap-1.5">
+            <%= render partial: "error_card", collection: e.errors, as: :err %>
+          </div>
         <% elsif e.error_class %>
           <div class="mt-1 font-mono text-xs text-rose-600">
             <%= e.error_class %><% if e.error_message.present? %>: <span class="font-normal text-rose-500"><%= truncate(e.error_message, length: 160) %></span><% end %>
           </div>
         <% end %>
+
+        <%# Repeat coordination — iteration tally and catch-up skips. %>
         <% if e.kind == :repeat_coordination && e.iterations.to_i > 0 %>
           <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
             <span><%= pluralize(e.iterations, "iteration") %></span>

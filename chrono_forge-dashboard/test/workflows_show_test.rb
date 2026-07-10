@@ -60,4 +60,37 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match "legacy_thing", response.body
   end
+
+  test "timeline: banner names the blocker, attempts read as words, no ×1 noise" do
+    wf = create_workflow(key: "show-tl", state: :stalled)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$inventory?",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 2,
+      started_at: 3.hours.ago, completed_at: 3.hours.ago)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_execute$charge",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 3, started_at: 1.hour.ago, error_class: "CardError")
+    ChronoForge::ErrorLog.create!(workflow: wf, step_name: "durably_execute$charge", attempt: 3,
+      error_class: "CardError", error_message: "declined")
+
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    assert_match "Stalled at", response.body        # summary banner leads with the blocker
+    assert_match "3 attempts", response.body         # a retried execution, in words
+    assert_match "checked 2×", response.body         # a polled wait, labelled per kind
+    refute_match "×1", response.body                 # single-attempt steps carry no marker
+  end
+
+  test "a running workflow past its threshold gets a long-running banner" do
+    wf = create_workflow(key: "show-slow", state: :running, started_at: 2.hours.ago)
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    assert_match(/longer than expected/i, response.body)
+    assert_match(/may be stuck/i, response.body)
+  end
+
+  test "a fresh running workflow is not flagged long-running" do
+    wf = create_workflow(key: "show-fresh", state: :running, started_at: 2.minutes.ago)
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    refute_match(/longer than expected/i, response.body)
+  end
 end

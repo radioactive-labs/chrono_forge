@@ -57,4 +57,41 @@ class DashboardHelperTest < ActionView::TestCase
     keys = %w[completed idle failed running stalled mystery]
     assert_equal %w[running idle stalled failed completed mystery], cf_state_order(keys)
   end
+
+  # A minimal stand-in for a workflow row (only what the long-run helpers touch).
+  def wf(state:, started_at:, job_class: "OrderWorkflow")
+    Struct.new(:state, :started_at, :job_class) do
+      def running? = state == :running
+    end.new(state, started_at, job_class)
+  end
+
+  test "cf_run_overdue?: flags a running workflow past its threshold" do
+    assert cf_run_overdue?(wf(state: :running, started_at: 2.hours.ago))
+    refute cf_run_overdue?(wf(state: :running, started_at: 2.minutes.ago))
+    refute cf_run_overdue?(wf(state: :completed, started_at: 5.hours.ago)) # not running
+    refute cf_run_overdue?(wf(state: :running, started_at: nil))
+  end
+
+  test "cf_run_overdue?: honors per-class thresholds and opt-out" do
+    ChronoForge::Dashboard.configure { |c| c.long_run_thresholds = {"Fast" => 60, "Never" => nil} }
+    assert cf_run_overdue?(wf(state: :running, started_at: 2.minutes.ago, job_class: "Fast"))
+    refute cf_run_overdue?(wf(state: :running, started_at: 5.hours.ago, job_class: "Never"))
+  ensure
+    ChronoForge::Dashboard.reset_configuration!
+  end
+
+  test "cf_attempts_note: hidden at 1, kind-aware wording and tone" do
+    assert_nil cf_attempts_note(:execute, 1, "completed")
+    assert_equal({text: "3 attempts", tone: :crit}, cf_attempts_note(:execute, 3, "failed"))
+    assert_equal({text: "2 attempts", tone: :warn}, cf_attempts_note(:execute, 2, "completed"))
+    assert_equal({text: "checked 3×", tone: :muted}, cf_attempts_note(:wait, 3, "completed"))
+    assert_nil cf_attempts_note(:repeat_coordination, 4, "pending") # iterations shown instead
+  end
+
+  test "cf_duration_bar: sqrt scale keeps short steps visible and clamps" do
+    assert_equal "cf-bar-0", cf_duration_bar(nil, 100)
+    assert_equal "cf-bar-0", cf_duration_bar(10, 0)     # no divide-by-zero
+    assert_equal "cf-bar-100", cf_duration_bar(100, 100)
+    refute_equal "cf-bar-0", cf_duration_bar(2, 420)    # 2s of 7m still shows a sliver
+  end
 end

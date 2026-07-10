@@ -181,6 +181,51 @@ module ChronoForge
         else "text-zinc-500"
         end
       end
+
+      # True when +since+ is further in the past than the long-run threshold for
+      # +job_class+ (a nil/0 threshold opts out). Shared by the flow-level badge
+      # and the per-step "stuck" clock.
+      def cf_overdue?(job_class, since)
+        return false unless since
+        threshold = ChronoForge::Dashboard.config.long_run_threshold_for(job_class)
+        return false unless threshold&.to_i&.positive?
+        (Time.current - since) > threshold
+      end
+
+      # A running workflow that has been going longer than its threshold — the
+      # "this could be a problem" signal on the list and the flow view.
+      def cf_run_overdue?(workflow)
+        workflow.running? && cf_overdue?(workflow.job_class, workflow.started_at)
+      end
+
+      # The attempts count made legible — nil when there's nothing worth saying.
+      # The number means different things per step kind, so it's labelled per kind:
+      # an execution retried, a wait/gate polled. Repeat coordination shows its
+      # iteration count elsewhere, so it opts out here.
+      POLLING_KINDS = %i[wait continue sleep].freeze
+
+      def cf_attempts_note(kind, attempts, status)
+        return nil if attempts.to_i <= 1
+        return nil if kind == :repeat_coordination
+        if POLLING_KINDS.include?(kind)
+          {text: "checked #{attempts}×", tone: :muted}
+        else
+          {text: "#{attempts} attempts", tone: ((status.to_s == "failed") ? :crit : :warn)}
+        end
+      end
+
+      # Width class (reusing the CSP-safe cf-bar-{0..100} steps) for a duration
+      # meter, on a sqrt scale so a 2-second step stays visible next to a
+      # 7-minute one instead of collapsing to nothing.
+      def cf_duration_bar(seconds, max)
+        return "cf-bar-0" if seconds.nil? || max.to_f <= 0
+        pct = Math.sqrt(seconds.to_f / max) * 100
+        "cf-bar-#{[(pct / 5).round * 5, 100].min}"
+      end
+
+      # A step slow enough to emphasize (a minute or more) vs. ordinary sub-minute
+      # work — drives the amber meter/label in the timeline.
+      def cf_slow_step?(seconds) = seconds.to_i >= 60
     end
   end
 end

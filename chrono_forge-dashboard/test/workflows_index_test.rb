@@ -112,6 +112,18 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match(/data-poll-region/, response.body)
   end
 
+  test "list flags a running workflow past its long-run threshold" do
+    create_workflow(key: "slow-run", state: :running, started_at: 3.hours.ago)
+    get "/chrono_forge/workflows"
+    assert_match "over the", response.body   # the running-too-long badge tooltip
+  end
+
+  test "list does not flag a freshly running workflow" do
+    create_workflow(key: "fresh-run", state: :running, started_at: 1.minute.ago)
+    get "/chrono_forge/workflows"
+    refute_match "over the", response.body
+  end
+
   test "plain idle workflow stays idle, not scheduled" do
     create_workflow(key: "idle-1", state: :idle)
     get "/chrono_forge/workflows"
