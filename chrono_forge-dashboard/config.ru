@@ -23,6 +23,50 @@ W.delete_all
 E.delete_all
 L.delete_all
 
+# --- Bulk throughput backfill (Overview) -------------------------------------
+# A realistic processed-volume spread across classes so the Overview reads like a
+# live fleet, not a toy. Bulk-inserted (no callbacks) FIRST so these rows take the
+# lowest ids and stay buried behind the crafted fixtures below in the id-desc list
+# (and off page 1 of every list view). Backdated 40–160 days, so they also fall
+# outside the 30d analytics window, off Waiting, and off Repetitions. In-flight
+# rows are idle (never running), so none register as stranded. Only the totals —
+# the Overview and the workflow-list stats strip — count them.
+bulk_now = Time.current
+bulk_plan = {
+  "OrderWorkflow" => {completed: 1240, idle: 58, failed: 6, stalled: 2},
+  "OrderProcessingWorkflow" => {completed: 430, idle: 44, failed: 4, stalled: 1},
+  "RefundWorkflow" => {completed: 185, idle: 12, failed: 2, stalled: 1},
+  "ScheduledPaymentRecurrenceWorkflow" => {completed: 96, idle: 22, failed: 1, stalled: 1},
+  "KitchenSinkWorkflow" => {completed: 14, idle: 3, failed: 3, stalled: 1}
+}
+# Realistic per-class key prefixes (offset well past the crafted fixtures' keys)
+# so the backfill reads like real history if a viewer pages down into it.
+bulk_prefix = {
+  "OrderWorkflow" => "order",
+  "OrderProcessingWorkflow" => "batch",
+  "RefundWorkflow" => "refund",
+  "ScheduledPaymentRecurrenceWorkflow" => "spr",
+  "KitchenSinkWorkflow" => "recon"
+}
+bulk_rows = []
+bulk_seq = 0
+bulk_plan.each do |klass, states|
+  states.each do |state_sym, n|
+    n.times do
+      bulk_seq += 1
+      created = bulk_now - (40 + (bulk_seq % 120)).days
+      bulk_rows << {
+        key: "#{bulk_prefix.fetch(klass)}-#{10000 + bulk_seq}",
+        job_class: klass, state: W.states[state_sym],
+        context: {}, kwargs: {}, options: {},
+        started_at: created, completed_at: ((state_sym == :completed) ? created + 40 : nil),
+        created_at: created, updated_at: created
+      }
+    end
+  end
+end
+bulk_rows.each_slice(500) { |batch| W.insert_all(batch) }
+
 # Failed order with an error log and a runtime-branching context
 wf = W.create!(key: "order-1001", job_class: "OrderWorkflow", state: W.states[:failed],
   context: {"amount" => 4999, "currency" => "GHS", "requires_compliance" => true, "line_item_ids" => [1, 2, 3]},
@@ -216,9 +260,9 @@ E.create!(workflow: sp, step_name: "wait$wait_auto_charge_reminder", state: esta
 E.create!(workflow: sp, step_name: "durably_execute$send_auto_charge_reminder", state: estate(:completed),
   attempts: 1, started_at: 24.hours.ago, completed_at: 24.hours.ago + 2)
 E.create!(workflow: sp, step_name: "wait$wait_for_payment_time", state: estate(:completed),
-  attempts: 1, started_at: 24.hours.ago, completed_at: 2.days.ago)
+  attempts: 1, started_at: 24.hours.ago, completed_at: 3.hours.ago)
 E.create!(workflow: sp, step_name: "durably_execute$process_payment", state: estate(:failed),
-  attempts: 3, started_at: 2.days.ago, error_class: "Payments::GatewayError")
+  attempts: 3, started_at: 3.hours.ago, error_class: "Payments::GatewayError")
 L.create!(workflow: sp, step_name: "durably_execute$process_payment", attempt: 3,
   error_class: "Payments::GatewayError", error_message: "gateway declined: issuer unavailable",
   backtrace: "app/services/payments.rb:88\napp/jobs/scheduled_payment_recurrence_workflow.rb:52")

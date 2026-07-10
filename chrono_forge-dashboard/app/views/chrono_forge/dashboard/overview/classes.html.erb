@@ -1,0 +1,65 @@
+<% totals = @overview.totals %>
+<turbo-frame id="cf-ov-classes">
+  <div class="cf-card overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[46rem] text-sm">
+        <thead>
+          <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-4 py-2.5 font-medium">Class</th>
+            <th class="px-4 py-2.5 text-right font-medium">Processed</th>
+            <th class="px-4 py-2.5 font-medium">Share of processed</th>
+            <th class="px-4 py-2.5 text-right font-medium">In flight</th>
+            <th class="px-4 py-2.5 text-right font-medium">Blocked</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-100">
+          <% @overview.rows.each do |row| %>
+            <tr class="hover:bg-zinc-50">
+              <td class="px-4 py-2.5">
+                <%= link_to row.job_class, analytics_path(class: row.job_class), class: "font-mono text-zinc-900 hover:underline" %>
+              </td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums">
+                <%= link_to number_with_delimiter(row.processed), workflows_path(job_class: row.job_class, state: "completed", hide_branches: "0"), class: "text-zinc-900 hover:underline" %>
+              </td>
+              <td class="px-4 py-2.5">
+                <% share = totals.processed.zero? ? 0 : (row.processed * 100.0 / totals.processed) %>
+                <div class="flex items-center gap-2">
+                  <%= cf_meter(cf_bar_width(row.processed, totals.processed), "bg-zinc-400", track: "w-24", title: "#{number_with_delimiter(row.processed)} of #{number_with_delimiter(totals.processed)} processed") %>
+                  <span class="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-zinc-500"><%= share.round %>%</span>
+                </div>
+              </td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums">
+                <% if row.in_flight.zero? %>
+                  <span class="text-zinc-300">0</span>
+                <% else %>
+                  <%= link_to number_with_delimiter(row.in_flight), workflows_path(job_class: row.job_class, state: "in_flight", hide_branches: "0"), class: "text-zinc-600 hover:underline" %>
+                <% end %>
+              </td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums">
+                <% if row.blocked.zero? %>
+                  <span class="text-zinc-300">0</span>
+                <% else %>
+                  <%= link_to "#{number_with_delimiter(row.blocked)} ⚠", workflows_path(job_class: row.job_class, state: "blocked", hide_branches: "0"), class: "whitespace-nowrap font-medium text-rose-600 hover:underline" %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+        <% if @overview.rows.any? %>
+          <tfoot>
+            <tr class="border-t border-zinc-200 bg-zinc-50 font-medium">
+              <td class="px-4 py-2.5">Totals</td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums text-zinc-900"><%= number_with_delimiter(totals.processed) %></td>
+              <td class="px-4 py-2.5 text-xs text-zinc-400"><%= @overview.rows.size %> <%= "class".pluralize(@overview.rows.size) %></td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums text-zinc-600"><%= number_with_delimiter(totals.in_flight) %></td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums <%= totals.blocked > 0 ? "text-rose-600" : "text-zinc-600" %>"><%= number_with_delimiter(totals.blocked) %></td>
+            </tr>
+          </tfoot>
+        <% end %>
+      </table>
+    </div>
+    <% if @overview.rows.none? %>
+      <p class="px-4 py-12 text-center text-sm text-zinc-500">No workflows yet — nothing has been processed.</p>
+    <% end %>
+  </div>
+</turbo-frame>

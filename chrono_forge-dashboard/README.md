@@ -36,6 +36,11 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 
 ## Screenshots
 
+| Overview |
+| --- |
+| [![Overview](docs/screenshots/overview.png)](docs/screenshots/overview.png) |
+| A fleet summary — total **processed / in-flight / blocked**, then one row per workflow class with a share-of-processed bar. Every count drills into the matching filtered list; the class name opens its per-class Analytics. Each card and the table load in their own turbo-frame. |
+
 | Workflow list | Analytics |
 | --- | --- |
 | [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
@@ -137,7 +142,8 @@ end
 
 ## Features
 
-- **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state, and a per-row duration meter (proportional across the visible page) that turns rose when a run passes its long-run threshold
+- **Overview**: a fleet summary — total workflows **processed / in flight / blocked** across every class, then one row per workflow class sorted by volume with a share-of-processed bar. It answers "how much has run through, and by what": every count drills into the matching filtered list, and each class name opens its per-class Analytics. Blocked keeps the rose triage flag so a problem class still stands out. Each card and the table load in their own turbo-frame, so the page paints instantly and the heavy per-class scan never blocks the cheap counts
+- **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state, and a per-row duration meter (proportional across the visible page) that turns rose when a run is stranded (its lock has gone stale)
 - **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step. The timeline is ranked for scanning — a summary banner names where a blocked run stopped and why, durations get a proportional meter (long steps stand out), attempts read in words per step kind (a retried execution vs. a polled wait, hidden when there's nothing to say), and a step or run still going past its threshold turns amber/rose so a stuck flow is visible at a glance
 - **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / in progress / pending / not-yet-reached / failed / unmapped, with per-node repeat counts and fan-out child tallies). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. It also follows durable calls into helper methods in the same class, assignments, `&&`/`||`, and `case`/`in`, so a step one expression deep isn't missed. A workflow whose source can't be analyzed, or whose `perform` has no durable steps, degrades to a note, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context

@@ -43,6 +43,16 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     refute_match "pay-1", response.body    # completed
   end
 
+  test "filtering by in_flight shows idle and running, not terminal states" do
+    create_workflow(key: "run-1", state: :running, locked_at: 1.minute.ago, locked_by: "w")
+    create_workflow(key: "idle-live", state: :idle)
+    get "/chrono_forge/workflows", params: {state: "in_flight"}
+    assert_match "run-1", response.body     # running
+    assert_match "idle-live", response.body # idle
+    refute_match "ord-1", response.body     # failed
+    refute_match "pay-1", response.body     # completed
+  end
+
   test "bulk retry button is labeled to match the blocked filter" do
     get "/chrono_forge/workflows"
     assert_match "Retry blocked", response.body

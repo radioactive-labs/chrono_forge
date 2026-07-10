@@ -1,0 +1,5 @@
+<%= link_to href, class: "cf-card block p-4 hover:border-zinc-300" do %>
+  <div class="text-xs uppercase tracking-wide text-zinc-400"><%= label %></div>
+  <div class="mt-1 font-mono text-2xl font-semibold tabular-nums <%= color %>"><%= number_with_delimiter(count) %></div>
+  <div class="mt-0.5 text-xs text-zinc-400"><%= sub %></div>
+<% end %>

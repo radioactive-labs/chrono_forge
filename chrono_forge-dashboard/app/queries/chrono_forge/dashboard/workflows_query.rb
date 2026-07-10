@@ -73,13 +73,18 @@ module ChronoForge
       end
 
       # "blocked" is a virtual filter (failed + stalled) used by the branch
-      # children triage view to default to the actionable subset.
+      # children triage view to default to the actionable subset. "in_flight"
+      # (idle + running) is its live-work counterpart, drilled into from the
+      # Overview's in-flight column.
       BLOCKED_STATES = %i[failed stalled].map { |s| ChronoForge::Workflow.states[s] }.freeze
+      IN_FLIGHT_STATES = %i[idle running].map { |s| ChronoForge::Workflow.states[s] }.freeze
 
       def filtered
         s = @base
         if @state == "blocked"
           s = s.where(state: BLOCKED_STATES)
+        elsif @state == "in_flight"
+          s = s.where(state: IN_FLIGHT_STATES)
         elsif @state && ChronoForge::Workflow.states.key?(@state)
           s = s.where(state: ChronoForge::Workflow.states[@state])
         end
