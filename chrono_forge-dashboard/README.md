@@ -39,25 +39,30 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 | Workflow list | Analytics |
 | --- | --- |
 | [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
-| Filter by state/class/key, keyset pagination, capped state counts, per-row duration meter (rose when a run is overdue). | Completion/failure rate with a window trend, throughput bars carrying a per-day completion-rate pill (amber-flagged on a failure spike), top errors, queue health. |
+| Filter by state/class/key, keyset pagination, capped state counts, per-row duration meter (rose when a run is stranded). | Completion/failure rate with a window trend, throughput bars carrying a per-day completion-rate pill (amber-flagged on a failure spike), top errors, queue health. |
 
-| Waiting | Repetitions |
+| Waiting | Stranded |
 | --- | --- |
-| [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
-| Leads with a banner for stalled `continue_if` (event) waits — the silent stall — with event/poll pills and per-row age meters. | A `durably_repeat` step's per-iteration runs as status pills, with duration/lateness meters, attempts in words, and catch-up skips (per-tick tombstones or a "caught up ×N" summary). |
+| [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Stranded workflows](docs/screenshots/stranded.png)](docs/screenshots/stranded.png) |
+| Leads with a banner for stalled `continue_if` (event) waits — the silent stall — with event/poll pills and per-row age meters. | Workflows stuck in `running` with a stale lock — the reaper's own set. Lock-age meters, the dead worker named, per-row **Reap** and a **Reap all** background sweep. |
 
-| Branches | Branch children |
+| Repetitions | Branches |
 | --- | --- |
-| [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
-| Fan-out branches with exact **spawned / pending / never-started** counts (recorded by the poller — the immutable spawned total is counted once and cached when the branch seals) plus blocked count and merge state, and in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children with a **live stats header** (throughput/ETA, spawned, pending, never-started, dropped-child recovery) — blocked-first triage, capped state filters, retry per child. |
+| [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) | [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) |
+| A `durably_repeat` step's per-iteration runs as status pills, with duration/lateness meters, attempts in words, and catch-up skips (per-tick tombstones or a "caught up ×N" summary). | Fan-out branches with exact **spawned / pending / never-started** counts (recorded by the poller — the immutable spawned total is cached when the branch seals) plus blocked count and merge state, and in-flight merges showing **live throughput (children/s) and ETA** while draining. |
+
+| Branch children |
+| --- |
+| [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
+| One branch's children with a **live stats header** (throughput/ETA, spawned, pending, never-started, dropped-child recovery) — blocked-first triage, capped state filters, retry per child. |
 
 **Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context. Durations get a proportional meter (long steps stand out), attempts read in words per step kind, and a summary banner names where a blocked run stopped:
 
 [![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
 
-A workflow running past its threshold is flagged with a long-running banner that offers **Reap** — re-enqueue it to steal the stale lock and replay, the recovery for a run stranded by a hard-killed worker:
+A workflow whose lock has gone stale is flagged **stranded** — its worker was hard-killed mid-pass, so nothing is driving the run. The banner offers **Reap**, which re-enqueues it to steal the stale lock and replay:
 
-[![Long-running workflow with reap](docs/screenshots/workflow-reap.png)](docs/screenshots/workflow-reap.png)
+[![Stranded workflow with reap](docs/screenshots/workflow-reap.png)](docs/screenshots/workflow-reap.png)
 
 **Definition graph** — a per-run static DAG of the durable steps a workflow *will* run (parsed from `perform` with Prism, never executed), with the run's status painted on each node — done / in progress / failed / not-yet-reached — plus guarded edges, early-`return` exits, and unmapped steps. Tap a node or edge to inspect its step name / guard:
 
@@ -118,8 +123,6 @@ ChronoForge::Dashboard.configure do |c|
   c.polling_interval_options = [0, 5, 10, 15, 30, 60, 300] # selectable intervals in the nav "refresh" control
   c.page_size                = 50                     # workflows per page
   c.long_wait_threshold      = 3600                   # seconds; wait-state ages above this are flagged
-  c.long_run_threshold       = 3600                   # seconds; running longer than this is flagged as long-running
-  c.long_run_thresholds      = {"BatchImportWorkflow" => 7200} # per-class overrides (nil opts a class out)
 end
 ```
 
@@ -129,8 +132,8 @@ end
 | `polling_interval_options` | `[0, 5, 10, 15, 30, 60, 300]` | Intervals (seconds; `0` = off) offered by the nav refresh control. |
 | `page_size` | `50` | Workflows per page on the index. |
 | `long_wait_threshold` | `3600` | Wait-state age in seconds above which a warning is shown. |
-| `long_run_threshold` | `3600` | Seconds a running workflow may run before it's flagged as long-running (on the list and the flow view). `nil`/`0` disables. |
-| `long_run_thresholds` | `{}` | Per-workflow-class overrides for `long_run_threshold`, e.g. `{"BatchImportWorkflow" => 7200}`. An explicit `nil` opts a class out. |
+
+> **Stranded detection has no dashboard config.** A workflow is flagged as stranded (and listed on the **Stranded** page) purely by its lock going stale — `running` with `locked_at` older than the gem's own [`ChronoForge.config.reap_stale_after`](https://github.com/radioactive-labs/chrono_forge#readme) (default `3× max_duration`). That is exactly the criterion `ChronoForge::Workflow.reap_stalled` uses, so the dashboard flags precisely what the reaper reaps. Elapsed *runtime* is deliberately never a signal — a healthy workflow may legitimately run for months.
 
 ## Features
 
@@ -141,8 +144,9 @@ end
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
 - **Wait-states view**: lists workflows in a wait state, leading with a banner when a `continue_if` event wait (no timeout, never self-resumes) blows past `long_wait_threshold` — the silent stall. Event vs poll waits read as pills, and each row's age is a meter that escalates to rose (over-threshold event) or amber (long poll)
+- **Stranded view**: workflows stuck in `:running` because their lock went stale (worker hard-killed mid-pass, so nothing is left to wake them) — the same set `Workflow.reap_stalled` re-enqueues. Per-row lock-age meters, the dead worker named, one-click **Reap**, and a **Reap all stranded** background sweep. Elapsed runtime is never the signal (a healthy workflow can run for months); only a stale lock is
 - **Analytics**: completion/failure-rate cards with a window trend (newer half vs older half), a daily throughput chart where each day carries a completion-rate pill and the row is flagged when its failure rate spikes (so a bad day stands out from a busy one), top error classes, and per-class queue health
-- **Recovery actions**: retry a stalled or failed workflow; **reap** a workflow stranded in `:running` by a hard-killed worker (re-enqueues it so the executor steals the stale lock and replays completed steps as no-ops — the single-workflow form of `Workflow.reap_stalled`, offered right in the long-running banner); force-unlock a stuck running workflow (with a duplicate-execution warning); bulk retry all blocked workflows (fanned out by a background job, so the request stays fast with a large backlog)
+- **Recovery actions**: retry a stalled or failed workflow; **reap** a workflow stranded in `:running` by a hard-killed worker (re-enqueues it so the executor steals the stale lock and replays completed steps as no-ops — the single-workflow form of `Workflow.reap_stalled`, offered in the stranded banner); force-unlock a stuck running workflow (with a duplicate-execution warning); bulk retry all blocked workflows, or bulk reap all stranded ones (both fanned out by a background job, so the request stays fast with a large backlog)
 
 ## Frontend
 

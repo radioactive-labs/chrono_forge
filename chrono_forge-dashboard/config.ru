@@ -185,6 +185,18 @@ E.create!(workflow: big, step_name: "branch$fanout", state: estate(:completed), 
                         "last_polled_at" => 1.minute.ago.iso8601, "next_poll_at" => 3.minutes.from_now.iso8601}})
 E.create!(workflow: big, step_name: "merge$fanout", state: estate(:pending), attempts: 1, started_at: 1.minute.ago)
 
+# Stranded in :running — a worker was hard-killed mid-pass, so the lock is stale
+# (older than reap_stale_after, 30m by default) and nothing is scheduled to wake
+# it. The reaper (and the Stranded page) catch it by the stale lock, NOT runtime:
+# newsletter-9 above has run for days with a *fresh* lock and is perfectly healthy.
+strand = W.create!(key: "batch-import-42", job_class: "OrderProcessingWorkflow", state: W.states[:running],
+  context: {"batch" => 42}, kwargs: {"batch_id" => 42}, options: {},
+  started_at: 90.minutes.ago, locked_at: 47.minutes.ago, locked_by: "worker-7f3a@host-2")
+E.create!(workflow: strand, step_name: "durably_execute$fetch_rows", state: estate(:completed),
+  attempts: 1, started_at: 90.minutes.ago, completed_at: 89.minutes.ago)
+E.create!(workflow: strand, step_name: "durably_execute$process_batch", state: estate(:pending),
+  attempts: 1, started_at: 48.minutes.ago, last_executed_at: 47.minutes.ago)
+
 # Scheduled-payment recurrence — the definition-graph screenshot fixture. The run
 # took the auto-charge "payment reminder first" branch, so those steps are done,
 # the other two reminder branches stay not-reached (dimmed), and the final charge
