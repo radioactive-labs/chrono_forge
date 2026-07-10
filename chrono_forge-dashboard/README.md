@@ -39,21 +39,25 @@ mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
 | Workflow list | Analytics |
 | --- | --- |
 | [![Workflow list](docs/screenshots/workflows.png)](docs/screenshots/workflows.png) | [![Analytics](docs/screenshots/analytics.png)](docs/screenshots/analytics.png) |
-| Filter by state/class/key, keyset pagination, capped state counts. | Completion/failure rate, throughput, top errors, queue health — per class. |
+| Filter by state/class/key, keyset pagination, capped state counts, per-row duration meter (rose when a run is overdue). | Completion/failure rate with a window trend, throughput bars carrying a per-day completion-rate pill (amber-flagged on a failure spike), top errors, queue health. |
 
 | Waiting | Repetitions |
 | --- | --- |
 | [![Waiting workflows](docs/screenshots/waiting.png)](docs/screenshots/waiting.png) | [![Repetitions](docs/screenshots/repetitions.png)](docs/screenshots/repetitions.png) |
-| Oldest unresolved `continue_if` (event) wait per class — the silent stall. | A `durably_repeat` step's per-iteration runs, with catch-up skips (per-tick tombstones or a "caught up ×N" summary) and lateness. |
+| Leads with a banner for stalled `continue_if` (event) waits — the silent stall — with event/poll pills and per-row age meters. | A `durably_repeat` step's per-iteration runs as status pills, with duration/lateness meters, attempts in words, and catch-up skips (per-tick tombstones or a "caught up ×N" summary). |
 
 | Branches | Branch children |
 | --- | --- |
 | [![Branches panel](docs/screenshots/branches.png)](docs/screenshots/branches.png) | [![Branch children](docs/screenshots/branch-children.png)](docs/screenshots/branch-children.png) |
 | Fan-out branches with exact **spawned / pending / never-started** counts (recorded by the poller — the immutable spawned total is counted once and cached when the branch seals) plus blocked count and merge state, and in-flight merges showing **live throughput (children/s) and ETA** while draining. | One branch's children with a **live stats header** (throughput/ETA, spawned, pending, never-started, dropped-child recovery) — blocked-first triage, capped state filters, retry per child. |
 
-**Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context:
+**Workflow detail** — step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context. Durations get a proportional meter (long steps stand out), attempts read in words per step kind, and a summary banner names where a blocked run stopped:
 
 [![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
+
+A workflow running past its threshold is flagged with a long-running banner that offers **Reap** — re-enqueue it to steal the stale lock and replay, the recovery for a run stranded by a hard-killed worker:
+
+[![Long-running workflow with reap](docs/screenshots/workflow-reap.png)](docs/screenshots/workflow-reap.png)
 
 **Definition graph** — a per-run static DAG of the durable steps a workflow *will* run (parsed from `perform` with Prism, never executed), with the run's status painted on each node — done / in progress / failed / not-yet-reached — plus guarded edges, early-`return` exits, and unmapped steps. Tap a node or edge to inspect its step name / guard:
 
@@ -130,14 +134,15 @@ end
 
 ## Features
 
-- **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state
+- **Workflow list**: state badges, filter by state/job class/workflow key, stats header showing counts by state, and a per-row duration meter (proportional across the visible page) that turns rose when a run passes its long-run threshold
 - **Workflow detail**: step replay timeline showing every `durably_execute`, `wait`, `continue_if`, and `durably_repeat` run; repetitions from `durably_repeat` appear nested under their coordination step. The timeline is ranked for scanning — a summary banner names where a blocked run stopped and why, durations get a proportional meter (long steps stand out), attempts read in words per step kind (a retried execution vs. a polled wait, hidden when there's nothing to say), and a step or run still going past its threshold turns amber/rose so a stuck flow is visible at a glance
 - **Definition graph**: a per-run static DAG of the durable steps a workflow *will* run — parsed from the `perform` method source with [Prism](https://github.com/ruby/prism) (never executed, never touches the DB) — with the run's live status overlaid on each node (done / in progress / pending / not-yet-reached / failed / unmapped, with per-node repeat counts and fan-out child tallies). Rendered client-side with [Cytoscape](https://js.cytoscape.org) (dagre layout): pan/zoom, and tap a node or edge to inspect its step name / guard. Reached from a "Definition graph" link on the workflow detail page. The analysis is deliberately *conservative*: `if`/`unless`/`case`/`continue_if` become guarded edges, an early `return` a dashed exit, `branch`/`spawn_each` a fan-out node, `durably_repeat` a loop node, and anything it can't resolve statically (a computed step name, a data-dependent loop, a durable call behind an unknown method) becomes a `dynamic` node with a warning rather than a confident-but-wrong graph. It also follows durable calls into helper methods in the same class, assignments, `&&`/`||`, and `case`/`in`, so a step one expression deep isn't missed. A workflow whose source can't be analyzed, or whose `perform` has no durable steps, degrades to a note, never an error.
 - **Context inspector**: JSON tree view of the workflow's persistent context
 - **Per-step error logs**: errors attributed to the step and attempt that raised them
 - **Periodic-task health**: summary of each `durably_repeat` task (last run, next run, missed executions)
-- **Wait-states view**: lists workflows in a wait state, with age flagged if above `long_wait_threshold`
-- **Recovery actions**: retry a stalled or failed workflow, force-unlock a stuck running workflow (with a duplicate-execution warning), bulk retry all blocked workflows (fanned out by a background job, so the request stays fast with a large backlog)
+- **Wait-states view**: lists workflows in a wait state, leading with a banner when a `continue_if` event wait (no timeout, never self-resumes) blows past `long_wait_threshold` — the silent stall. Event vs poll waits read as pills, and each row's age is a meter that escalates to rose (over-threshold event) or amber (long poll)
+- **Analytics**: completion/failure-rate cards with a window trend (newer half vs older half), a daily throughput chart where each day carries a completion-rate pill and the row is flagged when its failure rate spikes (so a bad day stands out from a busy one), top error classes, and per-class queue health
+- **Recovery actions**: retry a stalled or failed workflow; **reap** a workflow stranded in `:running` by a hard-killed worker (re-enqueues it so the executor steals the stale lock and replays completed steps as no-ops — the single-workflow form of `Workflow.reap_stalled`, offered right in the long-running banner); force-unlock a stuck running workflow (with a duplicate-execution warning); bulk retry all blocked workflows (fanned out by a background job, so the request stays fast with a large backlog)
 
 ## Frontend
 
