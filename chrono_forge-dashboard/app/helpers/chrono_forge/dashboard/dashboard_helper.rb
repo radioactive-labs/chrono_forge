@@ -290,8 +290,9 @@ module ChronoForge
       end
 
       # Run length in seconds for a workflow row: elapsed for a live run, final
-      # span for a terminal one, nil for a parked (idle/scheduled) one whose
-      # "duration" would just be how long it's been waiting.
+      # span for a run that ran and stopped (completed / failed / stalled), nil
+      # for a parked (idle/scheduled) one whose "duration" would just be how long
+      # it's been waiting on a condition, not how long it actually ran.
       def cf_row_duration_secs(workflow)
         return nil unless workflow.started_at
         ending =
@@ -299,7 +300,7 @@ module ChronoForge
             workflow.completed_at
           elsif workflow.running?
             Time.current
-          elsif workflow.failed?
+          elsif workflow.failed? || workflow.stalled?
             workflow.updated_at
           end
         ending ? (ending - workflow.started_at).to_i : nil

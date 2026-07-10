@@ -132,10 +132,12 @@ class DashboardHelperTest < ActionView::TestCase
     assert_in_delta(-50.0, trend[:failure], 0.1)
   end
 
-  test "cf_row_duration_secs: elapsed for live, final for terminal, nil for parked" do
+  test "cf_row_duration_secs: elapsed for live, final for ran-and-stopped, nil for parked" do
     assert_equal 30, cf_row_duration_secs(WorkflowStub.new(:completed, Time.current - 30, Time.current))
-    assert_nil cf_row_duration_secs(WorkflowStub.new(:idle, Time.current - 3600, nil))
-    assert_nil cf_row_duration_secs(WorkflowStub.new(:completed, nil, nil)) # never started
+    assert_equal 30, cf_row_duration_secs(WorkflowStub.new(:failed, Time.current - 30, Time.current))
+    assert_equal 30, cf_row_duration_secs(WorkflowStub.new(:stalled, Time.current - 30, Time.current)) # ran, then halted
+    assert_nil cf_row_duration_secs(WorkflowStub.new(:idle, Time.current - 3600, nil))       # parked on a wait
+    assert_nil cf_row_duration_secs(WorkflowStub.new(:completed, nil, nil))                   # never started
     live = cf_row_duration_secs(WorkflowStub.new(:running, Time.current - 120, nil))
     assert_operator live, :>=, 119
   end
@@ -146,5 +148,6 @@ class DashboardHelperTest < ActionView::TestCase
     def updated_at = ended_at
     def running? = state == :running
     def failed? = state == :failed
+    def stalled? = state == :stalled
   end
 end
