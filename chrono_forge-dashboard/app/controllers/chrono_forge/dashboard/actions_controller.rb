@@ -38,6 +38,17 @@ module ChronoForge
         redirect_to workflow_path(workflow), notice: "Re-enqueued #{workflow.key}.", status: :see_other
       end
 
+      # Reap every stranded workflow (running with a stale lock) in the
+      # background — the bulk form of #reap, delegating to Workflow.reap_stalled.
+      # The count is taken up front for the flash; the job does the sweep.
+      def bulk_reap
+        cutoff = ChronoForge.config.reap_stale_after.ago
+        n = ChronoForge::Workflow.where(state: ChronoForge::Workflow.states[:running]).where(locked_at: ...cutoff).count
+        return redirect_to(stranded_index_path, notice: "No stranded workflows to reap.", status: :see_other) if n.zero?
+        BulkReapJob.perform_later
+        redirect_to stranded_index_path, notice: "Reaping #{n} stranded workflow(s) in the background.", status: :see_other
+      end
+
       # Retry every blocked (failed/stalled) workflow. The fan-out runs in a
       # background job so the request returns fast even with a huge backlog; the
       # count is taken up front for the flash (BulkRetryJob does the enqueueing).

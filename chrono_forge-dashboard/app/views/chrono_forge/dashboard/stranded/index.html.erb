@@ -1,0 +1,73 @@
+<div class="mb-1 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="text-lg font-semibold tracking-tight">Stranded workflows</h1>
+  <% if @stranded.any? %>
+    <%# Background sweep — mirrors "Retry blocked". Disables + relabels while the
+        POST runs and survives the poll morph (see dashboard.js). %>
+    <%= button_to "Reap all stranded", reap_all_stranded_index_path, method: :post,
+          form: {data: {confirm: "Reap every stranded workflow? Each is re-enqueued to steal its stale lock and replay; steps with external side effects must be idempotent.", cf_poll_preserve: true}},
+          data: {turbo_submits_with: "Reaping…"}, class: "cf-btn cf-btn-primary" %>
+  <% end %>
+</div>
+<p class="mb-5 text-sm text-zinc-500">
+  Workflows still in <span class="font-mono">running</span> whose lock hasn't been refreshed in
+  <%= cf_secs(@stale_after.to_i) %> (<span class="font-mono">reap_stale_after</span>) — no worker is driving them.
+  A worker hard-killed mid-pass (SIGKILL / OOM / eviction) leaves the row locked with nothing scheduled to wake it.
+  <strong class="font-medium text-zinc-600">Reaping</strong> re-enqueues each so the executor steals the stale lock and replays completed steps as no-ops.
+</p>
+
+<% if @stranded.any? %>
+  <div class="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+    <span class="mt-px text-rose-600" aria-hidden="true">▲</span>
+    <div class="min-w-0 flex-1 text-sm">
+      <p class="font-semibold text-zinc-900"><%= @capped ? "#{@cap}+" : @stranded.size %> stranded <%= "workflow".pluralize(@stranded.size) %> to reap</p>
+      <p class="mt-0.5 text-zinc-600">These match <span class="font-mono">Workflow.reap_stalled</span> exactly — the same sweep a periodic reaper would run. Reap them here, or let the scheduled sweep pick them up.</p>
+    </div>
+  </div>
+<% end %>
+
+<div class="cf-card overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[44rem] text-sm">
+      <thead>
+        <tr class="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-2.5 font-medium">Key</th>
+          <th class="px-4 py-2.5 font-medium">Class</th>
+          <th class="px-4 py-2.5 font-medium">Locked by</th>
+          <th class="px-4 py-2.5 font-medium">Lock stale for</th>
+          <th class="px-4 py-2.5 text-right font-medium">Started</th>
+          <th class="px-4 py-2.5 text-right font-medium">Reap</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-100">
+        <% max_age = @stranded.filter_map { |wf| cf_lock_age(wf) }.max || 1 %>
+        <% @stranded.each do |wf| %>
+          <% age = cf_lock_age(wf) %>
+          <tr class="bg-rose-50/40 hover:bg-rose-50">
+            <td class="px-4 py-2.5"><%= link_to wf.key, workflow_path(wf), class: "font-mono hover:underline" %></td>
+            <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= wf.job_class %></td>
+            <td class="px-4 py-2.5 font-mono text-xs text-zinc-500"><%= wf.locked_by || "—" %></td>
+            <td class="px-4 py-2.5">
+              <div class="flex items-center gap-2">
+                <%= cf_meter(cf_bar_width(age, max_age), "bg-rose-400", track: "w-14", title: "lock last refreshed #{cf_secs(age)} ago") %>
+                <span class="whitespace-nowrap font-medium text-rose-700"><%= cf_duration(wf.locked_at, Time.current) %></span>
+              </div>
+            </td>
+            <td class="px-4 py-2.5 text-right text-xs text-zinc-500"><%= cf_ago(wf.started_at) %></td>
+            <td class="px-4 py-2.5 text-right">
+              <%= button_to "Reap", reap_workflow_path(wf), method: :post,
+                    form: {data: {confirm: "Reap #{wf.key}? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent.", cf_poll_preserve: true}},
+                    data: {turbo_submits_with: "Reaping…"}, class: "cf-btn" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <% if @stranded.none? %>
+    <p class="px-4 py-12 text-center text-sm text-zinc-500">No stranded workflows — every running workflow has a live lock. 🎉</p>
+  <% end %>
+</div>
+
+<% if @capped %>
+  <p class="mt-3 text-xs text-zinc-400">Showing the <%= @cap %> longest-stranded. "Reap all stranded" sweeps every one, not just these.</p>
+<% end %>

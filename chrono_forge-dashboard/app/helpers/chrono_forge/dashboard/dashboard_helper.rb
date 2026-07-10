@@ -182,20 +182,23 @@ module ChronoForge
         end
       end
 
-      # True when +since+ is further in the past than the long-run threshold for
-      # +job_class+ (a nil/0 threshold opts out). Shared by the flow-level badge
-      # and the per-step "stuck" clock.
-      def cf_overdue?(job_class, since)
-        return false unless since
-        threshold = ChronoForge::Dashboard.config.long_run_threshold_for(job_class)
-        return false unless threshold&.to_i&.positive?
-        (Time.current - since) > threshold
+      # Age past which a running workflow's lock is considered stale (its worker
+      # gone) — the reaper's own threshold, so the dashboard flags exactly what
+      # ChronoForge::Workflow.reap_stalled would re-enqueue.
+      def cf_reap_stale_after = ChronoForge.config.reap_stale_after
+
+      # A workflow stranded in :running by a hard-killed worker: still running,
+      # but its lock hasn't been refreshed within reap_stale_after, so nothing is
+      # driving it. This is the *only* "stuck" signal that holds — a healthy
+      # workflow may legitimately run for years, so elapsed runtime says nothing.
+      def cf_stranded?(workflow)
+        workflow.running? && workflow.locked_at.present? &&
+          workflow.locked_at < cf_reap_stale_after.ago
       end
 
-      # A running workflow that has been going longer than its threshold — the
-      # "this could be a problem" signal on the list and the flow view.
-      def cf_run_overdue?(workflow)
-        workflow.running? && cf_overdue?(workflow.job_class, workflow.started_at)
+      # How long a workflow's lock has been stale (nil if never locked).
+      def cf_lock_age(workflow)
+        workflow.locked_at ? (Time.current - workflow.locked_at).to_i : nil
       end
 
       # The attempts count made legible — nil when there's nothing worth saying.

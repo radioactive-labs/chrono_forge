@@ -34,7 +34,7 @@
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Created</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.created_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Started</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.started_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Completed</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.completed_at) %></dd></div>
-    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono <%= cf_run_overdue?(@workflow) ? "font-semibold text-rose-600" : "text-zinc-700" %>"><%= cf_duration(@workflow.started_at, @workflow.completed_at || (@workflow.running? ? Time.current : @workflow.updated_at)) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono text-zinc-700"><%= cf_duration(@workflow.started_at, @workflow.completed_at || (@workflow.running? ? Time.current : @workflow.updated_at)) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked by</dt><dd class="break-all font-mono text-zinc-700"><%= @workflow.locked_by || "—" %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked at</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.locked_at) %></dd></div>
   </dl>
@@ -53,12 +53,12 @@
       <% end %>
     </div>
   </div>
-<% elsif cf_run_overdue?(@workflow) %>
-  <div class="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-    <span class="mt-px text-amber-600" aria-hidden="true">▲</span>
+<% elsif cf_stranded?(@workflow) %>
+  <div class="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+    <span class="mt-px text-rose-600" aria-hidden="true">▲</span>
     <div class="min-w-0 flex-1 text-sm">
-      <p class="font-semibold text-zinc-900">Running <%= cf_duration(@workflow.started_at, Time.current) %> — longer than expected</p>
-      <p class="mt-0.5 text-zinc-600">Past the <%= cf_secs(ChronoForge::Dashboard.config.long_run_threshold_for(@workflow.job_class)) %> mark for <span class="font-mono"><%= @workflow.job_class %></span>; it may be stuck. If a worker was killed mid-run, <strong class="font-medium text-zinc-700">reap</strong> re-enqueues it to steal the stale lock and replay.</p>
+      <p class="font-semibold text-zinc-900">Stranded — lock stale for <%= cf_duration(@workflow.locked_at, Time.current) %></p>
+      <p class="mt-0.5 text-zinc-600">Worker <span class="font-mono"><%= @workflow.locked_by || "?" %></span> hasn't refreshed the lock in <%= cf_secs(cf_reap_stale_after.to_i) %>, so nothing is driving this run — its worker was likely hard-killed mid-pass. <strong class="font-medium text-zinc-700">Reap</strong> re-enqueues it to steal the stale lock and replay.</p>
     </div>
     <%= button_to "Reap", reap_workflow_path(@workflow), method: :post,
           form: {class: "shrink-0", data: {confirm: "Reap this workflow? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent."}}, class: "cf-btn" %>

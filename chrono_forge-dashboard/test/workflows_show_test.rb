@@ -79,13 +79,14 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     refute_match "×1", response.body                 # single-attempt steps carry no marker
   end
 
-  test "a running workflow past its threshold gets a long-running banner with a reap action" do
-    wf = create_workflow(key: "show-slow", state: :running, started_at: 2.hours.ago)
+  test "a running workflow with a stale lock gets a stranded banner with a reap action" do
+    wf = create_workflow(key: "show-stranded", state: :running, started_at: 2.hours.ago,
+      locked_at: 40.minutes.ago, locked_by: "dead-worker")
     get "/chrono_forge/workflows/#{wf.id}"
     assert_response :success
-    assert_match(/longer than expected/i, response.body)
-    assert_match(/may be stuck/i, response.body)
-    assert_match "/workflows/#{wf.id}/reap", response.body   # reap is offered where the stall is surfaced
+    assert_match(/lock stale for/i, response.body)   # banner-specific (nav also says "Stranded")
+    assert_match "dead-worker", response.body
+    assert_match "/workflows/#{wf.id}/reap", response.body   # reap offered where the strand is surfaced
     assert_match "Reap", response.body
   end
 
@@ -99,10 +100,11 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     refute_match "/workflows/#{done.id}/reap", response.body
   end
 
-  test "a fresh running workflow is not flagged long-running" do
-    wf = create_workflow(key: "show-fresh", state: :running, started_at: 2.minutes.ago)
+  test "a running workflow with a fresh lock is not flagged stranded" do
+    wf = create_workflow(key: "show-fresh", state: :running, started_at: 3.hours.ago,
+      locked_at: 2.minutes.ago, locked_by: "live-worker")
     get "/chrono_forge/workflows/#{wf.id}"
     assert_response :success
-    refute_match(/longer than expected/i, response.body)
+    refute_match(/lock stale for/i, response.body)   # long runtime alone never flags — only a stale lock
   end
 end

@@ -17,6 +17,9 @@ ChronoForge::Dashboard::Engine.routes.draw do
     end
   end
   resources :wait_states, only: :index
+  resources :stranded, only: :index do
+    collection { post :reap_all, to: "actions#bulk_reap" }
+  end
   get "analytics", to: "analytics#index", as: :analytics
   # Explicit allowlist (mirrors AssetsController::TYPES) so unknown assets 404 at
   # the routing layer rather than reaching the controller.

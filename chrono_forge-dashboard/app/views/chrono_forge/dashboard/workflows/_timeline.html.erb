@@ -10,7 +10,6 @@
     <% secs = ((e.completed_at - e.started_at).to_i if e.started_at && e.completed_at) %>
     <% waiting = pending && %w[wait continue sleep repeat_coordination].include?(e.kind.to_s) %>
     <% since = e.started_at || e.last_executed_at %>
-    <% stuck = pending && cf_overdue?(timeline.workflow.job_class, since) %>
     <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">
       <span class="cf-dot cf-dot-<%= e.status %> absolute -left-[5px] top-1.5 ring-4 ring-white <%= "animate-pulse" if pending && !waiting %>"></span>
       <div class="<%= "-ml-2.5 rounded-md border px-2.5 py-2 " + (failed ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50") if failed || current %>">
@@ -28,8 +27,8 @@
               <span class="w-14 text-right font-mono text-xs <%= cf_slow_step?(secs) ? "font-semibold text-amber-600" : "text-zinc-500" %>"><%= cf_secs(secs) %></span>
             </span>
           <% elsif pending && since %>
-            <span class="font-mono text-xs <%= stuck ? "font-semibold text-rose-600" : "text-zinc-500" %>" title="<%= since.iso8601 %>">
-              <%= waiting ? "waiting" : "running" %> <%= cf_duration(since, Time.current) %><%= " ⚠" if stuck %>
+            <span class="font-mono text-xs text-zinc-500" title="<%= since.iso8601 %>">
+              <%= waiting ? "waiting" : "running" %> <%= cf_duration(since, Time.current) %>
             </span>
           <% elsif failed %>
             <span class="font-mono text-xs text-zinc-400"><%= cf_ago(e.started_at) %></span>

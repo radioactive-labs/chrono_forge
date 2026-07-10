@@ -3,25 +3,18 @@ require "test_helper"
 class ConfigurationTest < ActiveSupport::TestCase
   teardown { ChronoForge::Dashboard.reset_configuration! }
 
-  test "long_run_threshold defaults to an hour" do
-    assert_equal 3600, ChronoForge::Dashboard.config.long_run_threshold
+  test "long_wait_threshold defaults to an hour" do
+    assert_equal 3600, ChronoForge::Dashboard.config.long_wait_threshold
   end
 
-  test "long_run_threshold_for falls back to the global default" do
-    assert_equal 3600, ChronoForge::Dashboard.config.long_run_threshold_for("AnyWorkflow")
+  test "page_size and polling defaults" do
+    assert_equal 50, ChronoForge::Dashboard.config.page_size
+    assert_equal 15, ChronoForge::Dashboard.config.polling_interval
   end
 
-  test "long_run_threshold_for honors a per-class override" do
-    ChronoForge::Dashboard.configure do |c|
-      c.long_run_threshold = 3600
-      c.long_run_thresholds = {"SlowBatchWorkflow" => 7200}
-    end
-    assert_equal 7200, ChronoForge::Dashboard.config.long_run_threshold_for("SlowBatchWorkflow")
-    assert_equal 3600, ChronoForge::Dashboard.config.long_run_threshold_for("OtherWorkflow")
-  end
-
-  test "a nil per-class threshold opts that class out" do
-    ChronoForge::Dashboard.configure { |c| c.long_run_thresholds = {"NeverFlag" => nil} }
-    assert_nil ChronoForge::Dashboard.config.long_run_threshold_for("NeverFlag")
+  # Stranded detection reads the gem's reap_stale_after (not a dashboard config),
+  # so the dashboard flags exactly what Workflow.reap_stalled reaps.
+  test "reap_stale_after comes from the gem, defaulting to 3x max_duration" do
+    assert_equal ChronoForge.config.max_duration * 3, ChronoForge.config.reap_stale_after
   end
 end

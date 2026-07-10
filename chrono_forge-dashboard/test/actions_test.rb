@@ -75,6 +75,27 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert_match(/only running/i, response.body)
   end
 
+  test "bulk reap enqueues a single background sweep and reports the count" do
+    create_workflow(key: "s1", state: :running, locked_at: 40.minutes.ago, locked_by: "w1")
+    create_workflow(key: "s2", state: :running, locked_at: 50.minutes.ago, locked_by: "w2")
+    create_workflow(key: "fresh", state: :running, locked_at: 1.minute.ago, locked_by: "w3") # not stranded
+    assert_enqueued_with(job: ChronoForge::Dashboard::BulkReapJob) do
+      post "/chrono_forge/stranded/reap_all"
+    end
+    assert_response :see_other
+    follow_redirect!
+    assert_match(/Reaping 2 stranded/, response.body)
+  end
+
+  test "bulk reap with nothing stranded enqueues no job" do
+    create_workflow(key: "fresh", state: :running, locked_at: 1.minute.ago, locked_by: "w1")
+    assert_no_enqueued_jobs do
+      post "/chrono_forge/stranded/reap_all"
+    end
+    follow_redirect!
+    assert_match(/no stranded/i, response.body)
+  end
+
   # The retries are fanned out by a single background job so the request returns
   # fast even with thousands of blocked workflows — the POST enqueues one job.
   test "bulk retry enqueues a single background job and reports the count" do

@@ -112,16 +112,19 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     assert_match(/data-poll-region/, response.body)
   end
 
-  test "list flags a running workflow past its long-run threshold" do
-    create_workflow(key: "slow-run", state: :running, started_at: 3.hours.ago)
+  test "list flags a running workflow whose lock has gone stale as stranded" do
+    create_workflow(key: "stranded-run", state: :running, started_at: 3.hours.ago,
+      locked_at: 40.minutes.ago, locked_by: "dead-worker")
     get "/chrono_forge/workflows"
-    assert_match "over the", response.body   # the running-too-long badge tooltip
+    assert_match "lock stale", response.body   # the stale-lock badge tooltip (nav href also says "stranded")
   end
 
-  test "list does not flag a freshly running workflow" do
-    create_workflow(key: "fresh-run", state: :running, started_at: 1.minute.ago)
+  test "list does not flag a long-but-healthy running workflow" do
+    # Running for hours is fine — only a stale lock is stranded.
+    create_workflow(key: "healthy-run", state: :running, started_at: 5.hours.ago,
+      locked_at: 1.minute.ago, locked_by: "live-worker")
     get "/chrono_forge/workflows"
-    refute_match "over the", response.body
+    refute_match "lock stale", response.body
   end
 
   test "list shows a duration column for finished runs, dash for parked ones" do

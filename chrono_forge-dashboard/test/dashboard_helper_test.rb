@@ -58,26 +58,27 @@ class DashboardHelperTest < ActionView::TestCase
     assert_equal %w[running idle stalled failed completed mystery], cf_state_order(keys)
   end
 
-  # A minimal stand-in for a workflow row (only what the long-run helpers touch).
-  def wf(state:, started_at:, job_class: "OrderWorkflow")
-    Struct.new(:state, :started_at, :job_class) do
+  # A minimal stand-in for a workflow row (only what cf_stranded? touches).
+  def wf(state:, locked_at:)
+    Struct.new(:state, :locked_at) do
       def running? = state == :running
-    end.new(state, started_at, job_class)
+    end.new(state, locked_at)
   end
 
-  test "cf_run_overdue?: flags a running workflow past its threshold" do
-    assert cf_run_overdue?(wf(state: :running, started_at: 2.hours.ago))
-    refute cf_run_overdue?(wf(state: :running, started_at: 2.minutes.ago))
-    refute cf_run_overdue?(wf(state: :completed, started_at: 5.hours.ago)) # not running
-    refute cf_run_overdue?(wf(state: :running, started_at: nil))
+  # reap_stale_after defaults to 3x max_duration = 30 min out of the box.
+  test "cf_stranded?: flags a running workflow whose lock has gone stale" do
+    assert cf_stranded?(wf(state: :running, locked_at: 40.minutes.ago))   # lock older than reap_stale_after
+    refute cf_stranded?(wf(state: :running, locked_at: 5.minutes.ago))    # fresh lock — worker alive
+    refute cf_stranded?(wf(state: :running, locked_at: nil))              # not locked
+    refute cf_stranded?(wf(state: :completed, locked_at: 5.hours.ago))    # not running
   end
 
-  test "cf_run_overdue?: honors per-class thresholds and opt-out" do
-    ChronoForge::Dashboard.configure { |c| c.long_run_thresholds = {"Fast" => 60, "Never" => nil} }
-    assert cf_run_overdue?(wf(state: :running, started_at: 2.minutes.ago, job_class: "Fast"))
-    refute cf_run_overdue?(wf(state: :running, started_at: 5.hours.ago, job_class: "Never"))
+  test "cf_stranded?: tracks a custom reap_stale_after" do
+    ChronoForge.config.reap_stale_after = 10.minutes
+    assert cf_stranded?(wf(state: :running, locked_at: 15.minutes.ago))
+    refute cf_stranded?(wf(state: :running, locked_at: 5.minutes.ago))
   ensure
-    ChronoForge::Dashboard.reset_configuration!
+    ChronoForge.config.reap_stale_after = nil
   end
 
   test "cf_attempts_note: hidden at 1, kind-aware wording and tone" do
