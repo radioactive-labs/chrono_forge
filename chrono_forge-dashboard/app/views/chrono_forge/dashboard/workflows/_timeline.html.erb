@@ -1,13 +1,16 @@
 <%# Longest completed step, so the duration meters below share one scale. %>
 <% entries = timeline.entries %>
-<% max_dur = entries.filter_map { |e| (e.completed_at - e.started_at).to_i if e.started_at && e.completed_at }.max || 1 %>
+<%# completed_at >= started_at guards against a backwards step (clock skew / bad
+    data): a negative duration is dropped here, so it neither skews the scale nor
+    reaches the sqrt meter. %>
+<% max_dur = entries.filter_map { |e| (e.completed_at - e.started_at).to_i if e.started_at && e.completed_at && e.completed_at >= e.started_at }.max || 1 %>
 <ol class="cf-timeline">
   <% entries.each do |e| %>
     <% current = timeline.current_position&.id == e.id %>
     <% failed = e.status == "failed" %>
     <% done = e.status == "completed" %>
     <% pending = !failed && !done %>
-    <% secs = ((e.completed_at - e.started_at).to_i if e.started_at && e.completed_at) %>
+    <% secs = ((e.completed_at - e.started_at).to_i if e.started_at && e.completed_at && e.completed_at >= e.started_at) %>
     <% waiting = pending && %w[wait continue sleep repeat_coordination].include?(e.kind.to_s) %>
     <% since = e.started_at || e.last_executed_at %>
     <li class="relative border-l border-zinc-200 pb-5 pl-6 last:border-l-transparent last:pb-0">

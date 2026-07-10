@@ -106,6 +106,7 @@ class DashboardHelperTest < ActionView::TestCase
     assert_equal "cf-bar-0", cf_duration_bar(10, 0)     # no divide-by-zero
     assert_equal "cf-bar-100", cf_duration_bar(100, 100)
     refute_equal "cf-bar-0", cf_duration_bar(2, 420)    # 2s of 7m still shows a sliver
+    assert_equal "cf-bar-0", cf_duration_bar(-5, 100)   # backwards step: no bar, no sqrt-domain crash
   end
 
   Bucket = Struct.new(:day, :completed, :failed) do
@@ -141,6 +142,8 @@ class DashboardHelperTest < ActionView::TestCase
     assert_nil cf_row_duration_secs(WorkflowStub.new(:completed, nil, nil))                   # never started
     live = cf_row_duration_secs(WorkflowStub.new(:running, Time.current - 120, nil))
     assert_operator live, :>=, 119
+    # ending before start (clock skew / bad data) → unknown, not a negative
+    assert_nil cf_row_duration_secs(WorkflowStub.new(:completed, Time.current, Time.current - 30))
   end
 
   # Minimal stand-in for a Workflow row — only the fields the helper reads.

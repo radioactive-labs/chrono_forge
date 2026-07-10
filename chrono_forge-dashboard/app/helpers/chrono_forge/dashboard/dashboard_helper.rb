@@ -224,7 +224,10 @@ module ChronoForge
       # meter, on a sqrt scale so a 2-second step stays visible next to a
       # 7-minute one instead of collapsing to nothing.
       def cf_duration_bar(seconds, max)
-        return "cf-bar-0" if seconds.nil? || max.to_f <= 0
+        # A non-positive duration (clock skew, or a step whose completed_at
+        # predates started_at) has no bar — and guards Math.sqrt against a
+        # negative argument, which would otherwise raise a domain error.
+        return "cf-bar-0" if seconds.nil? || seconds.to_f <= 0 || max.to_f <= 0
         pct = Math.sqrt(seconds.to_f / max) * 100
         "cf-bar-#{[(pct / 5).round * 5, 100].min}"
       end
@@ -306,7 +309,11 @@ module ChronoForge
           elsif workflow.failed? || workflow.stalled?
             workflow.updated_at
           end
-        ending ? (ending - workflow.started_at).to_i : nil
+        return nil unless ending
+        secs = (ending - workflow.started_at).to_i
+        # A negative elapsed time (ending before start — clock skew or bad data)
+        # is meaningless; report it as unknown rather than a fake 0s or a crash.
+        secs.negative? ? nil : secs
       end
     end
   end
