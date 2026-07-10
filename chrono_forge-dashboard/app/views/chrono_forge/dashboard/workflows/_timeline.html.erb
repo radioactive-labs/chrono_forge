@@ -22,7 +22,7 @@
           <span class="grow"></span>
           <% if secs %>
             <span class="inline-flex items-center gap-2">
-              <span class="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 align-middle" title="<%= cf_secs(secs) %>">
+              <span class="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 align-middle" title="<%= cf_meter_title(secs, max_dur, e.started_at, e.completed_at) %>">
                 <span class="cf-bar <%= cf_duration_bar(secs, max_dur) %> block rounded-full <%= cf_slow_step?(secs) ? "bg-amber-400" : "bg-zinc-400" %>"></span>
               </span>
               <span class="w-14 text-right font-mono text-xs <%= cf_slow_step?(secs) ? "font-semibold text-amber-600" : "text-zinc-500" %>"><%= cf_secs(secs) %></span>
@@ -50,7 +50,7 @@
 
           <% if (note = cf_attempts_note(e.kind, e.attempts, e.status)) %>
             <% tone = {muted: "border-zinc-200 bg-zinc-50 text-zinc-500", warn: "border-amber-200 bg-amber-50 text-amber-700", crit: "border-rose-200 bg-rose-50 text-rose-700"}[note[:tone]] %>
-            <span class="rounded border px-1.5 py-0.5 font-mono text-[11px] <%= tone %>" title="attempts recorded for this step"><%= note[:text] %></span>
+            <span class="rounded border px-1.5 py-0.5 font-mono text-[11px] <%= tone %>" title="<%= note[:title] %>"><%= note[:text] %></span>
           <% end %>
 
           <span class="font-mono text-[11px] text-zinc-400">

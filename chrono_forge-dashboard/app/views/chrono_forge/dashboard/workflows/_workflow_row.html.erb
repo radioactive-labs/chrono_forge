@@ -7,6 +7,18 @@
       <span class="ml-1.5 whitespace-nowrap font-mono text-xs font-medium text-rose-600" title="running <%= cf_duration(workflow.started_at, Time.current) %> — over the <%= cf_secs(ChronoForge::Dashboard.config.long_run_threshold_for(workflow.job_class)) %> limit for <%= workflow.job_class %>"><%= cf_duration(workflow.started_at, Time.current) %> ⚠</span>
     <% end %>
   </td>
+  <td class="px-4 py-2.5">
+    <% secs = cf_row_duration_secs(workflow) %>
+    <% if secs %>
+      <% overdue = cf_run_overdue?(workflow) %>
+      <div class="flex items-center justify-end gap-2">
+        <%= cf_meter(cf_duration_bar(secs, max_dur), overdue ? "bg-rose-400" : cf_slow_step?(secs) ? "bg-amber-400" : "bg-zinc-400", track: "w-12", title: "ran #{cf_secs(secs)}") %>
+        <span class="whitespace-nowrap font-mono text-xs <%= overdue ? "font-medium text-rose-600" : cf_slow_step?(secs) ? "text-amber-600" : "text-zinc-500" %>"><%= cf_secs(secs) %></span>
+      </div>
+    <% else %>
+      <span class="block text-right font-mono text-xs text-zinc-300">—</span>
+    <% end %>
+  </td>
   <td class="px-4 py-2.5 text-right text-xs text-zinc-500"><%= cf_ago(workflow.started_at) %></td>
   <td class="px-4 py-2.5 text-right text-xs text-zinc-500"><%= cf_ago((waits && waits[workflow.id])&.next_run_at) %></td>
   <td class="px-4 py-2.5 text-right text-xs text-zinc-500"><%= cf_ago(workflow.updated_at) %></td>

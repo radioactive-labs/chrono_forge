@@ -124,6 +124,14 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     refute_match "over the", response.body
   end
 
+  test "list shows a duration column for finished runs, dash for parked ones" do
+    create_workflow(key: "dur-done", state: :completed, started_at: 90.seconds.ago, completed_at: 30.seconds.ago)
+    get "/chrono_forge/workflows"
+    assert_response :success
+    assert_match ">Duration<", response.body   # new column header
+    assert_match "1m 00s", response.body        # 90s − 30s run length
+  end
+
   test "plain idle workflow stays idle, not scheduled" do
     create_workflow(key: "idle-1", state: :idle)
     get "/chrono_forge/workflows"

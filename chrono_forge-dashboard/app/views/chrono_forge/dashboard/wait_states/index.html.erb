@@ -5,6 +5,20 @@
   arrives sits here indefinitely.
 </p>
 
+<%# Lead with the problem: event waits that have blown past the threshold. These
+    never time out, so nothing else will surface them. %>
+<% stalled_events = @waits.select { |h| h[:wait].event_wait? && h[:wait].waiting_since && (Time.current - h[:wait].waiting_since) > @threshold } %>
+<% if stalled_events.any? %>
+  <% oldest = stalled_events.first %>
+  <div class="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+    <span class="mt-px text-rose-600" aria-hidden="true">▲</span>
+    <div class="min-w-0 flex-1 text-sm">
+      <p class="font-semibold text-zinc-900"><%= pluralize(stalled_events.size, "event-wait") %> stalled beyond <%= cf_secs(@threshold) %></p>
+      <p class="mt-0.5 text-zinc-600">A <span class="font-mono">continue_if</span> waits on an external signal with no timeout — if it never fires, the workflow waits forever. Oldest: <span class="font-mono text-rose-600"><%= oldest[:workflow].job_class %> · <%= oldest[:wait].condition %></span>, waiting <%= distance_of_time_in_words(oldest[:wait].waiting_since, Time.current) %>.</p>
+    </div>
+  </div>
+<% end %>
+
 <% if @oldest_event_by_class.any? %>
   <section class="cf-card mb-5 border-amber-200 bg-amber-50/40 p-5">
     <h2 class="mb-1 text-xs font-medium uppercase tracking-wide text-amber-700">Oldest unresolved event wait, by class</h2>
@@ -44,20 +58,30 @@
     </thead>
     <tbody class="divide-y divide-zinc-100">
       <% @waits.each do |h| %>
-        <% long = (Time.current - (h[:wait].waiting_since || Time.current)) > @threshold %>
-        <tr class="cursor-pointer <%= "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50" data-href="<%= workflow_path(h[:workflow]) %>">
+        <% wait = h[:wait] %>
+        <% age = wait.waiting_since ? (Time.current - wait.waiting_since).to_i : nil %>
+        <% long = age && age > @threshold %>
+        <%# An over-threshold event wait is the urgent case (no timeout); a long
+            poll is merely slow. Escalate the former to rose, the latter amber. %>
+        <% urgent = long && wait.event_wait? %>
+        <tr class="cursor-pointer <%= urgent ? "cf-wait--long bg-rose-50" : "cf-wait--long bg-amber-50" if long %> hover:bg-zinc-50" data-href="<%= workflow_path(h[:workflow]) %>">
           <td class="px-4 py-2.5"><%= link_to h[:workflow].key, workflow_path(h[:workflow]), class: "font-mono hover:underline" %></td>
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:workflow].job_class %></td>
           <td class="px-4 py-2.5 text-xs">
-            <% if h[:wait].event_wait? %>
-              <span class="font-medium text-amber-700">event</span>
+            <% if wait.event_wait? %>
+              <span class="cf-pill cf-pill-stalled" title="continue_if — waits on an external event, no timeout">event</span>
             <% else %>
-              <span class="text-zinc-500">poll</span>
+              <span class="cf-pill cf-pill-idle" title="wait_until — polls on a schedule, times out">poll</span>
             <% end %>
           </td>
-          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= h[:wait].condition %></td>
-          <td class="px-4 py-2.5 <%= long ? "font-medium text-amber-700" : "text-zinc-600" %>"><%= distance_of_time_in_words(h[:wait].waiting_since, Time.current) %></td>
-          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= h[:wait].event_wait? ? "none" : (h[:wait].timeout_at || "—") %></td>
+          <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= wait.condition %></td>
+          <td class="px-4 py-2.5">
+            <div class="flex items-center gap-2">
+              <% if age %><%= cf_meter(cf_bar_width([age, @threshold].min, @threshold), urgent ? "bg-rose-400" : long ? "bg-amber-400" : "bg-zinc-400", track: "w-12", title: "waiting #{cf_secs(age)} of the #{cf_secs(@threshold)} threshold") %><% end %>
+              <span class="whitespace-nowrap text-sm <%= urgent ? "font-medium text-rose-700" : long ? "font-medium text-amber-700" : "text-zinc-600" %>"><%= distance_of_time_in_words(wait.waiting_since, Time.current) %></span>
+            </div>
+          </td>
+          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= wait.event_wait? ? "none" : (wait.timeout_at || "—") %></td>
         </tr>
       <% end %>
     </tbody>

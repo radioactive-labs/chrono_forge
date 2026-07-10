@@ -28,29 +28,51 @@
         <th class="px-4 py-2.5 font-medium">Error</th>
       </tr>
     </thead>
+    <%# One scale per page so the meters below are comparable: the latest run's
+        biggest lateness and longest duration. In-memory over the loaded page. %>
+    <% ts_for = ->(run) { ChronoForge::Dashboard::StepNameParser.parse(run.step_name).timestamp } %>
+    <% max_late = @runs.filter_map { |r| t = ts_for.call(r); (r.started_at - Time.zone.at(t)).to_i if t && r.started_at }.select(&:positive?).max || 1 %>
+    <% max_dur = @runs.filter_map { |r| (r.completed_at - r.started_at).to_i if r.started_at && r.completed_at }.max || 1 %>
     <tbody class="divide-y divide-zinc-100">
       <% @runs.each do |run| %>
-        <% ts = ChronoForge::Dashboard::StepNameParser.parse(run.step_name).timestamp %>
+        <% ts = ts_for.call(run) %>
         <% ff = run.failed? ? run.metadata&.dig("fast_forwarded") : nil %>
         <% tombstone = run.failed? && ff.nil? %>
         <tr class="<%= "bg-amber-50" if run.failed? %>">
           <td class="px-4 py-2.5 font-mono text-xs text-zinc-600"><%= ts ? cf_ago(Time.zone.at(ts)) : "—" %></td>
           <td class="px-4 py-2.5 text-xs">
             <% if ff %>
-              <span class="font-medium text-amber-700" title="fast-forwarded <%= ff %> expired tick(s): <%= run.metadata["from"] %> → <%= run.metadata["to"] %>">caught up ×<%= ff %></span>
+              <span class="cf-pill cf-pill-stalled" title="fast-forwarded <%= ff %> expired tick(s): <%= run.metadata["from"] %> → <%= run.metadata["to"] %>">caught up ×<%= ff %></span>
             <% elsif tombstone %>
-              <span class="font-medium text-amber-700">tombstone</span>
+              <span class="cf-pill cf-pill-stalled" title="an expired tick the engine stepped past — normal catch-up, not an error">tombstone</span>
+            <% elsif run.completed? %>
+              <span class="cf-pill cf-pill-completed">done</span>
             <% else %>
-              <span class="<%= cf_status_color(run.state) %>"><%= run.state %></span>
+              <span class="cf-pill cf-pill-running"><%= run.state %></span>
             <% end %>
           </td>
           <td class="px-4 py-2.5 text-zinc-600"><%= cf_ago(run.started_at) %></td>
           <% late = (ts && run.started_at) ? (run.started_at - Time.zone.at(ts)).to_i : nil %>
-          <td class="px-4 py-2.5 text-right font-mono text-xs <%= (late && late > 60) ? "text-amber-600" : "text-zinc-500" %>">
-            <%= late.nil? ? "—" : (late <= 0 ? "on time" : cf_secs(late)) %>
+          <% late_amber = late && late > 60 %>
+          <td class="px-4 py-2.5">
+            <div class="flex items-center justify-end gap-2">
+              <% if late&.positive? %><%= cf_meter(cf_bar_width(late, max_late), late_amber ? "bg-amber-400" : "bg-zinc-400", track: "w-11", title: "started #{cf_secs(late)} after its scheduled tick") %><% end %>
+              <span class="whitespace-nowrap text-right font-mono text-xs <%= late_amber ? "font-medium text-amber-600" : "text-zinc-500" %>"><%= late.nil? ? "—" : (late <= 0 ? "on time" : cf_secs(late)) %></span>
+            </div>
           </td>
-          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500"><%= cf_duration(run.started_at, run.completed_at) %></td>
-          <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500">×<%= run.attempts %></td>
+          <% dur = (run.started_at && run.completed_at) ? (run.completed_at - run.started_at).to_i : nil %>
+          <td class="px-4 py-2.5">
+            <div class="flex items-center justify-end gap-2">
+              <% if dur %><%= cf_meter(cf_duration_bar(dur, max_dur), cf_slow_step?(dur) ? "bg-amber-400" : "bg-zinc-400", track: "w-11", title: cf_meter_title(dur, max_dur, run.started_at, run.completed_at)) %><% end %>
+              <span class="whitespace-nowrap text-right font-mono text-xs <%= cf_slow_step?(dur) ? "font-medium text-amber-600" : "text-zinc-500" %>"><%= cf_duration(run.started_at, run.completed_at) %></span>
+            </div>
+          </td>
+          <td class="px-4 py-2.5 text-right">
+            <% if (note = cf_attempts_note(:execute, run.attempts, run.state)) %>
+              <% tone = {muted: "border-zinc-200 bg-zinc-50 text-zinc-500", warn: "border-amber-200 bg-amber-50 text-amber-700", crit: "border-rose-200 bg-rose-50 text-rose-700"}[note[:tone]] %>
+              <span class="rounded border px-1.5 py-0.5 font-mono text-[11px] <%= tone %>" title="<%= note[:title] %>"><%= note[:text] %></span>
+            <% end %>
+          </td>
           <td class="px-4 py-2.5 font-mono text-xs text-rose-600"><%= ff ? "—" : (run.error_class || "—") %></td>
         </tr>
       <% end %>

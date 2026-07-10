@@ -208,9 +208,12 @@ module ChronoForge
         return nil if attempts.to_i <= 1
         return nil if kind == :repeat_coordination
         if POLLING_KINDS.include?(kind)
-          {text: "checked #{attempts}×", tone: :muted}
+          {text: "checked #{attempts}×", tone: :muted,
+           title: "Polled #{attempts} times before this step resolved"}
         else
-          {text: "#{attempts} attempts", tone: ((status.to_s == "failed") ? :crit : :warn)}
+          retries = attempts.to_i - 1
+          {text: "#{attempts} attempts", tone: ((status.to_s == "failed") ? :crit : :warn),
+           title: "Ran #{attempts} times — #{pluralize(retries, "retry")} after the first attempt"}
         end
       end
 
@@ -226,6 +229,81 @@ module ChronoForge
       # A step slow enough to emphasize (a minute or more) vs. ordinary sub-minute
       # work — drives the amber meter/label in the timeline.
       def cf_slow_step?(seconds) = seconds.to_i >= 60
+
+      # Hover text for a duration meter: what the visible number can't say —
+      # this step's share of the run's longest step, and the wall-clock span it
+      # covered. The bar is relative, so the percentage is what it's encoding.
+      def cf_meter_title(seconds, max, from, to)
+        share = (max.to_f > 0) ? (seconds.to_f / max * 100).round : 0
+        "#{cf_secs(seconds)} · #{share}% of the longest step · #{from.iso8601} → #{to.iso8601}"
+      end
+
+      # A CSP-safe proportional meter (the timeline's bar, reusable): a fixed
+      # track with a filled inner bar whose width is a pre-generated cf-bar-{n}
+      # class. `width_class` is that class; `color_class` tints the fill.
+      def cf_meter(width_class, color_class, track: "w-16", title: nil)
+        content_tag(:span, class: "inline-block h-1.5 #{track} overflow-hidden rounded-full bg-zinc-200 align-middle", title: title) do
+          content_tag(:span, "", class: "cf-bar #{width_class} block rounded-full #{color_class}")
+        end
+      end
+
+      # --- Analytics day health ------------------------------------------------
+      # A day's failure rate high enough to flag the row. Ten percent of terminal
+      # workflows failing in a day is a real signal, not catch-up churn.
+      DAY_FAILURE_FLAG = 0.1
+
+      # A day's completion rate (0.0–1.0), or nil when nothing terminated.
+      def cf_day_rate(bucket)
+        bucket.terminal.zero? ? nil : bucket.completed.to_f / bucket.terminal
+      end
+
+      def cf_day_flagged?(bucket)
+        bucket.terminal > 0 && (bucket.failed.to_f / bucket.terminal) >= DAY_FAILURE_FLAG
+      end
+
+      def cf_trend_arrow(points)
+        return "—" if points.zero?
+        (points > 0) ? "▲" : "▼"
+      end
+
+      def cf_trend_points(points)
+        return "flat" if points.zero?
+        "#{(points > 0) ? "+" : "−"}#{points.abs.round(1)}"
+      end
+
+      # Trend across the window: the newer half's completion/failure rate minus
+      # the older half's, in percentage points — so a stat card can say whether
+      # things are getting better or worse. Derived from the buckets already
+      # loaded (no query); nil when there's too little to compare.
+      def cf_window_trend(buckets)
+        return nil if buckets.size < 2
+        mid = buckets.size / 2
+        rate = lambda do |bs|
+          t = bs.sum(&:terminal)
+          t.zero? ? nil : bs.sum(&:completed).to_f / t
+        end
+        older = rate.call(buckets[0...mid])
+        newer = rate.call(buckets[mid..])
+        return nil if older.nil? || newer.nil?
+        pts = ((newer - older) * 100).round(1)
+        {completion: pts, failure: -pts}
+      end
+
+      # Run length in seconds for a workflow row: elapsed for a live run, final
+      # span for a terminal one, nil for a parked (idle/scheduled) one whose
+      # "duration" would just be how long it's been waiting.
+      def cf_row_duration_secs(workflow)
+        return nil unless workflow.started_at
+        ending =
+          if workflow.completed_at
+            workflow.completed_at
+          elsif workflow.running?
+            Time.current
+          elsif workflow.failed?
+            workflow.updated_at
+          end
+        ending ? (ending - workflow.started_at).to_i : nil
+      end
     end
   end
 end

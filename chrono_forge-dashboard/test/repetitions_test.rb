@@ -82,6 +82,21 @@ class RepetitionsControllerTest < ActionDispatch::IntegrationTest
     refute_match "TimeoutError", response.body # the marker error is suppressed for summary rows
   end
 
+  test "a completed repetition reads as a done pill with attempts in words" do
+    wf = create_workflow(key: "rc-done", state: :running)
+    ts = 1_717_000_000
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_repeat$digest$#{ts}",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 3,
+      started_at: Time.zone.at(ts), completed_at: Time.zone.at(ts + 90))
+
+    get "/chrono_forge/workflows/#{wf.id}/repetitions", params: {step: "digest"}
+    assert_response :success
+    assert_match "cf-pill-completed", response.body   # done pill, not raw state text
+    assert_match "3 attempts", response.body           # attempts in words, not ×3
+    assert_match "Ran 3 times", response.body          # explanatory tooltip
+    refute_match "×3", response.body                    # the raw marker is gone
+  end
+
   test "shows how late a repetition started versus its scheduled time" do
     wf = create_workflow(key: "rc2", state: :running)
     ts = 1_717_000_000
