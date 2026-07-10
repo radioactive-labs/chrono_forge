@@ -19,21 +19,21 @@
 
 <% trend = cf_window_trend(@buckets) %>
 <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-  <div class="cf-card p-4">
+  <div class="cf-card flex flex-col p-4">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Completion rate</div>
     <div class="mt-1 font-mono text-2xl font-semibold text-emerald-600"><%= cf_pct(@totals[:completion_rate]) %></div>
     <% if trend %>
-      <div class="mt-0.5 text-xs <%= trend[:completion] > 0 ? "text-emerald-600" : trend[:completion] < 0 ? "text-rose-600" : "text-zinc-400" %>">
+      <div class="mt-auto pt-1 text-xs <%= trend[:completion] > 0 ? "text-emerald-600" : trend[:completion] < 0 ? "text-rose-600" : "text-zinc-400" %>">
         <%= cf_trend_arrow(trend[:completion]) %> <%= cf_trend_points(trend[:completion]) %> <span class="text-zinc-400">vs first half</span>
       </div>
     <% end %>
   </div>
-  <div class="cf-card p-4">
+  <div class="cf-card flex flex-col p-4">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Workflow failure rate</div>
     <div class="mt-1 font-mono text-2xl font-semibold <%= (@totals[:failure_rate] || 0) > 0 ? "text-rose-600" : "text-zinc-900" %>"><%= cf_pct(@totals[:failure_rate]) %></div>
     <div class="mt-0.5 text-xs text-zinc-400"><%= number_with_delimiter(@totals[:failed]) %> failed</div>
     <% if trend && trend[:failure] != 0 %>
-      <div class="mt-0.5 text-xs <%= trend[:failure] > 0 ? "text-rose-600" : "text-emerald-600" %>">
+      <div class="mt-auto pt-1 text-xs <%= trend[:failure] > 0 ? "text-rose-600" : "text-emerald-600" %>">
         <%= cf_trend_arrow(trend[:failure]) %> <%= cf_trend_points(trend[:failure]) %> <span class="text-zinc-400">vs first half</span>
       </div>
     <% end %>
