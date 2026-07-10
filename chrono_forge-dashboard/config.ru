@@ -171,6 +171,20 @@ W.create!(key: "batch-7$fulfillment$order_98", job_class: "OrderWorkflow", state
 W.create!(key: "batch-7$fulfillment$order_99", job_class: "OrderWorkflow", state: W.states[:stalled],
   context: {}, kwargs: {}, options: {}, started_at: 28.minutes.ago, parent_execution_log_id: fo_branch.id)
 
+# Large fan-out with a live, still-draining merge — the branches panel's
+# throughput/ETA story (distinct from batch-7's dropped poller above). Every
+# count comes from the poller's cached metadata, so no child rows are needed:
+# spawned/pending/never-started, plus rate (children/s) and a derived ETA.
+big = W.create!(key: "fanout-100k", job_class: "OrderProcessingWorkflow", state: W.states[:idle],
+  context: {}, kwargs: {"count" => 100_000}, options: {}, started_at: 1.minute.ago)
+big.update_columns(updated_at: big.started_at) # parked on the merge — duration 0s
+E.create!(workflow: big, step_name: "branch$fanout", state: estate(:completed), attempts: 1,
+  started_at: 1.minute.ago, completed_at: 1.minute.ago + 37,
+  metadata: {"poll" => {"spawned" => 100_000, "pending" => 90_575, "never_started" => 90_567,
+                        "rate" => 227.0, "eta_seconds" => 399, "sealed" => true, "polls" => 2,
+                        "last_polled_at" => 1.minute.ago.iso8601, "next_poll_at" => 3.minutes.from_now.iso8601}})
+E.create!(workflow: big, step_name: "merge$fanout", state: estate(:pending), attempts: 1, started_at: 1.minute.ago)
+
 # Scheduled-payment recurrence — the definition-graph screenshot fixture. The run
 # took the auto-charge "payment reminder first" branch, so those steps are done,
 # the other two reminder branches stay not-reached (dimmed), and the final charge
