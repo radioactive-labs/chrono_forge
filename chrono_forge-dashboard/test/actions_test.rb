@@ -55,6 +55,26 @@ class ActionsTest < ActionDispatch::IntegrationTest
     assert wf.idle?
   end
 
+  test "reap re-enqueues a workflow stranded in running" do
+    wf = create_workflow(key: "reap1", state: :running, locked_at: 3.hours.ago, locked_by: "dead-worker")
+    assert_enqueued_jobs 1 do
+      post "/chrono_forge/workflows/#{wf.id}/reap"
+    end
+    assert_response :see_other
+    follow_redirect!
+    assert_match(/reaped/i, response.body)
+  end
+
+  test "reap rejects a non-running workflow" do
+    wf = create_workflow(key: "reap2", state: :failed)
+    assert_no_enqueued_jobs do
+      post "/chrono_forge/workflows/#{wf.id}/reap"
+    end
+    assert_response :see_other
+    follow_redirect!
+    assert_match(/only running/i, response.body)
+  end
+
   # The retries are fanned out by a single background job so the request returns
   # fast even with thousands of blocked workflows — the POST enqueues one job.
   test "bulk retry enqueues a single background job and reports the count" do

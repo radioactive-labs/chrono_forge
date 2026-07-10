@@ -79,12 +79,24 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     refute_match "×1", response.body                 # single-attempt steps carry no marker
   end
 
-  test "a running workflow past its threshold gets a long-running banner" do
+  test "a running workflow past its threshold gets a long-running banner with a reap action" do
     wf = create_workflow(key: "show-slow", state: :running, started_at: 2.hours.ago)
     get "/chrono_forge/workflows/#{wf.id}"
     assert_response :success
     assert_match(/longer than expected/i, response.body)
     assert_match(/may be stuck/i, response.body)
+    assert_match "/workflows/#{wf.id}/reap", response.body   # reap is offered where the stall is surfaced
+    assert_match "Reap", response.body
+  end
+
+  test "a running workflow offers reap; a terminal one does not" do
+    running = create_workflow(key: "show-run", state: :running)
+    get "/chrono_forge/workflows/#{running.id}"
+    assert_match "/workflows/#{running.id}/reap", response.body
+
+    done = create_workflow(key: "show-done", state: :completed)
+    get "/chrono_forge/workflows/#{done.id}"
+    refute_match "/workflows/#{done.id}/reap", response.body
   end
 
   test "a fresh running workflow is not flagged long-running" do

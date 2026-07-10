@@ -21,6 +21,8 @@
           <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
         <% end %>
         <% if @workflow.running? %>
+          <%= button_to "Reap", reap_workflow_path(@workflow), method: :post,
+                form: {data: {confirm: "Reap this workflow? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent."}}, class: "cf-btn" %>
           <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
                 form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
         <% end %>
@@ -56,8 +58,10 @@
     <span class="mt-px text-amber-600" aria-hidden="true">▲</span>
     <div class="min-w-0 flex-1 text-sm">
       <p class="font-semibold text-zinc-900">Running <%= cf_duration(@workflow.started_at, Time.current) %> — longer than expected</p>
-      <p class="mt-0.5 text-zinc-600">Past the <%= cf_secs(ChronoForge::Dashboard.config.long_run_threshold_for(@workflow.job_class)) %> mark for <span class="font-mono"><%= @workflow.job_class %></span>; it may be stuck.</p>
+      <p class="mt-0.5 text-zinc-600">Past the <%= cf_secs(ChronoForge::Dashboard.config.long_run_threshold_for(@workflow.job_class)) %> mark for <span class="font-mono"><%= @workflow.job_class %></span>; it may be stuck. If a worker was killed mid-run, <strong class="font-medium text-zinc-700">reap</strong> re-enqueues it to steal the stale lock and replay.</p>
     </div>
+    <%= button_to "Reap", reap_workflow_path(@workflow), method: :post,
+          form: {class: "shrink-0", data: {confirm: "Reap this workflow? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent."}}, class: "cf-btn" %>
   </div>
 <% end %>
 

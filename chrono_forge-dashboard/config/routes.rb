@@ -5,6 +5,7 @@ ChronoForge::Dashboard::Engine.routes.draw do
       post :retry, to: "actions#retry"
       post :resume, to: "actions#resume"
       post :unlock, to: "actions#unlock"
+      post :reap, to: "actions#reap"
       get :repetitions, to: "repetitions#index"
       get :definition, to: "definitions#show"
     end

@@ -15,6 +15,19 @@ module ChronoForge
         redirect_to workflow_path(workflow), notice: "Unlocked #{workflow.key}.", status: :see_other
       end
 
+      # Recover a workflow stranded in :running — the single-workflow form of the
+      # stalled-workflow reaper (Workflow.reap_stalled). Re-enqueues it so the
+      # executor's acquire_lock steals the stale lock and replays completed steps
+      # as no-ops. This is the right fix for an overdue/stuck run: unlike Force
+      # unlock (which idles the row and leaves nothing to wake it), reap actually
+      # re-drives the workflow. Safe and idempotent — a duplicate just loses the
+      # acquire_lock race and no-ops.
+      def reap
+        return redirect_to(workflow_path(workflow), alert: "Only running workflows can be reaped.", status: :see_other) unless workflow.running?
+        workflow.job_klass.perform_later(workflow.key, **workflow.kwargs.symbolize_keys)
+        redirect_to workflow_path(workflow), notice: "Reaped #{workflow.key} — re-enqueued to steal its stale lock and replay.", status: :see_other
+      end
+
       # Re-enqueue an idle (parked) workflow so the executor picks it up again.
       # This is the recovery for a dropped poll/wake — a wait_until or merge whose
       # poller job was lost, or a continue_if whose event has since arrived: the
