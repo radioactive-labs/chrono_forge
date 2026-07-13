@@ -1,0 +1,4 @@
+<turbo-frame id="cf-ov-processed">
+  <%= render "stat_card", href: workflows_path(state: "completed", hide_branches: "0"),
+        label: "Processed", count: @count, sub: "completed, all classes", color: "text-emerald-600" %>
+</turbo-frame>

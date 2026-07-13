@@ -1,0 +1,36 @@
+<div class="mb-5">
+  <h1 class="text-lg font-semibold tracking-tight">Overview</h1>
+  <p class="mt-1 text-sm text-zinc-500">
+    How much every workflow class has processed, and what it's carrying right now. Counts are workflows across all time.
+  </p>
+</div>
+
+<%# Fleet totals — each card loads in its own frame (one COUNT), so they appear as
+    soon as they're ready without waiting on the per-class table below. %>
+<%# target="_top": each frame's content is links (a whole card, class names, counts)
+    that must navigate the full page — without this they'd resolve inside the frame
+    and Turbo would report "content missing". It doesn't affect the src load. %>
+<div class="mb-5 grid grid-cols-3 gap-3">
+  <turbo-frame id="cf-ov-processed" src="<%= overview_processed_path %>" loading="eager" target="_top">
+    <%= render "card_skeleton", label: "Processed" %>
+  </turbo-frame>
+  <turbo-frame id="cf-ov-in-flight" src="<%= overview_in_flight_path %>" loading="eager" target="_top">
+    <%= render "card_skeleton", label: "In flight" %>
+  </turbo-frame>
+  <turbo-frame id="cf-ov-blocked" src="<%= overview_blocked_path %>" loading="eager" target="_top">
+    <%= render "card_skeleton", label: "Blocked" %>
+  </turbo-frame>
+</div>
+
+<%# Per-class breakdown — the heavy GROUP BY, isolated in its own frame so it
+    streams in on its own clock. %>
+<turbo-frame id="cf-ov-classes" src="<%= overview_classes_path %>" loading="eager" target="_top">
+  <div class="cf-card p-6">
+    <div class="h-4 w-40 animate-pulse rounded bg-zinc-100"></div>
+    <div class="mt-4 space-y-3">
+      <% 5.times do %>
+        <div class="h-3 w-full animate-pulse rounded bg-zinc-100"></div>
+      <% end %>
+    </div>
+  </div>
+</turbo-frame>

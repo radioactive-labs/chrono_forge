@@ -1,8 +1,14 @@
 <%# enforce_utf8: false keeps the legacy `utf8=✓` IE hack out of the GET query string. %>
 <%= form_with url: workflows_path, method: :get, enforce_utf8: false, class: "mb-4 flex flex-wrap items-center gap-2" do |f| %>
-  <%= f.select :state, options_for_select([["All states", ""], *ChronoForge::Workflow.states.keys], params[:state]), {}, class: "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm", data: {autosubmit: true} %>
-  <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
-  <%= f.text_field :key, value: params[:key], placeholder: "Key", class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
+  <%# State filtering lives in the stat chips above (one click, with counts and the
+      blocked virtual filter) — this hidden field just carries the chip-selected
+      state through a job-class/key submit so the search doesn't clear it. %>
+  <%= f.hidden_field :state, value: params[:state] %>
+  <%# data-cf-poll-preserve: the polling morph refresh (see dashboard.js) skips
+      these nodes in place, so text a user is typing — and its caret — survives a
+      tick instead of being reset to the last-submitted server value. %>
+  <%= f.text_field :job_class, value: params[:job_class], placeholder: "Job class", id: "cf-filter-job-class", data: {cf_poll_preserve: true}, class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
+  <%= f.text_field :key, value: params[:key], placeholder: "Key", id: "cf-filter-key", data: {cf_poll_preserve: true}, class: "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm placeholder:text-zinc-400" %>
   <%= f.submit "Filter", class: "cf-btn" %>
 
   <%# Far right: hide spawned branch children (on by default) so a large fan-out

@@ -80,7 +80,7 @@ module ChronoForge
 
       # Whether the main region opts into auto-refresh. A page sets
       # @cf_disable_polling to opt OUT (e.g. the definition graph, whose live
-      # Cytoscape canvas can't survive the poll's innerHTML region swap). Without a
+      # Cytoscape canvas can't survive the poll's morph region refresh). Without a
       # [data-poll-region] the JS never starts a poll timer for the page.
       def cf_poll_region? = !@cf_disable_polling
 
@@ -180,6 +180,140 @@ module ChronoForge
         when "failed" then "text-rose-600"
         else "text-zinc-500"
         end
+      end
+
+      # Age past which a running workflow's lock is considered stale (its worker
+      # gone) — the reaper's own threshold, so the dashboard flags exactly what
+      # ChronoForge::Workflow.reap_stalled would re-enqueue.
+      def cf_reap_stale_after = ChronoForge.config.reap_stale_after
+
+      # A workflow stranded in :running by a hard-killed worker: still running,
+      # but its lock hasn't been refreshed within reap_stale_after, so nothing is
+      # driving it. This is the *only* "stuck" signal that holds — a healthy
+      # workflow may legitimately run for years, so elapsed runtime says nothing.
+      def cf_stranded?(workflow)
+        workflow.running? && workflow.locked_at.present? &&
+          workflow.locked_at < cf_reap_stale_after.ago
+      end
+
+      # How long a workflow's lock has been stale (nil if never locked).
+      def cf_lock_age(workflow)
+        workflow.locked_at ? (Time.current - workflow.locked_at).to_i : nil
+      end
+
+      # The attempts count made legible — nil when there's nothing worth saying.
+      # The number means different things per step kind, so it's labelled per kind:
+      # an execution retried, a wait/gate polled. Repeat coordination shows its
+      # iteration count elsewhere, so it opts out here.
+      POLLING_KINDS = %i[wait continue sleep].freeze
+
+      def cf_attempts_note(kind, attempts, status)
+        return nil if attempts.to_i <= 1
+        return nil if kind == :repeat_coordination
+        if POLLING_KINDS.include?(kind)
+          {text: "checked #{attempts}×", tone: :muted,
+           title: "Polled #{attempts} times before this step resolved"}
+        else
+          retries = attempts.to_i - 1
+          {text: "#{attempts} attempts", tone: ((status.to_s == "failed") ? :crit : :warn),
+           title: "Ran #{attempts} times — #{pluralize(retries, "retry")} after the first attempt"}
+        end
+      end
+
+      # Width class (reusing the CSP-safe cf-bar-{0..100} steps) for a duration
+      # meter, on a sqrt scale so a 2-second step stays visible next to a
+      # 7-minute one instead of collapsing to nothing.
+      def cf_duration_bar(seconds, max)
+        # A non-positive duration (clock skew, or a step whose completed_at
+        # predates started_at) has no bar — and guards Math.sqrt against a
+        # negative argument, which would otherwise raise a domain error.
+        return "cf-bar-0" if seconds.nil? || seconds.to_f <= 0 || max.to_f <= 0
+        pct = Math.sqrt(seconds.to_f / max) * 100
+        "cf-bar-#{[(pct / 5).round * 5, 100].min}"
+      end
+
+      # A step slow enough to emphasize (a minute or more) vs. ordinary sub-minute
+      # work — drives the amber meter/label in the timeline.
+      def cf_slow_step?(seconds) = seconds.to_i >= 60
+
+      # Hover text for a duration meter: what the visible number can't say —
+      # this step's share of the run's longest step, and the wall-clock span it
+      # covered. The bar is relative, so the percentage is what it's encoding.
+      def cf_meter_title(seconds, max, from, to)
+        share = (max.to_f > 0) ? (seconds.to_f / max * 100).round : 0
+        "#{cf_secs(seconds)} · #{share}% of the longest step · #{from.iso8601} → #{to.iso8601}"
+      end
+
+      # A CSP-safe proportional meter (the timeline's bar, reusable): a fixed
+      # track with a filled inner bar whose width is a pre-generated cf-bar-{n}
+      # class. `width_class` is that class; `color_class` tints the fill.
+      def cf_meter(width_class, color_class, track: "w-16", title: nil)
+        content_tag(:span, class: "inline-block h-1.5 #{track} overflow-hidden rounded-full bg-zinc-200 align-middle", title: title) do
+          content_tag(:span, "", class: "cf-bar #{width_class} block rounded-full #{color_class}")
+        end
+      end
+
+      # --- Analytics day health ------------------------------------------------
+      # A day's failure rate high enough to flag the row. Ten percent of terminal
+      # workflows failing in a day is a real signal, not catch-up churn.
+      DAY_FAILURE_FLAG = 0.1
+
+      # A day's completion rate (0.0–1.0), or nil when nothing terminated.
+      def cf_day_rate(bucket)
+        bucket.terminal.zero? ? nil : bucket.completed.to_f / bucket.terminal
+      end
+
+      def cf_day_flagged?(bucket)
+        bucket.terminal > 0 && (bucket.failed.to_f / bucket.terminal) >= DAY_FAILURE_FLAG
+      end
+
+      def cf_trend_arrow(points)
+        return "—" if points.zero?
+        (points > 0) ? "▲" : "▼"
+      end
+
+      def cf_trend_points(points)
+        return "flat" if points.zero?
+        "#{(points > 0) ? "+" : "−"}#{points.abs.round(1)}"
+      end
+
+      # Trend across the window: the newer half's completion/failure rate minus
+      # the older half's, in percentage points — so a stat card can say whether
+      # things are getting better or worse. Derived from the buckets already
+      # loaded (no query); nil when there's too little to compare.
+      def cf_window_trend(buckets)
+        return nil if buckets.size < 2
+        mid = buckets.size / 2
+        rate = lambda do |bs|
+          t = bs.sum(&:terminal)
+          t.zero? ? nil : bs.sum(&:completed).to_f / t
+        end
+        older = rate.call(buckets[0...mid])
+        newer = rate.call(buckets[mid..])
+        return nil if older.nil? || newer.nil?
+        pts = ((newer - older) * 100).round(1)
+        {completion: pts, failure: -pts}
+      end
+
+      # Run length in seconds for a workflow row: elapsed for a live run, final
+      # span for a run that ran and stopped (completed / failed / stalled), nil
+      # for a parked (idle/scheduled) one whose "duration" would just be how long
+      # it's been waiting on a condition, not how long it actually ran.
+      def cf_row_duration_secs(workflow)
+        return nil unless workflow.started_at
+        ending =
+          if workflow.completed_at
+            workflow.completed_at
+          elsif workflow.running?
+            Time.current
+          elsif workflow.failed? || workflow.stalled?
+            workflow.updated_at
+          end
+        return nil unless ending
+        secs = (ending - workflow.started_at).to_i
+        # A negative elapsed time (ending before start — clock skew or bad data)
+        # is meaningless; report it as unknown rather than a fake 0s or a crash.
+        secs.negative? ? nil : secs
       end
     end
   end

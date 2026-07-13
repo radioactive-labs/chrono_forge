@@ -130,4 +130,32 @@ class AnalyticsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     refute_match "Queue health", response.body
   end
+
+  test "throughput flags a day whose failure rate spikes, with a completion pill" do
+    5.times do |i|
+      c = create_workflow(key: "ok#{i}", state: :completed, started_at: 2.hours.ago, completed_at: 1.hour.ago)
+      c.update_columns(updated_at: 1.hour.ago)
+    end
+    3.times do |i|
+      f = create_workflow(key: "bad#{i}", state: :failed, started_at: 1.hour.ago)
+      f.update_columns(updated_at: 1.hour.ago)
+    end
+    get "/chrono_forge/analytics"
+    assert_response :success
+    assert_match "cf-pill-stalled", response.body   # the flagged day's amber completion pill
+    assert_match "⚠", response.body                  # 37.5% failed → flagged
+  end
+
+  test "stat cards show a window trend across multiple days" do
+    older = create_workflow(key: "old-c", state: :completed, started_at: 4.days.ago, completed_at: 3.days.ago)
+    older.update_columns(updated_at: 3.days.ago)
+    oldf = create_workflow(key: "old-f", state: :failed, started_at: 3.days.ago)
+    oldf.update_columns(updated_at: 3.days.ago)
+    newer = create_workflow(key: "new-c", state: :completed, started_at: 2.days.ago, completed_at: 1.day.ago)
+    newer.update_columns(updated_at: 1.day.ago)
+
+    get "/chrono_forge/analytics"
+    assert_response :success
+    assert_match "vs first half", response.body
+  end
 end

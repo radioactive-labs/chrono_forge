@@ -1,0 +1,5 @@
+<turbo-frame id="cf-ov-blocked">
+  <%= render "stat_card", href: workflows_path(state: "blocked", hide_branches: "0"),
+        label: "Blocked", count: @count, sub: "failed + stalled",
+        color: (@count > 0) ? "text-rose-600" : "text-zinc-900" %>
+</turbo-frame>

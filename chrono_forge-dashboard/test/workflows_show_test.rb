@@ -60,4 +60,51 @@ class WorkflowsShowTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match "legacy_thing", response.body
   end
+
+  test "timeline: banner names the blocker, attempts read as words, no ×1 noise" do
+    wf = create_workflow(key: "show-tl", state: :stalled)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$inventory?",
+      state: ChronoForge::ExecutionLog.states[:completed], attempts: 2,
+      started_at: 3.hours.ago, completed_at: 3.hours.ago)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "durably_execute$charge",
+      state: ChronoForge::ExecutionLog.states[:failed], attempts: 3, started_at: 1.hour.ago, error_class: "CardError")
+    ChronoForge::ErrorLog.create!(workflow: wf, step_name: "durably_execute$charge", attempt: 3,
+      error_class: "CardError", error_message: "declined")
+
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    assert_match "Stalled at", response.body        # summary banner leads with the blocker
+    assert_match "3 attempts", response.body         # a retried execution, in words
+    assert_match "checked 2×", response.body         # a polled wait, labelled per kind
+    refute_match "×1", response.body                 # single-attempt steps carry no marker
+  end
+
+  test "a running workflow with a stale lock gets a stranded banner with a reap action" do
+    wf = create_workflow(key: "show-stranded", state: :running, started_at: 2.hours.ago,
+      locked_at: 40.minutes.ago, locked_by: "dead-worker")
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    assert_match(/lock stale for/i, response.body)   # banner-specific (nav also says "Stranded")
+    assert_match "dead-worker", response.body
+    assert_match "/workflows/#{wf.id}/reap", response.body   # reap offered where the strand is surfaced
+    assert_match "Reap", response.body
+  end
+
+  test "a running workflow offers reap; a terminal one does not" do
+    running = create_workflow(key: "show-run", state: :running)
+    get "/chrono_forge/workflows/#{running.id}"
+    assert_match "/workflows/#{running.id}/reap", response.body
+
+    done = create_workflow(key: "show-done", state: :completed)
+    get "/chrono_forge/workflows/#{done.id}"
+    refute_match "/workflows/#{done.id}/reap", response.body
+  end
+
+  test "a running workflow with a fresh lock is not flagged stranded" do
+    wf = create_workflow(key: "show-fresh", state: :running, started_at: 3.hours.ago,
+      locked_at: 2.minutes.ago, locked_by: "live-worker")
+    get "/chrono_forge/workflows/#{wf.id}"
+    assert_response :success
+    refute_match(/lock stale for/i, response.body)   # long runtime alone never flags — only a stale lock
+  end
 end

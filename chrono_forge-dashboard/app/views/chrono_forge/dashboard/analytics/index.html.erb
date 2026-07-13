@@ -17,15 +17,26 @@
   <% end %>
 </div>
 
+<% trend = cf_window_trend(@buckets) %>
 <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-  <div class="cf-card p-4">
+  <div class="cf-card flex flex-col p-4">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Completion rate</div>
     <div class="mt-1 font-mono text-2xl font-semibold text-emerald-600"><%= cf_pct(@totals[:completion_rate]) %></div>
+    <% if trend %>
+      <div class="mt-auto pt-1 text-xs <%= trend[:completion] > 0 ? "text-emerald-600" : trend[:completion] < 0 ? "text-rose-600" : "text-zinc-400" %>">
+        <%= cf_trend_arrow(trend[:completion]) %> <%= cf_trend_points(trend[:completion]) %> <span class="text-zinc-400">vs first half</span>
+      </div>
+    <% end %>
   </div>
-  <div class="cf-card p-4">
+  <div class="cf-card flex flex-col p-4">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Workflow failure rate</div>
     <div class="mt-1 font-mono text-2xl font-semibold <%= (@totals[:failure_rate] || 0) > 0 ? "text-rose-600" : "text-zinc-900" %>"><%= cf_pct(@totals[:failure_rate]) %></div>
     <div class="mt-0.5 text-xs text-zinc-400"><%= number_with_delimiter(@totals[:failed]) %> failed</div>
+    <% if trend && trend[:failure] != 0 %>
+      <div class="mt-auto pt-1 text-xs <%= trend[:failure] > 0 ? "text-rose-600" : "text-emerald-600" %>">
+        <%= cf_trend_arrow(trend[:failure]) %> <%= cf_trend_points(trend[:failure]) %> <span class="text-zinc-400">vs first half</span>
+      </div>
+    <% end %>
   </div>
   <div class="cf-card p-4">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Avg duration</div>
@@ -79,24 +90,32 @@
 <% end %>
 
 <section class="cf-card p-5">
-  <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Daily throughput</h2>
+  <h2 class="mb-4 text-xs font-medium uppercase tracking-wide text-zinc-500">Daily throughput <span class="normal-case text-zinc-400">— volume &amp; health</span></h2>
   <% if @buckets.any? %>
     <% max = @buckets.map(&:terminal).max.to_f %>
-    <div class="space-y-2">
+    <div class="space-y-1">
       <% @buckets.reverse_each do |b| %>
-        <div class="flex items-center gap-3 text-sm">
-          <div class="w-24 shrink-0 font-mono text-xs text-zinc-500"><%= b.day %></div>
+        <% flagged = cf_day_flagged?(b) %>
+        <% rate = cf_day_rate(b) %>
+        <div class="-mx-2 flex items-center gap-3 rounded px-2 py-1 text-sm <%= "bg-amber-50" if flagged %>">
+          <div class="w-24 shrink-0 font-mono text-xs <%= flagged ? "text-amber-700" : "text-zinc-500" %>"><%= b.day %></div>
           <div class="flex h-4 min-w-0 flex-1 overflow-hidden rounded bg-zinc-100">
             <div class="cf-bar bg-emerald-400 <%= cf_bar_width(b.completed, max) %>"></div>
             <div class="cf-bar bg-rose-400 <%= cf_bar_width(b.failed, max) %>"></div>
           </div>
-          <div class="w-32 shrink-0 text-right font-mono text-xs tabular-nums text-zinc-500">
+          <div class="w-28 shrink-0 text-right font-mono text-xs tabular-nums text-zinc-500">
             <span class="text-emerald-600"><%= number_with_delimiter(b.completed) %></span>
             <% if b.failed > 0 %><span class="text-rose-600"> / <%= number_with_delimiter(b.failed) %></span><% end %>
+          </div>
+          <div class="w-16 shrink-0 text-right">
+            <% if rate %>
+              <span class="cf-pill <%= flagged ? "cf-pill-stalled" : "cf-pill-completed" %>" title="<%= number_with_delimiter(b.completed) %> of <%= number_with_delimiter(b.terminal) %> terminal workflows completed"><%= cf_pct(rate) %><%= " ⚠" if flagged %></span>
+            <% end %>
           </div>
         </div>
       <% end %>
     </div>
+    <p class="mt-3 text-xs text-zinc-400">Completion rate per day; a row is flagged when at least <%= (ChronoForge::Dashboard::DashboardHelper::DAY_FAILURE_FLAG * 100).to_i %>% of the day's terminal workflows failed.</p>
   <% else %>
     <p class="py-8 text-center text-sm text-zinc-500">No workflows completed or failed in this window.</p>
   <% end %>

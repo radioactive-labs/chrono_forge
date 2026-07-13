@@ -7,6 +7,7 @@ module ChronoForge
       TYPES = {
         "dashboard.css" => "text/css",
         "dashboard.js" => "application/javascript",
+        "turbo.min.js" => "application/javascript",
         "cytoscape.min.js" => "application/javascript",
         "dagre.min.js" => "application/javascript",
         "cytoscape-dagre.js" => "application/javascript",

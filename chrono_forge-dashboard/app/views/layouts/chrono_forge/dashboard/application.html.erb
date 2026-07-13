@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <%= csrf_meta_tags %>
   <link rel="stylesheet" href="<%= "#{request.script_name}/assets/dashboard.css?v=#{ChronoForge::Dashboard.asset_digest("dashboard.css")}" %>">
+  <%# Turbo drives all navigation and form submits (SPA-style, no full reloads).
+      It lives in <head> so Turbo Drive keeps it across body swaps and never
+      re-initialises it — a body <script> would re-run on every visit. %>
+  <script src="<%= request.script_name %>/assets/turbo.min.js?v=<%= ChronoForge::Dashboard.asset_digest("turbo.min.js") %>"></script>
 </head>
 <body class="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased" data-poll-interval="<%= cf_poll_interval %>">
   <% if flash.any? %>
@@ -22,7 +26,9 @@
       </a>
       <nav class="flex items-center gap-5 text-sm">
         <a href="<%= root_path %>" class="<%= controller_name == "workflows" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Workflows</a>
+        <a href="<%= overview_path %>" class="<%= controller_name == "overview" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Overview</a>
         <a href="<%= wait_states_path %>" class="<%= controller_name == "wait_states" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Waiting</a>
+        <a href="<%= stranded_index_path %>" class="<%= controller_name == "stranded" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Stranded</a>
         <a href="<%= analytics_path %>" class="<%= controller_name == "analytics" ? "font-medium text-zinc-900" : "text-zinc-500 hover:text-zinc-900" %>">Analytics</a>
       </nav>
       <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -46,11 +52,12 @@
       </div>
     </div>
   </header>
-  <%# data-poll-region: the JS auto-refreshes this region in place (preserving
-      filter text, focus, and scroll). Marking <main> makes pages refresh — the
-      nav and the refresh/time controls sit in <header>, outside the swap. A page
-      can opt out (cf_poll_region? false) when an in-place swap would break it. %>
-  <main class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
+  <%# data-poll-region / id: the JS morph-refreshes this region in place (idiomorph
+      preserves filter text, focus, and scroll). Marking <main> makes pages refresh
+      — the nav and the refresh/time controls sit in <header>, outside the morph. A
+      page can opt out (cf_poll_region? false) when an in-place refresh would break
+      it. %>
+  <main id="cf-poll-region" class="mx-auto max-w-6xl px-4 py-6" <%= "data-poll-region" if cf_poll_region? %>>
     <%= yield %>
   </main>
   <script src="<%= "#{request.script_name}/assets/dashboard.js?v=#{ChronoForge::Dashboard.asset_digest("dashboard.js")}" %>"></script>

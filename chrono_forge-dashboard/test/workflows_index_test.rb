@@ -43,6 +43,16 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     refute_match "pay-1", response.body    # completed
   end
 
+  test "filtering by in_flight shows idle and running, not terminal states" do
+    create_workflow(key: "run-1", state: :running, locked_at: 1.minute.ago, locked_by: "w")
+    create_workflow(key: "idle-live", state: :idle)
+    get "/chrono_forge/workflows", params: {state: "in_flight"}
+    assert_match "run-1", response.body     # running
+    assert_match "idle-live", response.body # idle
+    refute_match "ord-1", response.body     # failed
+    refute_match "pay-1", response.body     # completed
+  end
+
   test "bulk retry button is labeled to match the blocked filter" do
     get "/chrono_forge/workflows"
     assert_match "Retry blocked", response.body
@@ -103,6 +113,36 @@ class WorkflowsIndexTest < ActionDispatch::IntegrationTest
     cookies[:cf_poll_interval] = "30"
     get "/chrono_forge/workflows"
     assert_match 'data-poll-interval="30"', response.body
+  end
+
+  # The index opts into the polling morph refresh (counterpart to the definition
+  # graph, which opts out). The JS gates on this attribute.
+  test "index carries the data-poll-region hook" do
+    get "/chrono_forge/workflows"
+    assert_match(/data-poll-region/, response.body)
+  end
+
+  test "list flags a running workflow whose lock has gone stale as stranded" do
+    create_workflow(key: "stranded-run", state: :running, started_at: 3.hours.ago,
+      locked_at: 40.minutes.ago, locked_by: "dead-worker")
+    get "/chrono_forge/workflows"
+    assert_match "lock stale", response.body   # the stale-lock badge tooltip (nav href also says "stranded")
+  end
+
+  test "list does not flag a long-but-healthy running workflow" do
+    # Running for hours is fine — only a stale lock is stranded.
+    create_workflow(key: "healthy-run", state: :running, started_at: 5.hours.ago,
+      locked_at: 1.minute.ago, locked_by: "live-worker")
+    get "/chrono_forge/workflows"
+    refute_match "lock stale", response.body
+  end
+
+  test "list shows a duration column for finished runs, dash for parked ones" do
+    create_workflow(key: "dur-done", state: :completed, started_at: 90.seconds.ago, completed_at: 30.seconds.ago)
+    get "/chrono_forge/workflows"
+    assert_response :success
+    assert_match ">Duration<", response.body   # new column header
+    assert_match "1m 00s", response.body        # 90s − 30s run length
   end
 
   test "plain idle workflow stays idle, not scheduled" do

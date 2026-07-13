@@ -1,0 +1,4 @@
+<turbo-frame id="cf-ov-in-flight">
+  <%= render "stat_card", href: workflows_path(state: "in_flight", hide_branches: "0"),
+        label: "In flight", count: @count, sub: "idle + running", color: "text-zinc-900" %>
+</turbo-frame>

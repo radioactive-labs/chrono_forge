@@ -67,6 +67,30 @@ class PeriodicAndWaitTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match "w2", response.body
     assert_match "cf-wait--long", response.body
+    assert_match "cf-pill-idle", response.body # a poll wait reads as a muted pill
+  end
+
+  test "wait-states leads with a banner when an event wait blows past the threshold" do
+    wf = create_workflow(key: "evt-stuck", state: :idle, job_class: "OrderWorkflow")
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "continue_if$inventory?",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
+      started_at: 2.days.ago, last_executed_at: 2.days.ago, metadata: {})
+    get "/chrono_forge/wait_states"
+    assert_response :success
+    assert_match "stalled beyond", response.body      # summary banner leads
+    assert_match "event-wait", response.body
+    assert_match "cf-pill-stalled", response.body     # the event-kind pill
+    assert_match "bg-rose-50", response.body          # over-threshold event escalates to rose
+  end
+
+  test "a fresh poll wait shows no stalled banner" do
+    wf = create_workflow(key: "fresh", state: :idle)
+    ChronoForge::ExecutionLog.create!(workflow: wf, step_name: "wait_until$ready?",
+      state: ChronoForge::ExecutionLog.states[:pending], attempts: 1,
+      started_at: 2.minutes.ago, last_executed_at: 2.minutes.ago, metadata: {})
+    get "/chrono_forge/wait_states"
+    assert_response :success
+    refute_match "stalled beyond", response.body
   end
 
   test "periodic health reports timeouts and latencies" do

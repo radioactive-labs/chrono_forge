@@ -21,6 +21,8 @@
           <%= button_to "Retry", retry_workflow_path(@workflow), method: :post, class: "cf-btn cf-btn-primary" %>
         <% end %>
         <% if @workflow.running? %>
+          <%= button_to "Reap", reap_workflow_path(@workflow), method: :post,
+                form: {data: {confirm: "Reap this workflow? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent."}}, class: "cf-btn" %>
           <%= button_to "Force unlock", unlock_workflow_path(@workflow), method: :post,
                 form: {data: {confirm: "Force-unlocking a running workflow can cause duplicate execution. Continue?"}}, class: "cf-btn cf-btn-danger" %>
         <% end %>
@@ -32,11 +34,36 @@
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Created</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.created_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Started</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.started_at) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Completed</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.completed_at) %></dd></div>
-    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono text-zinc-700"><%= cf_duration(@workflow.started_at, @workflow.completed_at || @workflow.updated_at) %></dd></div>
+    <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Duration</dt><dd class="font-mono text-zinc-700"><%= cf_duration(@workflow.started_at, @workflow.completed_at || (@workflow.running? ? Time.current : @workflow.updated_at)) %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked by</dt><dd class="break-all font-mono text-zinc-700"><%= @workflow.locked_by || "—" %></dd></div>
     <div><dt class="text-xs uppercase tracking-wide text-zinc-400">Locked at</dt><dd class="font-mono text-zinc-700"><%= cf_ago(@workflow.locked_at) %></dd></div>
   </dl>
 </div>
+
+<%# Lead with the problem: where a blocked run stopped, or that a run is dragging. %>
+<% blocking = (@workflow.failed? || @workflow.stalled?) ? @timeline.entries.reverse.find { |e| e.status == "failed" } : nil %>
+<% if blocking %>
+  <% last_err = blocking.errors.last %>
+  <div class="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+    <span class="mt-px text-rose-600" aria-hidden="true">▲</span>
+    <div class="min-w-0 flex-1 text-sm">
+      <p class="font-semibold text-zinc-900"><%= @workflow.stalled? ? "Stalled" : "Failed" %> at <span class="font-mono"><%= blocking.name %></span><% if blocking.attempts.to_i > 1 %> — failed after <%= pluralize(blocking.attempts, "attempt") %><% end %></p>
+      <% if last_err %>
+        <p class="mt-0.5 text-zinc-600">Last error <span class="font-mono text-rose-600"><%= last_err.error_class %></span><% if last_err.error_message.present? %>: <%= truncate(last_err.error_message, length: 120) %><% end %></p>
+      <% end %>
+    </div>
+  </div>
+<% elsif cf_stranded?(@workflow) %>
+  <div class="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+    <span class="mt-px text-rose-600" aria-hidden="true">▲</span>
+    <div class="min-w-0 flex-1 text-sm">
+      <p class="font-semibold text-zinc-900">Stranded — lock stale for <%= cf_duration(@workflow.locked_at, Time.current) %></p>
+      <p class="mt-0.5 text-zinc-600">Worker <span class="font-mono"><%= @workflow.locked_by || "?" %></span> hasn't refreshed the lock in <%= cf_secs(cf_reap_stale_after.to_i) %>, so nothing is driving this run — its worker was likely hard-killed mid-pass. <strong class="font-medium text-zinc-700">Reap</strong> re-enqueues it to steal the stale lock and replay.</p>
+    </div>
+    <%= button_to "Reap", reap_workflow_path(@workflow), method: :post,
+          form: {class: "shrink-0", data: {confirm: "Reap this workflow? It re-enqueues the run to steal its stale lock and replay. Steps with external side effects must be idempotent."}}, class: "cf-btn" %>
+  </div>
+<% end %>
 
 <%= render "wait_callout", wait: @wait if @wait %>
 
