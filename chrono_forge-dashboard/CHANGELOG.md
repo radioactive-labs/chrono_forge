@@ -2,6 +2,12 @@
 
 All notable changes to `chrono_forge-dashboard` are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] - 2026-07-13
+
+### Features
+
+- Turbo-driven refresh + triage-first redesign + reap action ([#14](https://github.com/radioactive-labs/chrono_forge/issues/14))
+
 ## [0.2.0] - 2026-07-04
 
 ### Bug Fixes
