@@ -75,9 +75,11 @@ banner names where a blocked run stopped:
 
 [![Workflow detail](docs/screenshots/workflow-detail.png)](docs/screenshots/workflow-detail.png)
 
-A workflow whose lock has gone stale is flagged **stranded**: its worker was
-hard-killed mid-pass, so nothing is driving the run. The banner offers **Reap**,
-which re-enqueues it to steal the stale lock and replay:
+A workflow whose lock has gone stale (older than the gem's
+`ChronoForge.config.reap_stale_after`, default `3× max_duration`) is flagged
+**stranded**: its worker was hard-killed mid-pass, so nothing is driving the run.
+The threshold is the gem's, not the dashboard's (see [the note below](#configuration)).
+The banner offers **Reap**, which re-enqueues it to steal the stale lock and replay:
 
 [![Stranded workflow with reap](docs/screenshots/workflow-reap.png)](docs/screenshots/workflow-reap.png)
 
