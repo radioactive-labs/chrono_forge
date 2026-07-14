@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChronoForge — durable workflows for Rails</title>
+  <meta name="description" content="A Rails engine for durable, resumable workflows in plain Ruby: crash recovery, durable waits, bounded retries, periodic tasks, parallel fan-out, and a free dashboard. Built on ActiveJob, no extra server to run.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#fdfdfc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ChronoForge — durable workflows for Rails">
+  <meta property="og:description" content="Your background job works until the process it drives has to survive a crash, wait three days, and resume exactly where it stopped. ChronoForge makes plain Ruby do that.">
+  <meta property="og:url" content="https://radioactive-labs.github.io/chrono_forge/">
+  <meta property="og:image" content="https://radioactive-labs.github.io/chrono_forge/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ChronoForge — durable, resumable workflows in plain Ruby: crash recovery, durable waits, retries, periodic tasks, parallel fan-out, and a free dashboard.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ChronoForge — durable workflows for Rails">
+  <meta name="twitter:description" content="Your background job works until the process it drives has to survive a crash, wait three days, and resume exactly where it stopped. ChronoForge makes plain Ruby do that.">
+  <meta name="twitter:image" content="https://radioactive-labs.github.io/chrono_forge/og.png">
+  <script>
+    // Restore the saved theme before first paint, so there's no flash on refresh.
+    (function () {
+      try {
+        var t = localStorage.getItem("chrono_forge-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --bg:    #fdfdfc;
+      --fg:    #1c1f24;
+      --soft:  #5b636e;
+      --link:  #b34d08;
+      --code-bg: #f2f3f5;
+      --rule:  #e3e5e8;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101317; --fg: #d9dde3; --soft: #8b93a0; --link: #e2792a;
+        --code-bg: #191d23; --rule: #262b32;
+      }
+    }
+    :root[data-theme="light"] { --bg:#fdfdfc; --fg:#1c1f24; --soft:#5b636e; --link:#b34d08; --code-bg:#f2f3f5; --rule:#e3e5e8; }
+    :root[data-theme="dark"]  { --bg:#101317; --fg:#d9dde3; --soft:#8b93a0; --link:#e2792a; --code-bg:#191d23; --rule:#262b32; }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+      font-size: 18px;
+      line-height: 1.62;
+      -webkit-font-smoothing: antialiased;
+    }
+    .page { max-width: 48rem; margin: 0 auto; padding: 2.75rem 1.5rem 5rem; position: relative; }
+
+    .theme-toggle {
+      position: absolute; top: 1.5rem; right: 1.5rem;
+      font-family: var(--mono); font-size: 0.74rem; color: var(--soft);
+      background: none; border: 0; cursor: pointer; padding: 0.2rem;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .theme-toggle:hover { color: var(--link); }
+
+    h1 {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0 0 1.4rem;
+    }
+    h2 {
+      font-size: 1.02rem;
+      font-weight: 600;
+      margin: 2.8rem 0 0.9rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--rule);
+      color: var(--fg);
+    }
+    p { margin: 0 0 1.1rem; }
+    .lede { font-size: 1.12rem; }
+    .sub { color: var(--soft); }
+    a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+    a:hover { text-decoration-thickness: 2px; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.2rem 0 1.8rem; align-items: center; }
+    .badges a { display: inline-flex; text-decoration: none; }
+    .badges img { height: 20px; display: block; }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: var(--code-bg);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      padding: 0.95rem 1.1rem;
+      overflow-x: auto;
+      margin: 0 0 1.1rem;
+      line-height: 1.55;
+    }
+    pre code { background: none; padding: 0; font-size: 0.8rem; }
+    .cmt { color: var(--soft); }
+
+    ul { margin: 0 0 1.1rem; padding-left: 1.2rem; }
+    li { margin-bottom: 0.5rem; }
+    li b { font-weight: 600; }
+
+    .links { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+    .links li { margin-bottom: 0.55rem; display: flex; gap: 0.7rem; }
+    .links .what { color: var(--soft); min-width: 6.5rem; display: inline-block; }
+
+    footer {
+      margin-top: 3.2rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
+      font-family: var(--mono); font-size: 0.78rem; color: var(--soft);
+    }
+    :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <button id="theme-toggle" class="theme-toggle" type="button">dark mode</button>
+    <h1>ChronoForge</h1>
+
+    <p class="lede">Your background job works until the process it drives has to survive a crash, wait three days, and resume exactly where it stopped. ChronoForge is the durable-workflow engine that makes plain Ruby do that.</p>
+
+    <p class="sub">ChronoForge is a gem over your existing database and ActiveJob backend: no DSL to learn, no separate server to run. Workflows are ordinary Ruby methods, so <code>if</code>/<code>else</code>, loops, and early returns just work. In production at achieve by Petra (3.6M+ workflows, 32M+ durable steps). Works with any ActiveJob backend on Rails 7.1+.</p>
+
+    <p class="badges">
+      <a href="https://rubygems.org/gems/chrono_forge"><img alt="Gem Version" src="https://badge.fury.io/rb/chrono_forge.svg"></a>
+      <a href="https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml"><img alt="CI" src="https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg"></a>
+      <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+    </p>
+
+    <h2>Install</h2>
+    <pre><code><span class="cmt"># Gemfile</span>
+gem "chrono_forge"</code></pre>
+    <pre><code>bundle install
+rails g chrono_forge:install
+rails db:migrate</code></pre>
+
+    <h2>The 30-second tour</h2>
+    <p>A workflow is an ActiveJob class that prepends the executor. Each durable step is just a method:</p>
+    <pre><code>class OnboardingWorkflow &lt; ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(user_id:)
+    @user_id = user_id
+
+    durably_execute :send_welcome_email
+    wait 2.days, :remind_delay
+    durably_execute :remind_of_tasks
+    wait 15.days, :onboarding_delay
+    durably_execute :complete_onboarding
+  end
+
+  <span class="cmt"># ... step methods ...</span>
+end
+
+<span class="cmt"># Run it with a unique key that identifies this run for its whole life</span>
+OnboardingWorkflow.perform_later("onboard-user-42", user_id: 42)</code></pre>
+    <p class="sub">The waits hold no worker: the workflow persists its position and resumes on schedule. Each step is checkpointed by name, so a crash and resume skip what already completed and pick up where it stopped.</p>
+
+    <h2>What you get</h2>
+    <ul>
+      <li><b>Plain-Ruby control flow.</b> Branching, loops, and iteration over runtime data, with no DSL or step registry to maintain.</li>
+      <li><b>Durable execution.</b> Steps are checkpointed and idempotent on replay, so a crash resumes exactly where it stopped.</li>
+      <li><b>Wait states.</b> Fixed delays, condition polling (<code>wait_until</code>), and event-driven waits (<code>continue_if</code>) that all survive restarts.</li>
+      <li><b>Periodic tasks.</b> <code>durably_repeat</code> runs a step on a schedule until a condition holds, with catch-up for missed runs.</li>
+      <li><b>Parallel sub-workflows.</b> <code>branch</code> / <code>spawn</code> / <code>spawn_each</code> fan out into concurrent children, streaming large sets in constant memory.</li>
+      <li><b>A free dashboard.</b> Workflow list, step-replay timeline, a per-run definition graph, and one-click retry/reap.</li>
+      <li><b>Recovery built in.</b> Retry stalled or failed runs; reap workflows stranded in <code>running</code> by a hard-killed worker.</li>
+    </ul>
+
+    <h2>Documentation</h2>
+    <ul class="links">
+      <li><span class="what">Guide &amp; API</span><a href="https://github.com/radioactive-labs/chrono_forge#readme">github.com/radioactive-labs/chrono_forge</a></li>
+      <li><span class="what">Dashboard</span><a href="https://github.com/radioactive-labs/chrono_forge/tree/main/chrono_forge-dashboard#readme">chrono_forge-dashboard</a></li>
+      <li><span class="what">Gem</span><a href="https://rubygems.org/gems/chrono_forge">rubygems.org/gems/chrono_forge</a></li>
+    </ul>
+
+    <footer>MIT License · Radioactive Labs</footer>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      function effective() {
+        var t = root.getAttribute("data-theme");
+        if (t) return t;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      function label() { btn.textContent = (effective() === "dark" ? "light" : "dark") + " mode"; }
+      btn.addEventListener("click", function () {
+        var next = effective() === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("chrono_forge-theme", next); } catch (e) {}
+        label();
+      });
+      label();
+    })();
+  </script>
+</body>
+</html>
