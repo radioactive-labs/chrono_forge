@@ -126,6 +126,32 @@
       margin-top: 3.2rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
       font-family: var(--mono); font-size: 0.78rem; color: var(--soft);
     }
+
+    .hero { margin: 0 0 1.8rem; }
+    .hero img {
+      display: block; width: 100%; height: auto;
+      border: 1px solid var(--rule); border-radius: 8px;
+      cursor: zoom-in;
+    }
+    .hero figcaption {
+      color: var(--soft); font-size: 0.86rem; margin-top: 0.6rem; text-align: center;
+    }
+
+    .lightbox {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(8, 10, 13, 0.9);
+      display: none; align-items: center; justify-content: center;
+      padding: 1.5rem; cursor: zoom-out;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img {
+      max-width: 95vw; max-height: 93vh; width: auto; height: auto;
+      border-radius: 6px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+    }
+    .lightbox .hint {
+      position: fixed; bottom: 1.1rem; left: 0; right: 0; text-align: center;
+      font-family: var(--mono); font-size: 0.72rem; color: rgba(255,255,255,0.5);
+    }
     :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
   </style>
 </head>
@@ -143,6 +169,11 @@
       <a href="https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml"><img alt="CI" src="https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg"></a>
       <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
     </p>
+
+    <figure class="hero">
+      <img src="screenshots/workflows.png" alt="The ChronoForge dashboard: the workflow list with state badges, filters, and per-run duration meters" loading="lazy">
+      <figcaption>The free dashboard, live over your workflows. <a href="dashboard.html">See the full tour &rarr;</a></figcaption>
+    </figure>
 
     <h2>Install</h2>
     <pre><code><span class="cmt"># Gemfile</span>
@@ -195,7 +226,23 @@ OnboardingWorkflow.perform_later("onboard-user-42", user_id: 42)</code></pre>
     <footer>MIT License · Radioactive Labs</footer>
   </div>
 
+  <div class="lightbox" id="lightbox" aria-hidden="true">
+    <img alt="">
+    <div class="hint">click anywhere or press Esc to close</div>
+  </div>
+
   <script>
+    (function () {
+      var lb = document.getElementById("lightbox");
+      var lbImg = lb.querySelector("img");
+      function open(src, alt) { lbImg.src = src; lbImg.alt = alt || ""; lb.classList.add("open"); }
+      function close() { lb.classList.remove("open"); lbImg.removeAttribute("src"); }
+      document.querySelectorAll(".hero img").forEach(function (img) {
+        img.addEventListener("click", function () { open(img.currentSrc || img.src, img.alt); });
+      });
+      lb.addEventListener("click", close);
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    })();
     (function () {
       var root = document.documentElement;
       var btn = document.getElementById("theme-toggle");
