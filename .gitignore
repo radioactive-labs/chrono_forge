@@ -16,3 +16,6 @@ ai_tools
 Gemfile.lock
 # git worktrees
 .worktrees/
+
+# dashboard screenshots are copied into the Pages artifact at build time
+site/screenshots/

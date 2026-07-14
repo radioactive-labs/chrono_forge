@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChronoForge Dashboard — a visual tour</title>
+  <meta name="description" content="A tour of the free ChronoForge dashboard: fleet overview, workflow list, analytics, waiting and stranded views, branch fan-out, per-run definition graph, and one-click recovery.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#fdfdfc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ChronoForge Dashboard — a visual tour">
+  <meta property="og:description" content="Fleet overview, step-replay timeline, per-run definition graph, and one-click retry/reap. The free dashboard for ChronoForge workflows.">
+  <meta property="og:url" content="https://radioactive-labs.github.io/chrono_forge/dashboard.html">
+  <meta property="og:image" content="https://radioactive-labs.github.io/chrono_forge/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ChronoForge Dashboard — a visual tour">
+  <meta name="twitter:image" content="https://radioactive-labs.github.io/chrono_forge/og.png">
+  <script>
+    // Restore the saved theme before first paint, so there's no flash on refresh.
+    (function () {
+      try {
+        var t = localStorage.getItem("chrono_forge-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --bg:    #fdfdfc;
+      --fg:    #1c1f24;
+      --soft:  #5b636e;
+      --link:  #b34d08;
+      --code-bg: #f2f3f5;
+      --rule:  #e3e5e8;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101317; --fg: #d9dde3; --soft: #8b93a0; --link: #e2792a;
+        --code-bg: #191d23; --rule: #262b32;
+      }
+    }
+    :root[data-theme="light"] { --bg:#fdfdfc; --fg:#1c1f24; --soft:#5b636e; --link:#b34d08; --code-bg:#f2f3f5; --rule:#e3e5e8; }
+    :root[data-theme="dark"]  { --bg:#101317; --fg:#d9dde3; --soft:#8b93a0; --link:#e2792a; --code-bg:#191d23; --rule:#262b32; }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+      font-size: 18px;
+      line-height: 1.62;
+      -webkit-font-smoothing: antialiased;
+    }
+    .page { max-width: 54rem; margin: 0 auto; padding: 2.75rem 1.5rem 5rem; position: relative; }
+
+    .theme-toggle {
+      position: absolute; top: 1.5rem; right: 1.5rem;
+      font-family: var(--mono); font-size: 0.74rem; color: var(--soft);
+      background: none; border: 0; cursor: pointer; padding: 0.2rem;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .theme-toggle:hover { color: var(--link); }
+
+    .back { font-family: var(--mono); font-size: 0.8rem; display: inline-block; margin-bottom: 1.4rem; }
+
+    h1 {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0 0 1.4rem;
+    }
+    p { margin: 0 0 1.1rem; }
+    .lede { font-size: 1.12rem; }
+    .sub { color: var(--soft); }
+    a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+    a:hover { text-decoration-thickness: 2px; }
+    code {
+      font-family: var(--mono); font-size: 0.86em;
+      background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px;
+    }
+
+    figure { margin: 2.6rem 0 0; }
+    figure img {
+      display: block; width: 100%; height: auto;
+      border: 1px solid var(--rule); border-radius: 6px;
+    }
+    figcaption { color: var(--soft); font-size: 0.94rem; margin-top: 0.7rem; }
+    figcaption b { color: var(--fg); font-weight: 600; }
+
+    footer {
+      margin-top: 3.4rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
+      font-family: var(--mono); font-size: 0.78rem; color: var(--soft);
+    }
+    footer a { color: var(--soft); }
+    :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <button id="theme-toggle" class="theme-toggle" type="button">dark mode</button>
+    <a class="back" href="./">&larr; ChronoForge</a>
+    <h1>The dashboard</h1>
+
+    <p class="lede">A free, mountable Rails engine for visibility and recovery. It is built on the step history each workflow records as it runs, and adds the controls to act on what it surfaces.</p>
+
+    <p class="sub">Ships as a separate gem, <code>chrono_forge-dashboard</code>, so the core stays lean. See the <a href="https://github.com/radioactive-labs/chrono_forge/tree/main/chrono_forge-dashboard#readme">dashboard README</a> for setup, authentication, and configuration.</p>
+
+    <figure>
+      <img src="screenshots/overview.png" alt="Overview: fleet summary with per-class rows" loading="lazy">
+      <figcaption><b>Overview.</b> A fleet summary: total processed / in-flight / blocked, then one row per workflow class with a share-of-processed bar. Every count drills into the matching filtered list; each class name opens its Analytics.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/workflows.png" alt="Workflow list with filters and state badges" loading="lazy">
+      <figcaption><b>Workflow list.</b> Filter by state, job class, or workflow key, with keyset pagination and a per-row duration meter that turns rose when a run is stranded.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/workflow-detail.png" alt="Workflow detail step-replay timeline" loading="lazy">
+      <figcaption><b>Workflow detail.</b> A step-replay timeline with errors inlined on the step that failed, periodic-task health, and arguments/context. Durations get a proportional meter, and a banner names where a blocked run stopped.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/definition-graph.png" alt="Per-run definition graph DAG" loading="lazy">
+      <figcaption><b>Definition graph.</b> A per-run static DAG of the durable steps a workflow <em>will</em> run, parsed from <code>perform</code> with Prism (never executed), with live status painted on each node: done, in progress, failed, not-yet-reached.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/definition-graph-scheduled-payment.png" alt="Definition graph of a scheduled-payment recurrence" loading="lazy">
+      <figcaption><b>Definition graph, branching run.</b> A scheduled-payment recurrence with three reminder-ordering branches that reconverge on the charge. This run took the auto-charge branch (green); the others were never reached (dimmed), and the final <code>process_payment</code> failed.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/analytics.png" alt="Analytics: completion and failure rates" loading="lazy">
+      <figcaption><b>Analytics.</b> Completion/failure rate with a window trend, throughput bars carrying a per-day completion-rate pill (amber-flagged on a failure spike), top error classes, and per-class queue health.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/waiting.png" alt="Waiting workflows view" loading="lazy">
+      <figcaption><b>Waiting.</b> Leads with a banner for a stalled <code>continue_if</code> event wait, the silent stall that never self-resumes. Event vs poll waits read as pills, and each row's age is a meter.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/stranded.png" alt="Stranded workflows view" loading="lazy">
+      <figcaption><b>Stranded.</b> Workflows stuck in <code>running</code> with a stale lock, the set <code>Workflow.reap_stalled</code> re-enqueues. Lock-age meters, the dead worker named, per-row <b>Reap</b>, and a <b>Reap all</b> background sweep.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/workflow-reap.png" alt="Stranded workflow detail with reap action" loading="lazy">
+      <figcaption><b>Reap.</b> A workflow whose lock has gone stale is flagged stranded: its worker was hard-killed mid-pass, so nothing is driving the run. The banner offers Reap, which re-enqueues it to steal the lock and replay.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/repetitions.png" alt="Periodic-task repetitions view" loading="lazy">
+      <figcaption><b>Repetitions.</b> A <code>durably_repeat</code> step's per-iteration runs as status pills, with duration and lateness meters, attempts in words, and catch-up skips shown as per-tick tombstones or a summary.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/branches.png" alt="Branch fan-out panel" loading="lazy">
+      <figcaption><b>Branches.</b> Fan-out branches with exact spawned / pending / never-started counts, plus blocked count and merge state. In-flight merges show live throughput (children/s) and ETA while draining.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="screenshots/branch-children.png" alt="Branch children view" loading="lazy">
+      <figcaption><b>Branch children.</b> One branch's children with a live stats header (throughput/ETA, spawned, pending, never-started, dropped-child recovery): blocked-first triage, capped state filters, retry per child.</figcaption>
+    </figure>
+
+    <footer>
+      MIT License &middot; Radioactive Labs &middot;
+      <a href="https://github.com/radioactive-labs/chrono_forge/tree/main/chrono_forge-dashboard#readme">Dashboard docs</a>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      function effective() {
+        var t = root.getAttribute("data-theme");
+        if (t) return t;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      function label() { btn.textContent = (effective() === "dark" ? "light" : "dark") + " mode"; }
+      btn.addEventListener("click", function () {
+        var next = effective() === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("chrono_forge-theme", next); } catch (e) {}
+        label();
+      });
+      label();
+    })();
+  </script>
+</body>
+</html>

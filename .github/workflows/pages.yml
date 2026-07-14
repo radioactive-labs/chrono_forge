@@ -34,6 +34,12 @@ jobs:
         uses: actions/checkout@v5
       - name: Setup Pages
         uses: actions/configure-pages@v6
+      - name: Stage dashboard screenshots
+        # Single source of truth lives in the dashboard gem; copy it into the
+        # artifact at build time rather than duplicating the images in site/.
+        run: |
+          mkdir -p site/screenshots
+          cp chrono_forge-dashboard/docs/screenshots/*.png site/screenshots/
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
