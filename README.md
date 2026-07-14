@@ -892,8 +892,8 @@ ChronoForge::Cleanup.run(
 - Workflow retention is measured from when a workflow became terminal, not when it
   was created. Completed workflows use `completed_at` (immutable); failed workflows
   use `updated_at` (they have no `completed_at`).
-- The composite `[state, completed_at]` index added in this version keeps these
-  scans efficient; run `chrono_forge:upgrade` if you installed an earlier version.
+- A composite `[state, completed_at]` index keeps these scans efficient; run
+  `chrono_forge:upgrade` if you installed before it was added.
 
 A ready-made job is bundled so any recurring-job mechanism can drive it (Solid
 Queue recurring tasks, sidekiq-cron, GoodJob cron, the `whenever` gem, and so on).
