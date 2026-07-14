@@ -4,27 +4,37 @@
 [![Ruby](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml/badge.svg)](https://github.com/radioactive-labs/chrono_forge/actions/workflows/main.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**Your background job works until the process it drives has to survive a crash,
+wait three days, and resume exactly where it stopped.** ChronoForge is the
+durable-workflow engine that makes plain Ruby do that.
 
-> A robust framework for building durable, distributed workflows in Ruby on Rails applications
+The moment a job outgrows a single run, the edge cases arrive one at a time: a
+step commits its side effect but the worker is OOM-killed before the next one, so
+a naive retry runs it twice. A process needs to pause for three days until a
+webhook lands, without pinning a worker. A flaky API call needs bounded retries
+with backoff, not an infinite loop. A branch of the flow only exists for some
+inputs, and a loop runs once per row in a set you can't see until runtime. And
+sooner or later support asks "did step four actually run?", and you need the
+answer. ChronoForge persists every step, recovers from failures, waits durably on
+time and conditions, fans out into concurrent child workflows, and keeps a
+queryable history of all of it.
 
-ChronoForge handles long-running processes, manages state, and recovers from failures in your Rails applications. Built on ActiveJob, it keeps critical business processes resilient and traceable.
-
-Workflows are **plain Ruby**. Ordinary `if`/`else`, loops, and early returns drive the flow. There's no declarative DSL to learn and no extra service to run, which makes ChronoForge a good fit for business processes whose shape depends on runtime state: conditional branches, iteration over data, and built-in periodic tasks (`durably_repeat`).
+It is a gem over your existing database and ActiveJob backend: no DSL to learn,
+no separate server or daemon to run. Workflows are ordinary Ruby methods, so
+`if`/`else`, loops, early returns, and helper methods drive the flow the way they
+always do. Works with any ActiveJob backend on Rails 7.1+.
 
 > [!NOTE]
-> **In production** at **achieve by Petra**, an investment platform in the Petra Group — where it has executed over 3.6 million workflows and 32 million durable steps across scheduled payments, investment rollovers, and membership lifecycle management.
+> **In production at achieve by Petra**, an investment platform in the Petra
+> Group, where it has executed over 3.6 million workflows and 32 million durable
+> steps across scheduled payments, investment rollovers, and membership lifecycle
+> management.
 
-## 🧭 Why ChronoForge
+## 30-second tour
 
-Most Rails workflow tools ask you to declare your steps up front in a DSL:
-
-```ruby
-step :send_welcome_email
-step :remind_of_tasks, wait: 2.days
-step :complete_onboarding, wait: 15.days
-```
-
-That reads cleanly for a fixed, linear sequence. But many business processes branch, loop, and react to data that only exists at runtime, and a declarative schema gets awkward there. ChronoForge takes the opposite approach: **the workflow is plain Ruby, and each step is just a method.** Conditionals, iteration, early returns, and helper methods all work the way they normally do; you drive durable steps, waits, and retries inline with a few primitives like `durably_execute` and `wait_until`:
+A workflow is an ActiveJob class that prepends `ChronoForge::Executor`. Each
+durable step is just a method, and the primitives (`durably_execute`, `wait`,
+`wait_until`, `durably_repeat`) run inline between them:
 
 ```ruby
 class OnboardingWorkflow < ApplicationJob
@@ -48,186 +58,34 @@ class OnboardingWorkflow < ApplicationJob
 end
 ```
 
-There is a trade-off, though a smaller one than it used to be. A declarative engine can show the steps a run *hasn't* reached yet; plain imperative code can't. The [definition graph](#-dashboard) closes most of that gap. It reads your `perform` with Prism (without running it) and draws the steps the run will take, with live status on each. The view is best-effort: a computed step name or a data-dependent loop collapses to one `dynamic` node. For a simple, fixed sequence ("send email, wait 2 days, send another") a declarative DSL can still read more cleanly, and that's a fine reason to use one.
-
-### How it compares
-
-|                              | ChronoForge          | AJ Continuations           | GenevaDrive        | AcidicJob       | Temporal        |
-| ---------------------------- | -------------------- | -------------------------- | ------------------ | --------------- | --------------- |
-| Programming model            | procedural (plain Ruby) | procedural (`step` blocks) | declarative DSL | declarative DSL | procedural (via SDK) |
-| Built-in periodic tasks      | ✓ `durably_repeat`   | ✗                          | ✗                  | ✗               | ✓               |
-| Parallel sub-workflows       | ✓ `branch` / `spawn` | ✗                          | ✗                  | ✗               | ✓               |
-| Pending-step visibility      | ✗ (procedural)       | ✗ (procedural)             | ✓                  | ✓               | ✗ (procedural)  |
-| Web dashboard                | ✓ (free gem)         | job-level (Mission Control)| paid only          | ✗               | ✓               |
-| Extra infrastructure         | none (DB + ActiveJob)| none (built into Rails)    | none               | none            | server required |
-| Rails support                | 7.1+                 | 8.1+                       | 7.2+               | 7.1+            | any (Ruby SDK)  |
-| License                      | MIT                  | MIT                        | LGPL / commercial  | MIT             | MIT             |
-
-<sub>Comparison reflects each project's documented features as of mid-2026, to the best of our knowledge; corrections welcome via PR.</sub>
-
-A few deliberate choices behind that table:
-
-- **Periodic tasks are built in.** `durably_repeat` runs a step on a schedule until a condition holds, with automatic catch-up for missed runs, so a workflow can be its own recurring job and cron-style monitor, right alongside the rest of its logic. Without built-in support, periodic behavior usually lives in a separate scheduler that you reconcile with workflow state by hand.
-- **No extra infrastructure.** ChronoForge is a gem over your existing database and ActiveJob backend. There's no separate server or daemon to operate, unlike Temporal.
-- **Large-scale fan-out is built in.** `branch` with `spawn`/`spawn_each` fans a workflow out into child workflows that run concurrently and join when their results are needed, streaming ActiveRecord relations in constant memory for large sets. Among the Ruby-native engines here, only ChronoForge offers this without a separate orchestration server (Temporal does, server-side).
-- **Recovery is built into the model.** Steps are append-only history, so a crashed step leaves the workflow `stalled`, recoverable directly with `retry_later`.
-- **A real dashboard, free.** ChronoForge's [mountable dashboard](#-dashboard) — workflow list, step-replay timeline, a per-run **definition graph** (the steps a run will take, read from `perform`, with live status on each), context inspector, retry/unlock — ships as a separate MIT gem.
-- **MIT licensed.** Permissive and dependency-policy-friendly.
-- **ActiveJob Continuations solve a narrower problem.** Rails 8.1's built-in [continuations](https://api.rubyonrails.org/classes/ActiveJob/Continuation.html) make a *single* long job survive interruptions: you wrap work in `step` blocks and track a `cursor`, and at each checkpoint the job asks the queue adapter whether it's `stopping?`, re-enqueuing to resume from the last completed step/cursor — no gem, no tables. They deliberately stop short of being a workflow engine: there's no durable waiting on time, conditions, or external events; no periodic steps; no parallel fan-out; and no persisted, queryable history. Reach for continuations to make one big job restart-safe; reach for ChronoForge when a process spans steps that wait, recur, fan out, and need recovery and visibility. They also compose — a ChronoForge workflow *is* ActiveJob work.
-
-## 🌟 Features
-
-- **Plain-Ruby control flow**: Branching, loops, and iteration over runtime data, without a DSL or step registry
-- **Durable Execution**: Automatically tracks and recovers from failures during workflow execution
-- **Periodic tasks built in**: `durably_repeat` runs a step on an interval until a condition is met, with catch-up for missed runs. Acts as a recurring task and a cron-style monitor in one
-- **Wait States**: Time-based waits and condition-based waiting (`wait_until`) that survive restarts
-- **Parallel sub-workflows**: `branch` with `spawn`/`spawn_each` fans out into concurrent child workflows and joins them (`automerge` or `merge_branches`); large sets stream in constant memory. See [Branches](#-branches-parallel-sub-workflows)
-- **State Management**: Built-in workflow state tracking with persistent context storage
-- **Concurrency Control**: Advanced locking mechanisms to prevent parallel execution of the same workflow
-- **Error Handling**: Error tracking with a unified, configurable [`RetryPolicy`](#-retry-policies) (including per-error-type policies)
-- **Execution Logging**: Detailed logging of workflow steps and errors for visibility
-- **Database-Backed**: All workflow state is persisted to ensure durability, with no extra services to run
-- **ActiveJob Integration**: Compatible with all ActiveJob backends, though database-backed processors (like Solid Queue) provide the most reliable experience for long-running workflows
-- **Retention & Cleanup**: A schedulable job to prune finished workflows and the unbounded logs that periodic tasks accumulate (see [Cleanup & Retention](#-cleanup--retention))
-
-## 🖥 Dashboard
-
-ChronoForge has a free, mountable dashboard for visibility and recovery: workflow list, step replay timeline, a per-run **definition graph** (the durable steps a workflow will run, statically parsed from `perform`, with live run status overlaid), context inspector, periodic-task health, wait-state age, and retry/unlock actions. It ships as a separate gem, `chrono_forge-dashboard`, so the core stays lean.
-
-[![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
-
-The per-run **definition graph**: the steps a workflow will run, read from `perform`, with the run's status shown on each node.
-
-[![Definition graph](chrono_forge-dashboard/docs/screenshots/definition-graph-scheduled-payment.png)](chrono_forge-dashboard/README.md#screenshots)
+Run it with a unique key that identifies this run for its whole life:
 
 ```ruby
-# Gemfile
-gem "chrono_forge-dashboard"
-
-# config/routes.rb
-mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
+OnboardingWorkflow.perform_later("onboard-user-42", user_id: 42)
 ```
 
-See [`chrono_forge-dashboard`](chrono_forge-dashboard/README.md) for setup, authentication, and [more screenshots](chrono_forge-dashboard/README.md#screenshots).
+The 2-day and 15-day waits hold no worker: the workflow persists its position and
+resumes on schedule. Each `durably_execute` is checkpointed by step name, so a
+crash and resume skip the steps that already completed and pick up at the one
+that didn't. ChronoForge handles the rest: retries with backoff, concurrency
+locking, durable state, and a full step history you can inspect in the
+[dashboard](#dashboard).
 
-## 📦 Installation
+## Why plain Ruby
 
-Add to your application's Gemfile:
+Most Rails workflow tools ask you to declare your steps up front in a DSL:
 
 ```ruby
-gem 'chrono_forge'
+step :send_welcome_email
+step :remind_of_tasks, wait: 2.days
+step :complete_onboarding, wait: 15.days
 ```
 
-Then execute:
-
-```bash
-$ bundle install
-```
-
-Or install directly:
-
-```bash
-$ gem install chrono_forge
-```
-
-After installation, run the generator to create the necessary database migrations:
-
-```bash
-$ rails generate chrono_forge:install
-$ rails db:migrate
-```
-
-### Upgrading
-
-When upgrading ChronoForge in an application that was installed with an earlier
-version, run the upgrade generator to pick up any additive schema changes, then
-migrate:
-
-```bash
-$ rails generate chrono_forge:upgrade
-$ rails db:migrate
-```
-
-Re-running the generator is safe — it skips any migrations you already have.
-Fresh installs get everything from `chrono_forge:install` and don't need the
-upgrade.
-
-## 📋 Usage
-
-### Creating and Executing Workflows
-
-ChronoForge workflows are ActiveJob classes that prepend the `ChronoForge::Executor` module. Each workflow can **only** accept keyword arguments:
-
-```ruby
-# Define your workflow class
-class OrderProcessingWorkflow < ApplicationJob
-  prepend ChronoForge::Executor
-  
-  def perform(order_id:, customer_id:)
-    # Workflow steps...
-  end
-end
-```
-
-All workflows require a unique identifier when executed. This identifier is used to track and manage the workflow:
-
-```ruby
-# Execute the workflow
-OrderProcessingWorkflow.perform_later(
-  "order-123",                 # Unique workflow key
-  order_id: "order-134",       # Custom kwargs
-  customer_id: "customer-456"  # More custom kwargs
-)
-```
-
-### Basic Workflow Example
-
-Here's a complete example of a durable order processing workflow:
-
-```ruby
-class OrderProcessingWorkflow < ApplicationJob
-  prepend ChronoForge::Executor
-
-  def perform(order_id:)
-    @order_id = order_id
-
-    # Context can be used to pass and store data between executions
-    context.set_once "execution_id", SecureRandom.hex
-
-    # Wait until payment is confirmed
-    wait_until :payment_confirmed?
-
-    # Wait for potential fraud check
-    wait 1.minute, :fraud_check_delay
-
-    # Durably execute order processing
-    durably_execute :process_order
-
-    # Final steps
-    durably_execute :complete_order
-  end
-
-  private
-
-  def payment_confirmed?
-    PaymentService.confirmed?(@order_id, context["execution_id"])
-  end
-
-  def process_order
-    OrderProcessor.process(@order_id, context["execution_id"])
-    context["processed_at"] = Time.current.iso8601
-  end
-
-  def complete_order
-    OrderCompletionService.complete(@order_id, context["execution_id"])
-    context["completed_at"] = Time.current.iso8601
-  end
-end
-```
-
-### A workflow you can't flatten into a step list
-
-The example above is linear, but most real processes aren't. Because a ChronoForge workflow is plain Ruby, branching and dynamic iteration are just… branching and iteration:
+That reads cleanly for a fixed, linear sequence. But many business processes
+branch, loop, and react to data that only exists at runtime, and a declarative
+schema gets awkward there. ChronoForge takes the opposite approach: the workflow
+is plain Ruby, and each step is a method. Conditionals, iteration, early returns,
+and helper methods all work the way they normally do:
 
 ```ruby
 class OrderProcessingWorkflow < ApplicationJob
@@ -267,39 +125,154 @@ class OrderProcessingWorkflow < ApplicationJob
     OrderMailer.delivery_reminder(@order_id).deliver_later
   end
 
-  # ... other condition and step methods ...
+  # ... condition and step methods ...
 end
 ```
 
-Each `durably_execute` is checkpointed by its step name, so on resume the completed branches and items are skipped and the workflow continues where it left off. A fixed, declared list of steps can't easily express runtime branches, a loop over a runtime-sized collection, and an open-ended recurring notification.
+A fixed, declared list of steps can't easily express a runtime branch, a loop
+over a runtime-sized collection, and an open-ended recurring notification. Here
+they are ordinary control flow. Each `durably_execute` is still checkpointed by
+its step name, so on resume the completed branches and items are skipped and the
+workflow continues where it left off.
 
-### Core Workflow Features
+There is one trade-off, though a smaller one than it used to be. A declarative
+engine can show the steps a run *hasn't* reached yet; plain imperative code
+can't. The [definition graph](#dashboard) closes most of that gap: it reads your
+`perform` with Prism (without running it) and draws the steps the run will take,
+with live status on each. For a simple fixed sequence a declarative DSL can still
+read more cleanly, and that's a fine reason to use one.
 
-#### 🚀 Executing Workflows
+## Installation
 
-ChronoForge workflows are executed through ActiveJob's standard interface with a specific parameter structure:
+Add to your application's Gemfile:
 
 ```ruby
-# Perform the workflow immediately
-OrderProcessingWorkflow.perform_now(
-  "order-123",                     # Unique workflow key
-  order_id: "O-123",               # Custom parameter
-  customer_id: "C-456"             # Another custom parameter
-)
-
-# Or queue it for background processing
-OrderProcessingWorkflow.perform_later(
-  "order-123-async",               # Unique workflow key
-  order_id: "O-124",
-  customer_id: "C-457"
-)
+gem "chrono_forge"
 ```
 
-**Important:** Workflows must use keyword arguments only, not positional arguments.
+Then install and migrate:
 
-#### ⚡ Durable Execution
+```bash
+bundle install
+rails generate chrono_forge:install
+rails db:migrate
+```
 
-The `durably_execute` method runs an operation with automatic retries, and skips it on replay once it has completed:
+### Upgrading
+
+When upgrading in an application installed with an earlier version, run the
+upgrade generator to pick up any additive schema changes, then migrate:
+
+```bash
+rails generate chrono_forge:upgrade
+rails db:migrate
+```
+
+Re-running the generator is safe: it skips migrations you already have. Fresh
+installs get everything from `chrono_forge:install` and don't need the upgrade.
+
+## Dashboard
+
+ChronoForge ships a free, mountable dashboard for visibility and recovery:
+workflow list, step-replay timeline, a per-run **definition graph** (the durable
+steps a run will take, statically parsed from `perform`, with live status
+overlaid), context inspector, periodic-task health, wait-state age, and
+retry/unlock/reap actions. It is a separate gem, `chrono_forge-dashboard`, so the
+core stays lean.
+
+```ruby
+# Gemfile
+gem "chrono_forge-dashboard"
+
+# config/routes.rb
+mount ChronoForge::Dashboard::Engine, at: "/chrono_forge"
+```
+
+[![ChronoForge dashboard](chrono_forge-dashboard/docs/screenshots/workflows.png)](chrono_forge-dashboard/README.md#screenshots)
+
+The per-run definition graph shows the steps a workflow will run, read from
+`perform`, with the run's status painted on each node:
+
+[![Definition graph](chrono_forge-dashboard/docs/screenshots/definition-graph-scheduled-payment.png)](chrono_forge-dashboard/README.md#screenshots)
+
+See [`chrono_forge-dashboard`](chrono_forge-dashboard/README.md) for setup,
+authentication, and [more screenshots](chrono_forge-dashboard/README.md#screenshots).
+
+## Defining and running workflows
+
+A workflow is an ActiveJob class that prepends `ChronoForge::Executor`. Its
+`perform` accepts keyword arguments **only**, never positional ones:
+
+```ruby
+class OrderProcessingWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(order_id:, customer_id:)
+    # Workflow steps...
+  end
+end
+```
+
+Every run is identified by a unique key, passed as the first positional argument
+ahead of your kwargs. The key tracks and manages the run for its whole life, and
+is how ChronoForge finds the record on resume:
+
+```ruby
+# Queue it for background processing (the common case)
+OrderProcessingWorkflow.perform_later(
+  "order-123",                 # unique workflow key
+  order_id: "O-124",           # your kwargs follow
+  customer_id: "C-457"
+)
+
+# Or run it inline (console/debugging)
+OrderProcessingWorkflow.perform_now("order-123", order_id: "O-124", customer_id: "C-457")
+```
+
+Here is a complete linear workflow, using [context](#workflow-context) to carry
+state between executions:
+
+```ruby
+class OrderProcessingWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  def perform(order_id:)
+    @order_id = order_id
+
+    # Context stores data that survives across executions
+    context.set_once "execution_id", SecureRandom.hex
+
+    wait_until :payment_confirmed?     # wait for payment
+    wait 1.minute, :fraud_check_delay  # pause for a fraud check
+    durably_execute :process_order
+    durably_execute :complete_order
+  end
+
+  private
+
+  def payment_confirmed?
+    PaymentService.confirmed?(@order_id, context["execution_id"])
+  end
+
+  def process_order
+    OrderProcessor.process(@order_id, context["execution_id"])
+    context["processed_at"] = Time.current.iso8601
+  end
+
+  def complete_order
+    OrderCompletionService.complete(@order_id, context["execution_id"])
+    context["completed_at"] = Time.current.iso8601
+  end
+end
+```
+
+ChronoForge works with any ActiveJob backend, though database-backed processors
+(like Solid Queue) give the most reliable experience for long-running workflows.
+
+## Durable execution
+
+`durably_execute` runs a method with automatic retries and skips it on replay
+once it has completed:
 
 ```ruby
 # Basic execution
@@ -309,78 +282,68 @@ durably_execute :send_welcome_email
 durably_execute :critical_payment_processing,
   retry_policy: RetryPolicy.new(max_attempts: 5)
 
-# With custom name for tracking multiple calls to same method
+# With a custom name, to track multiple calls to the same method
 durably_execute :upload_file, name: "profile_image_upload"
-
-# Complex example with error-prone operation
-class FileProcessingWorkflow < ApplicationJob
-  prepend ChronoForge::Executor
-
-  def perform(file_id:)
-    @file_id = file_id
-    
-    # This might fail due to network issues, rate limits, etc.
-    durably_execute :upload_to_s3, retry_policy: RetryPolicy.new(max_attempts: 5)
-    
-    # Process file after successful upload
-    durably_execute :generate_thumbnails, retry_policy: RetryPolicy.new(max_attempts: 3)
-  end
-
-  private
-
-  def upload_to_s3
-    file = File.find(@file_id)
-    S3Client.upload(file.path, bucket: 'my-bucket')
-    Rails.logger.info "Successfully uploaded file #{@file_id} to S3"
-  end
-
-  def generate_thumbnails
-    ThumbnailService.generate(@file_id)
-  end
-end
 ```
 
-**Key Features:**
-- **Idempotent**: Same operation won't be executed twice during replays
-- **Automatic Retries**: Failed executions retry per a unified `RetryPolicy` (exponential backoff with jitter; the step default caps at 30s over 3 attempts)
-- **Error Tracking**: All failures are logged with detailed error information
-- **Configurable**: Pass a `retry_policy:` per call, or set a class-wide default with the `retry_policy` DSL (see [Retry Policies](#-retry-policies))
+Each call is:
 
-> **Write your side effects to be idempotent.** A step short-circuits on replay only
-> once its log row reaches `completed`. If a worker is hard-killed (SIGKILL/OOM/eviction)
-> *after* a step's side effect commits but *before* its log is marked `completed`, the
-> step re-runs when the workflow is resumed (including by the [reaper](#recovering-stranded-workflows-hard-killed-workers)).
-> Make external side effects safe to repeat — use a natural/unique key with
-> `create_or_find_by`, an upsert, or a rescue on the uniqueness violation — rather than
-> assuming exactly-once execution.
+- **Idempotent on replay.** A completed step won't run a second time when the
+  workflow resumes.
+- **Retried on failure.** Failed executions retry per a unified `RetryPolicy`
+  (exponential backoff with jitter; the step default caps at 30s over 3 attempts).
+- **Logged.** Every failure is recorded with detailed error information,
+  attributed to the step and attempt that raised it.
+- **Configurable.** Pass a `retry_policy:` per call, or set a class-wide default
+  with the `retry_policy` DSL (see [Retry policies](#retry-policies)).
 
-#### 🔁 Retry Policies
+> [!WARNING]
+> **Write your side effects to be idempotent.** A step short-circuits on replay
+> only once its log row reaches `completed`. If a worker is hard-killed
+> (SIGKILL/OOM/eviction) *after* a step's side effect commits but *before* its log
+> is marked `completed`, the step re-runs when the workflow resumes (including by
+> the [reaper](#recovering-stranded-workflows)). Make external side effects safe to
+> repeat: use a natural/unique key with `create_or_find_by`, an upsert, or a rescue
+> on the uniqueness violation, rather than assuming exactly-once execution.
 
-All retrying in ChronoForge goes through a single `RetryPolicy` (`ChronoForge::Executor::RetryPolicy`). It answers two questions: *should this failure be retried?* and *how long until the next attempt?*
+## Retry policies
+
+All retrying in ChronoForge goes through a single `RetryPolicy`
+(`ChronoForge::Executor::RetryPolicy`). It answers two questions: *should this
+failure be retried?* and *how long until the next attempt?*
 
 ```ruby
 RetryPolicy.new(
-  max_attempts: 3,        # cap on total attempts; nil = no count cap (bounded elsewhere)
-  base: 1,                # seconds; delay of the first retry
-  cap: 30,                # seconds; ceiling for a single delay
-  jitter: true,           # spread retries with equal jitter
-  retry_on: nil           # nil = retry any StandardError; [Classes] = only those; [] = none
+  max_attempts: 3,   # cap on total attempts; nil = no count cap (bounded elsewhere)
+  base: 1,           # seconds; delay of the first retry
+  cap: 30,           # seconds; ceiling for a single delay
+  jitter: true,      # spread retries with equal jitter
+  retry_on: nil      # nil = retry any StandardError; [Classes] = only those; [] = none
 )
 ```
 
-Backoff is exponential with equal jitter, computed once at re-enqueue time (never replayed, so it stays deterministic where it matters).
+Backoff is exponential with equal jitter, computed once at re-enqueue time (never
+replayed, so it stays deterministic where it matters). To make an error
+non-retryable, leave it out of `retry_on:` (an empty `retry_on: []` retries
+nothing).
 
 **Resolution order:**
 
-- **`durably_execute`, `durably_repeat`, workflow-level errors**: per-call `retry_policy:` → class-level `retry_policy` default → built-in default.
-- **`wait_until`**: per-call `retry_policy:` → built-in default. It deliberately does **not** inherit the class default, so a class-wide "retry everything" can't silently turn condition-evaluation bugs into retried errors.
+- `durably_execute`, `durably_repeat`, and workflow-level errors: per-call
+  `retry_policy:`, then the class-level `retry_policy` default, then the built-in
+  default.
+- `wait_until`: per-call `retry_policy:`, then a built-in default that **retries
+  nothing** (not the step default). It deliberately does **not** fall back to the
+  class-level default, so a class-wide "retry everything" can't silently turn a
+  condition-evaluation bug into a retried error. Opt specific errors back in with a
+  per-call `retry_policy:` (`retry_on: [...]`).
 
 **Built-in defaults:**
 
 | Site | Default | Why |
 |------|---------|-----|
 | Steps (`durably_execute`/`durably_repeat`) | 3 attempts, cap 30s, retry any error | flaky calls fail fast |
-| Workflow-level (uncaught errors) | 10 attempts, cap 600s, retry any error | tolerant window up to ~8.5 min (≈4 min typical w/ jitter) for transient infra errors; each retry replays the whole workflow from the top |
+| Workflow-level (uncaught errors) | 10 attempts, cap 600s, retry any error | tolerant window up to ~8.5 min (≈4 min typical with jitter) for transient infra errors; each retry replays the whole workflow from the top |
 | `wait_until` condition errors | retry nothing | a raised condition is usually a bug, not transient |
 
 **Class-wide default via the `retry_policy` DSL:**
@@ -401,7 +364,9 @@ end
 
 **Composite policies (per-error budgets):**
 
-Pass an **array** of policies to handle different error types differently. On a failure, the **first** policy whose `retry_on` matches the raised error applies, and each error type gets its **own attempt budget and backoff**:
+Pass an **array** of policies to handle different error types differently. On a
+failure, the **first** policy whose `retry_on` matches the raised error applies,
+and each error type gets its own attempt budget and backoff:
 
 ```ruby
 durably_execute :charge_card, retry_policy: [
@@ -412,105 +377,83 @@ durably_execute :charge_card, retry_policy: [
 ]
 ```
 
-- **Order matters**: the first matching policy wins, so list specific errors first and a catch-all (`retry_on: nil`) last. An error matched by no policy is **not retried** (fails fast).
+- **Order matters:** the first matching policy wins, so list specific errors
+  first and a catch-all (`retry_on: nil`) last. An error matched by no policy is
+  **not** retried (fails fast).
 - A subclass of a listed error routes to that policy and draws from its budget.
-- Per-error counts are tracked by the policy's declared errors, so the budgets are stable even if you reorder the list.
-- The class-level DSL accepts the same form as positional arguments (applies to steps **and** workflow-level errors):
+- Per-error counts are tracked by the policy's declared errors, so the budgets
+  are stable even if you reorder the list.
+- The class-level DSL accepts the same array form as positional arguments,
+  applying to steps **and** workflow-level errors:
 
   ```ruby
   retry_policy RetryPolicy.new(retry_on: [NetworkError], max_attempts: 5),
                RetryPolicy.new(retry_on: nil, max_attempts: 2)
   ```
 
-#### ⏱️ Wait States
+## Wait states
 
-ChronoForge supports three types of wait states, each optimized for different use cases:
+ChronoForge supports three kinds of wait, each suited to a different trigger. All
+three survive restarts: the workflow persists its position and holds no worker
+while it waits.
 
-**1. Time-based Waits (`wait`)**
+| Wait | Use case | Polling | Resumes |
+|------|----------|---------|---------|
+| `wait` | Fixed delays, rate limiting, scheduled pauses | none | automatically, on schedule |
+| `wait_until` | API readiness, data processing | automatic, at `check_interval` | when the condition is true, or on timeout |
+| `continue_if` | Webhooks, user actions, file uploads | none | when you re-enqueue the workflow |
 
-For simple delays and scheduled pauses:
+### `wait`: time-based
+
+For simple delays and scheduled pauses. Each wait is named so it is checkpointed
+independently:
 
 ```ruby
-# Simple delays
 wait 30.minutes, "cooling_period"
 wait 1.day, "daily_batch_interval"
-
-# Complex workflow with multiple waits
-def user_onboarding_flow
-  durably_execute :send_welcome_email
-  wait 1.hour, "welcome_delay"
-  
-  durably_execute :send_tutorial_email
-  wait 2.days, "tutorial_followup"
-  
-  durably_execute :send_feedback_request
-end
 ```
 
-**2. Automated Condition Waits (`wait_until`)**
+### `wait_until`: automated condition polling
 
-For conditions that can be automatically polled at regular intervals:
+For conditions that can be polled on an interval. ChronoForge re-checks the
+condition until it is true or the timeout elapses:
 
 ```ruby
-# Wait for external API
-wait_until :external_api_ready?, 
-  timeout: 30.minutes, 
+wait_until :external_api_ready?,
+  timeout: 30.minutes,
   check_interval: 1.minute
 
-# Wait with retry on specific errors raised while evaluating the condition
+# Retry specific errors raised while evaluating the condition
 wait_until :database_migration_complete?,
   timeout: 2.hours,
   check_interval: 30.seconds,
   retry_policy: RetryPolicy.new(retry_on: [ActiveRecord::ConnectionNotEstablished, Net::TimeoutError])
+```
 
-# Complex condition example
+The condition is an ordinary method:
+
+```ruby
 def third_party_service_ready?
   response = HTTParty.get("https://api.example.com/health")
   response.code == 200 && response.body.include?("healthy")
 end
-
-wait_until :third_party_service_ready?,
-  timeout: 1.hour,
-  check_interval: 2.minutes,
-  retry_policy: RetryPolicy.new(retry_on: [Net::TimeoutError, Net::HTTPClientException])
 ```
 
-**3. Event-driven Waits (`continue_if`)**
+### `continue_if`: event-driven, no polling
 
-For conditions that depend on external events like webhooks, requiring manual workflow continuation:
+For conditions that only change on an external event (a webhook, a manual
+approval, a finished upload). ChronoForge does not poll; the workflow waits until
+something re-enqueues it, then re-checks the condition:
 
 ```ruby
-# Basic usage - wait for webhook-driven state change
-continue_if :payment_confirmed?
-
-# With custom name for better tracking
-continue_if :payment_confirmed?, name: "stripe_webhook"
-
-# Wait for manual approval
-continue_if :document_approved?
-
-# Wait for external file processing
-continue_if :processing_complete?
-
-# Multiple waits with same condition but different contexts
-continue_if :external_system_ready?, name: "payment_gateway"
-# ... other steps ...
-continue_if :external_system_ready?, name: "inventory_system"
-
-# Complete workflow example
 class PaymentWorkflow < ApplicationJob
   prepend ChronoForge::Executor
 
   def perform(order_id:)
     @order_id = order_id
-    
-    # Initialize payment
+
     durably_execute :create_payment_request
-    
-    # Wait for external payment confirmation (webhook-driven)
-    continue_if :payment_confirmed?, name: "stripe_confirmation"
-    
-    # Complete order after payment
+    continue_if :payment_confirmed?, name: "stripe_confirmation"  # webhook-driven
     durably_execute :fulfill_order
   end
 
@@ -521,28 +464,24 @@ class PaymentWorkflow < ApplicationJob
   end
 end
 
-# Later, when webhook arrives:
+# Later, when the webhook arrives, mark the state and re-enqueue:
 PaymentService.mark_confirmed(order_id)
 PaymentWorkflow.perform_later("order-#{order_id}", order_id: order_id)
 ```
 
-**When to Use Each Wait Type:**
+The optional `name:` distinguishes multiple waits on the same condition:
 
-| Wait Type | Use Case | Polling | Resource Usage | Response Time |
-|-----------|----------|---------|----------------|---------------|
-| `wait` | Fixed delays, rate limiting | None | Minimal | Exact timing |
-| `wait_until` | API readiness, data processing | Automatic | Medium | Check interval |
-| `continue_if` | Webhooks, user actions, file uploads | Manual only | Minimal | Immediate |
+```ruby
+continue_if :external_system_ready?, name: "payment_gateway"
+# ... other steps ...
+continue_if :external_system_ready?, name: "inventory_system"
+```
 
-**Key Differences:**
+## Periodic tasks
 
-- **`wait`**: Time-based, no condition checking, resumes automatically
-- **`wait_until`**: Condition-based with automatic polling, resumes when condition becomes true or timeout
-- **`continue_if`**: Condition-based without polling, requires manual workflow retry when condition might have changed
-
-#### 🔄 Periodic Tasks
-
-`durably_repeat` runs periodic tasks inside a workflow. A task is scheduled at a regular interval until a condition is met, with automatic catch-up for missed executions and configurable error handling.
+`durably_repeat` runs a step on a schedule until a condition holds, with
+automatic catch-up for missed runs. A workflow can be its own recurring job and
+cron-style monitor, right alongside the rest of its logic:
 
 ```ruby
 class NotificationWorkflow < ApplicationJob
@@ -550,13 +489,13 @@ class NotificationWorkflow < ApplicationJob
 
   def perform(user_id:)
     @user_id = user_id
-    
-    # Send reminders every 3 days until user completes onboarding
-    durably_repeat :send_reminder_email, 
-      every: 3.days, 
+
+    # Remind every 3 days until the user finishes onboarding
+    durably_repeat :send_reminder_email,
+      every: 3.days,
       till: :user_onboarded?
-    
-    # Critical payment processing every hour - fail workflow if it fails
+
+    # Process payments hourly; fail the workflow if a run fails
     durably_repeat :process_pending_payments,
       every: 1.hour,
       till: :all_payments_processed?,
@@ -565,13 +504,7 @@ class NotificationWorkflow < ApplicationJob
 
   private
 
-  def send_reminder_email(scheduled_time = nil)
-    # Optional parameter receives the scheduled execution time
-    if scheduled_time
-      lateness = Time.current - scheduled_time
-      Rails.logger.info "Reminder scheduled for #{scheduled_time}, running #{lateness.to_i}s late"
-    end
-    
+  def send_reminder_email
     UserMailer.onboarding_reminder(@user_id).deliver_now
   end
 
@@ -589,52 +522,38 @@ class NotificationWorkflow < ApplicationJob
 end
 ```
 
-**Key Features:**
+Each repetition gets its own execution log, so replays never double up. Missed
+executions (from downtime) are skipped by timeout-based fast-forwarding rather
+than fired all at once, and an individual failure doesn't break the schedule.
 
-- **Idempotent Execution**: Each repetition gets a unique execution log, preventing duplicates during replays
-- **Automatic Catch-up**: Missed executions due to downtime are automatically skipped using timeout-based fast-forwarding
-- **Custom Timing**: Custom start times and precise interval scheduling
-- **Error Resilience**: Individual execution failures don't break the periodic schedule
-- **Configurable Error Handling**: Choose between continuing despite failures or failing the entire workflow
-
-**Advanced Options:**
+**All options:**
 
 ```ruby
 durably_repeat :generate_daily_report,
-  every: 1.day,                          # Execution interval
-  till: :reports_complete?,              # Stop condition
-  start_at: Date.tomorrow.beginning_of_day, # Custom start time (optional)
-  retry_policy: RetryPolicy.new(max_attempts: 5), # Retry policy per execution (default: step_default)
-  timeout: 2.hours,                      # Catch-up timeout (default: 1.hour)
-  on_error: :fail_workflow,              # Error handling (:continue or :fail_workflow)
-  name: "daily_reports"                  # Custom task name (optional)
+  every: 1.day,                              # execution interval
+  till: :reports_complete?,                  # stop condition
+  start_at: Date.tomorrow.beginning_of_day,  # custom start time (optional)
+  retry_policy: RetryPolicy.new(max_attempts: 5), # per-execution policy (default: step default)
+  timeout: 2.hours,                          # catch-up timeout (default: 1.hour)
+  on_error: :fail_workflow,                  # :continue (default) or :fail_workflow
+  name: "daily_reports"                      # custom task name (optional)
 ```
 
-**Method Parameters:**
-
-Your periodic methods can optionally receive the scheduled execution time as their first argument:
+A periodic method can optionally receive the scheduled execution time as its
+first argument, which is useful for both business logic and lateness logging:
 
 ```ruby
-# Without scheduled time parameter
-def cleanup_files
-  FileCleanupService.perform
-end
-
-# With scheduled time parameter
 def cleanup_files(scheduled_time)
-  # Use scheduled time for business logic
-  cleanup_date = scheduled_time.to_date
-  FileCleanupService.perform(date: cleanup_date)
-  
-  # Log timing information
-  delay = Time.current - scheduled_time
-  Rails.logger.info "Cleanup was #{delay.to_i} seconds late"
+  FileCleanupService.perform(date: scheduled_time.to_date)
+  Rails.logger.info { "Cleanup ran #{(Time.current - scheduled_time).to_i}s late" }
 end
 ```
 
-#### 🌿 Branches
+## Branches: parallel sub-workflows
 
-When a workflow needs to fan out — process every pending order, reconcile each region — `branch` spawns child workflows that run concurrently and join when their results are needed:
+When a workflow needs to fan out (process every pending order, reconcile each
+region), `branch` spawns child workflows that run concurrently and join when their
+results are needed:
 
 ```ruby
 branch :reconcile, automerge: true do
@@ -645,100 +564,24 @@ branch :reconcile, automerge: true do
 end
 ```
 
-`spawn_each` streams ActiveRecord relations by primary key in constant memory, so a branch can fan out over very large sets. Join inline with `automerge: true`, or open branches without it and `merge_branches` them later after doing other work. See [Branches: parallel sub-workflows](#-branches-parallel-sub-workflows) for the full model, a worked example, and the crash-recovery caveats.
-
-#### 🔄 Workflow Context
-
-ChronoForge provides a persistent context that survives job restarts. The context behaves like a Hash but with additional capabilities:
-
-```ruby
-# Set context values
-context[:user_name] = "John Doe"
-context[:status] = "processing"
-
-# Read context values
-user_name = context[:user_name]
-
-# Using the fetch method (returns default if key doesn't exist)
-status = context.fetch(:status, "pending")
-
-# Set a value with the set method (alias for []=)
-context.set(:total_amount, 99.99)
-
-# Set a value only if the key doesn't already exist
-context.set_once(:created_at, Time.current.iso8601)
-
-# Set several values at once (alias: set_multiple)
-context.merge(status: "processing", total_amount: 99.99, attempts: 0)
-
-# Set several values at once, but only keys that don't already exist (alias: set_multiple_once)
-context.merge_once(created_at: Time.current.iso8601, attempts: 0)
-
-# Check if a key exists
-if context.key?(:user_id)
-  # Do something with the user ID
-end
-```
-
-The context supports serializable Ruby objects (Hash, Array, String, Integer, Float, Boolean, and nil) and validates types automatically.
-
-Hash and Array values are stored as JSON, which has no symbols, so **symbol keys inside a stored hash come back as strings**:
-
-```ruby
-context[:totals] = { paid: 5, pending: 2 }
-context[:totals]          # => { "paid" => 5, "pending" => 2 }
-context[:totals]["paid"]  # => 5   (not context[:totals][:paid])
-```
-
-(The top-level context key itself is interchangeable: `context[:totals]` and `context["totals"]` refer to the same entry.)
-
-Context is meant for **small working state**: ids, flags, timestamps, and small structures used to coordinate steps. Each value is capped at **16 KB** (a `ChronoForge::Executor::Context::ValidationError` is raised above that). Store large payloads (documents, uploads, API responses) in their own storage and keep just a reference (an id or key) in the context.
-
-### 🛡️ Error Handling
-
-ChronoForge automatically tracks errors and routes all retrying through a single [`RetryPolicy`](#-retry-policies). Configure it per call with `retry_policy:`, or set a class-wide default with the `retry_policy` DSL:
-
-```ruby
-class MyWorkflow < ApplicationJob
-  prepend ChronoForge::Executor
-
-  # Class-wide default for workflow-level errors and steps without an override
-  retry_policy max_attempts: 5, base: 2, cap: 60
-
-  def perform
-    # Retry only network errors, up to 5 times, for this step
-    durably_execute :call_external_api,
-      retry_policy: RetryPolicy.new(max_attempts: 5, retry_on: [NetworkError])
-  end
-end
-```
-
-To make an error non-retryable, leave it out of `retry_on:` (an empty `retry_on: []` retries nothing).
-
-## 🌿 Branches: parallel sub-workflows
-
-`branch` / `spawn` / `spawn_each` / `merge_branches` let a workflow fan out into
-child workflows that run concurrently, then join them when their results are
-needed.
-
 ### Model
 
 - **`branch :name do … end`** opens a named branch (a durable step). Inside the
-  block, `spawn` and `spawn_each` create and immediately enqueue child workflows —
+  block, `spawn` and `spawn_each` create and immediately enqueue child workflows;
   children start running as soon as the branch block is entered.
-- **`spawn :name, WorkflowClass, **kwargs`** — enqueues one child workflow.
-- **`spawn_each :name, source do |item| [WorkflowClass, kwargs] end`** — enqueues
-  one child per item. The block returns the class and kwargs, so one branch can
-  fan out into mixed workflow types. Sources are iterated in constant memory;
-  ActiveRecord relations are streamed by primary key — pass them **without** an
+- **`spawn :name, WorkflowClass, **kwargs`** enqueues one child workflow.
+- **`spawn_each :name, source do |item| [WorkflowClass, kwargs] end`** enqueues one
+  child per item. The block returns the class and kwargs, so one branch can fan
+  out into mixed workflow types. Sources are iterated in constant memory;
+  ActiveRecord relations are streamed by primary key, so pass them **without** an
   explicit `.order`.
-- **`automerge: true`** — joins the branch **inline at the block's close**.
+- **`automerge: true`** joins the branch **inline at the block's close**.
   Execution does not continue past the `branch` call until every child has
   completed. Use it for "dispatch this group and wait right here."
-- **`merge_branches :a, :b`** (or the singular alias `merge_branch :a`) — the
-  separate join point. Open branches without `automerge`, do other work while the
-  children run, then join when you need their results. `merge_branches` blocks
-  until all named branches are complete.
+- **`merge_branches :a, :b`** (singular alias `merge_branch :a`) is the separate
+  join point. Open branches without `automerge`, do other work while the children
+  run, then join when you need their results. `merge_branches` blocks until all
+  named branches are complete.
 
 ### Worked example
 
@@ -747,7 +590,7 @@ class FulfillmentWorkflow < ApplicationJob
   prepend ChronoForge::Executor
 
   def perform(cycle_id:)
-    # automerge: the branch is joined inline, right where the block closes —
+    # automerge: the branch is joined inline, right where the block closes.
     # `perform` does not continue past it until every child has completed.
     branch :reconcile, automerge: true do
       spawn :eu, ReconcileWorkflow, region: "EU"
@@ -757,8 +600,8 @@ class FulfillmentWorkflow < ApplicationJob
       end
     end
 
-    # For branches you want to run concurrently and join later, omit automerge
-    # and use merge_branches:
+    # To run branches concurrently and join later, omit automerge and use
+    # merge_branches:
     branch :invoices do
       spawn_each :unpaid, Invoice.unpaid do |inv|
         [InvoiceWorkflow, { invoice_id: inv.id }]
@@ -781,17 +624,16 @@ end
 
 > **Every branch must be joined.** A branch opened and never joined raises
 > `ChronoForge::Executor::UnmergedBranchError` when the workflow tries to
-> complete — fail-fast, no silently-orphaned children. Use either
-> `automerge: true` or a matching `merge_branches` call.
+> complete: fail-fast, no silently-orphaned children. Use either `automerge: true`
+> or a matching `merge_branches` call.
 
 > **The parent isn't replayed while waiting.** A lightweight
-> `ChronoForge::BranchMergeJob` polls for child completion; the parent workflow
-> only runs again once the branch is fully done. Polling cadence tracks the
-> **estimated time-to-drain** (measured from the children's completion rate), so
-> the parent is woken within ~`min_interval` of the last child finishing rather
-> than up to `max_interval` late; a branch that can only wait or is blocked on a
-> failure backs off to `max_interval` (those need a wait to elapse or operator
-> recovery, not faster polling).
+> `ChronoForge::BranchMergeJob` polls for child completion; the parent runs again
+> only once the branch is fully done. Polling cadence tracks the estimated
+> time-to-drain (measured from the children's completion rate), so the parent
+> wakes within ~`min_interval` of the last child finishing rather than up to
+> `max_interval` late. A branch that can only wait, or is blocked on a failure,
+> backs off to `max_interval`.
 >
 > **Queue placement matters.** The poller is enqueued *after* the branch's
 > children, so on a queue those children saturate it starves behind the backlog
@@ -803,96 +645,108 @@ end
 > ```
 
 > **`spawn_each` sources must re-enumerate deterministically across replays.**
-> ActiveRecord relations are streamed by primary key (children are keyed by
-> record id, so crash-resume is idempotent); a relation carrying an explicit
-> `.order(...)` raises. For non-AR enumerables, items are keyed by position, so
-> inserting or removing items mid-dispatch would shift keys and break idempotency.
+> ActiveRecord relations are streamed by primary key (children are keyed by record
+> id, so crash-resume is idempotent); a relation carrying an explicit `.order(...)`
+> raises. For non-AR enumerables, items are keyed by position, so inserting or
+> removing items mid-dispatch would shift keys and break idempotency.
 
 > **`spawn_each` AR sources must have stable membership.** Dispatch streams by
 > ascending primary key and resumes from the last key on crash-recovery, so a row
 > that enters the relation *below* the cursor after it has passed (e.g. a
 > `where(state: …)` scope whose rows mutate mid-dispatch) will never get a child.
-> Point `spawn_each` at a set that is fixed for the branch's lifetime — a frozen id
-> range, an append-only table, or `where(id: [...])` over a snapshot.
+> Point `spawn_each` at a set fixed for the branch's lifetime: a frozen id range,
+> an append-only table, or `where(id: [...])` over a snapshot.
 
 > **`branch` blocks cannot be lexically nested within one workflow.** Opening a
 > `branch` inside another `branch` block raises `ArgumentError`; spawns belong to
-> exactly one branch. (A *spawned child workflow* may open its own branches — it
-> runs in its own executor — so cross-workflow nesting is fine.)
+> exactly one branch. (A *spawned child workflow* may open its own branches, since
+> it runs in its own executor, so cross-workflow nesting is fine.)
 
-Verified correct at 500,000 children on a single Postgres instance. A follow-up commit-consolidation change halved per-child execution time. See the [scale test](docs/fanout-scale-test.md).
+Verified correct at 500,000 children on a single Postgres instance; a follow-up
+commit-consolidation change halved per-child execution time. See the
+[scale test](docs/fanout-scale-test.md).
 
-## 🧪 Testing
+## Workflow context
 
-ChronoForge is designed to be easily testable using [ChaoticJob](https://github.com/fractaledmind/chaotic_job), a testing framework that makes it simple to test complex job workflows:
+ChronoForge provides a persistent context that survives job restarts. It behaves
+like a Hash, with a few extra methods:
 
-1. Add ChaoticJob to your Gemfile's test group:
+```ruby
+context[:user_name] = "John Doe"             # set
+user_name = context[:user_name]              # read
+status = context.fetch(:status, "pending")   # read with default
+context.set(:total_amount, 99.99)            # set (alias for []=)
+context.set_once(:created_at, Time.current.iso8601)  # set only if absent
+context.merge(status: "processing", attempts: 0)     # set several (alias: set_multiple)
+context.merge_once(created_at: Time.current.iso8601) # set several, skip existing (alias: set_multiple_once)
+context.key?(:user_id)                       # existence check
+```
+
+Context supports serializable Ruby values (Hash, Array, String, Integer, Float,
+Boolean, nil) and validates types automatically. Hash and Array values are stored
+as JSON, which has no symbols, so **symbol keys inside a stored hash come back as
+strings**:
+
+```ruby
+context[:totals] = { paid: 5, pending: 2 }
+context[:totals]          # => { "paid" => 5, "pending" => 2 }
+context[:totals]["paid"]  # => 5   (not context[:totals][:paid])
+```
+
+(The top-level context key itself is interchangeable: `context[:totals]` and
+`context["totals"]` refer to the same entry.)
+
+Context is for **small working state**: ids, flags, timestamps, and small
+structures used to coordinate steps. Each value is capped at **16 KB** (a
+`ChronoForge::Executor::Context::ValidationError` is raised above that). Store
+large payloads (documents, uploads, API responses) in their own storage and keep
+just a reference (an id or key) in the context.
+
+## Testing
+
+ChronoForge is designed to be tested with
+[ChaoticJob](https://github.com/fractaledmind/chaotic_job), a framework for
+testing complex job workflows. Add it to your test group:
 
 ```ruby
 group :test do
-  gem 'chaotic_job'
+  gem "chaotic_job"
 end
 ```
 
-2. Set up your test helper:
+Set up your test helper:
 
 ```ruby
 # test_helper.rb
-require 'chrono_forge'
-require 'minitest/autorun'
-require 'chaotic_job'
+require "chrono_forge"
+require "minitest/autorun"
+require "chaotic_job"
 ```
 
-Example test:
+Then enqueue a workflow, run every enqueued job, and assert on the persisted
+result:
 
 ```ruby
 class WorkflowTest < ActiveJob::TestCase
   include ChaoticJob::Helpers
 
   def test_workflow_completion
-    # Enqueue the job with a unique key and custom parameters
-    OrderProcessingWorkflow.perform_later(
-      "order-test-123",
-      order_id: "O-123",
-      customer_id: "C-456"
-    )
-    
-    # Perform all enqueued jobs
+    OrderProcessingWorkflow.perform_later("order-test-123", order_id: "O-123", customer_id: "C-456")
+
     perform_all_jobs
-    
-    # Assert workflow completed successfully
+
     workflow = ChronoForge::Workflow.find_by(key: "order-test-123")
     assert workflow.completed?
-    
-    # Check workflow context
     assert workflow.context["processed_at"].present?
     assert workflow.context["completed_at"].present?
   end
 end
 ```
 
-## 🗄️ Database Schema
+## Workflow states and recovery
 
-ChronoForge creates three main tables:
-
-1. **chrono_forge_workflows**: Stores workflow state and context
-2. **chrono_forge_execution_logs**: Tracks individual execution steps
-3. **chrono_forge_error_logs**: Records detailed error information
-
-## 🔍 When to Use ChronoForge
-
-ChronoForge is ideal for:
-
-- **Long-running business processes** - Order processing, account registration flows
-- **Processes requiring durability** - Financial transactions, data migrations
-- **Multi-step workflows** - Onboarding flows, approval processes, multi-stage jobs
-- **State machines with time-based transitions** - Document approval, subscription lifecycle
-
-## 🧠 Advanced State Management
-
-ChronoForge workflows move through a state machine. Understanding these states and transitions helps with troubleshooting and recovery.
-
-### Workflow State Diagram
+A workflow moves through a state machine. Knowing the states makes troubleshooting
+and recovery straightforward.
 
 ```mermaid
 stateDiagram-v2
@@ -909,49 +763,19 @@ stateDiagram-v2
     completed --> [*]: Workflow Succeeded
 ```
 
-### State Descriptions
+| State | Meaning |
+|-------|---------|
+| `created` | Initial record; transitions immediately to `idle`. Momentary. |
+| `idle` | Waiting to be processed or between steps. Not locked, available to the job processor. Can last minutes to days, depending on wait conditions. |
+| `running` | Actively being processed. Has `locked_at`/`locked_by` set; protected against concurrent execution. Should be brief unless a step is genuinely long. |
+| `completed` | All steps succeeded. Has `completed_at`; final state, no further processing. |
+| `failed` | Exhausted retry attempts (or hit an explicit/non-retryable failure). Has failure data in `error_logs`; no automatic recovery. |
+| `stalled` | Hit an unrecoverable error but wasn't explicitly failed. Not completed, not running, has errors in `error_logs`. Requires investigation. |
 
-#### Created
-- **Description**: Initial state when a workflow record is first created
-- **Behavior**: Transitions immediately to idle state
-- **Duration**: Momentary
+### Recovering stalled or failed workflows
 
-#### Idle
-- **Description**: The workflow is waiting to be processed or between processing steps
-- **Behavior**: Not locked, available to be picked up by job processor
-- **Duration**: Can be minutes to days, depending on wait conditions
-
-#### Running
-- **Description**: The workflow is actively being processed
-- **Identifiers**: Has locked_at and locked_by values set
-- **Behavior**: Protected against concurrent execution
-- **Duration**: Should be brief unless performing long operations
-- **Note**: A workflow whose worker was hard-killed mid-pass stays stuck here with a stale lock. See [Recovering stranded workflows](#recovering-stranded-workflows-hard-killed-workers).
-
-#### Completed
-- **Description**: The workflow has successfully executed all steps
-- **Identifiers**: Has completed_at timestamp, state = "completed"
-- **Behavior**: Final state, no further processing
-- **Typical Exit Points**: All processing completed successfully
-
-#### Failed
-- **Description**: The workflow has failed after exhausting retry attempts
-- **Identifiers**: Has failure-related data in error_logs, state = "failed"
-- **Behavior**: No automatic recovery, requires manual intervention
-- **Typical Exit Points**: Max retries exhausted, explicit failure, non-retryable error
-
-#### Stalled
-- **Description**: The workflow encountered an unrecoverable error but wasn't explicitly failed
-- **Identifiers**: Not completed, not running, has errors in error_logs
-- **Behavior**: Requires manual investigation and intervention
-- **Typical Exit Points**: ExecutionFailedError, unexpected exceptions, system failures
-
-### Handling Different Workflow States
-
-#### Recovering Stalled/Failed Workflows
-
-Re-execute a failed or stalled workflow directly from its record. Execution resumes via replay, so
-completed steps are skipped and it picks up at the step that failed:
+Re-run a `stalled` or `failed` workflow directly from its record. Execution
+resumes by replay, so completed steps are skipped and it picks up where it failed:
 
 ```ruby
 workflow = ChronoForge::Workflow.find_by(key: "order-123")
@@ -960,10 +784,10 @@ workflow.retry_later   # re-run asynchronously (the common case)
 workflow.retry_now     # re-run inline (console/debugging)
 ```
 
-Only `stalled` or `failed` workflows are retryable. `retryable?` lets you check
-first, and both methods **validate up front**: calling `retry_later`
-on a non-retryable workflow raises `ChronoForge::Executor::WorkflowNotRetryableError`
-immediately rather than enqueuing a job that would fail in the worker:
+Only `stalled` or `failed` workflows are retryable. Both methods validate up
+front, so calling `retry_later` on a non-retryable workflow raises
+`ChronoForge::Executor::WorkflowNotRetryableError` immediately rather than
+enqueuing a job that would fail in the worker:
 
 ```ruby
 workflow.retryable?   # => true/false
@@ -972,23 +796,23 @@ workflow.retryable?   # => true/false
 ChronoForge::Workflow.failed.find_each(&:retry_later)
 ```
 
-The class-level form (`MyWorkflow.retry_now(key)` / `retry_later(key)`) still
-works if you have the class and key rather than the record.
+The class-level form (`MyWorkflow.retry_now(key)` / `retry_later(key)`) works too
+if you have the class and key rather than the record.
 
-#### Recovering stranded workflows (hard-killed workers)
+### Recovering stranded workflows
 
-When a worker is **hard-killed** mid-pass — SIGKILL from a deploy/rollout, an OOM kill,
-a node eviction, or a SolidQueue heartbeat prune — Ruby's `ensure` block does not run.
-The executor releases the workflow's lock and publishes the resume continuation in that
-`ensure`, so a hard kill leaves the workflow stuck in `running` with a stale lock **and**
-nothing scheduled to wake it. It is fully resumable (a resuming pass steals the stale
-lock and replays completed steps as no-ops), but nothing re-enqueues it on its own:
-`retry_now`/`retry_later` refuse a `running` workflow, and a dashboard "force unlock"
-clears the lock but enqueues no job.
+When a worker is **hard-killed** mid-pass (SIGKILL from a deploy/rollout, an OOM
+kill, a node eviction, or a Solid Queue heartbeat prune), Ruby's `ensure` block
+does not run. The executor releases the lock and publishes the resume continuation
+in that `ensure`, so a hard kill leaves the workflow stuck in `running` with a
+stale lock **and** nothing scheduled to wake it. It is fully resumable (a resuming
+pass steals the stale lock and replays completed steps as no-ops), but nothing
+re-enqueues it on its own: `retry_now`/`retry_later` refuse a `running` workflow,
+and a dashboard "force unlock" clears the lock but enqueues no job.
 
-`ChronoForge::Workflow.reap_stalled` reconciles these. It finds every workflow in
-`running` whose lock is older than `reap_stale_after` (top-level workflows **and** branch
-children) and re-enqueues it, returning the number reaped:
+`ChronoForge::Workflow.reap_stalled` reconciles these. It finds every `running`
+workflow whose lock is older than `reap_stale_after` (top-level workflows **and**
+branch children) and re-enqueues it, returning the number reaped:
 
 ```ruby
 ChronoForge::Workflow.reap_stalled
@@ -998,8 +822,8 @@ ChronoForge::Workflow.reap_stalled
 ChronoForge::Workflow.reap_stalled(stale_after: 15.minutes)
 ```
 
-It is **not** run automatically — schedule it from your own scheduler, the same way you
-schedule `ChronoForge::Cleanup`. For example, a SolidQueue recurring task:
+It is **not** run automatically: schedule it from your own scheduler, the same way
+you schedule `ChronoForge::Cleanup`. For example, a Solid Queue recurring task:
 
 ```yaml
 # config/recurring.yml
@@ -1008,42 +832,42 @@ reap_stalled_workflows:
   schedule: "every 5 minutes"
 ```
 
-Re-enqueue is safe under concurrency: overlapping sweeps (or a re-enqueue landing while
-the old stale lock still shows) at worst enqueue a duplicate, which loses the
-lock-acquisition race and no-ops. Because reaping replays the interrupted pass, steps
-with external side effects must be idempotent — see the note under
-[Durable Execution](#-durable-execution).
+Re-enqueue is safe under concurrency: overlapping sweeps (or a re-enqueue landing
+while the old stale lock still shows) at worst enqueue a duplicate, which loses the
+lock-acquisition race and no-ops. Because reaping replays the interrupted pass,
+steps with external side effects must be idempotent (see the note under
+[Durable execution](#durable-execution)).
 
-`reap_stale_after` defaults to **3× `max_duration`** (30 minutes out of the box). Both are
-configurable, and because the reap threshold derives from `max_duration` it always stays
-safely above the lock-steal threshold — raise one and the other follows:
+`reap_stale_after` defaults to **3× `max_duration`** (30 minutes out of the box).
+Both are configurable, and because the reap threshold derives from `max_duration`
+it always stays safely above the lock-steal threshold: raise one and the other
+follows.
 
 ```ruby
 ChronoForge.configure do |c|
-  c.max_duration    = 10.minutes  # how long one pass may hold its lock before it's stealable
-  c.reap_stale_after = 45.minutes # optional: pin the reap threshold explicitly (else 3x max_duration)
+  c.max_duration     = 10.minutes  # how long one pass may hold its lock before it's stealable
+  c.reap_stale_after = 45.minutes  # optional: pin the reap threshold explicitly (else 3x max_duration)
 end
 ```
 
-> **Not covered:** a workflow parked on a branch merge whose `BranchMergeJob` poller was
-> itself hard-killed sits `idle` (not `running`), so the reaper does not sweep it. That is
-> a distinct failure mode.
+> **Not covered:** a workflow parked on a branch merge whose `BranchMergeJob`
+> poller was itself hard-killed sits `idle` (not `running`), so the reaper does not
+> sweep it. That is a distinct failure mode.
 
-## 🧹 Cleanup & Retention
+## Cleanup and retention
 
-ChronoForge keeps every workflow and execution-log row indefinitely so that
-replays remain idempotent. Over time two things grow without bound:
+ChronoForge keeps every workflow and execution-log row indefinitely so replays
+stay idempotent. Over time two things grow without bound:
 
 1. **Terminal workflows** (`completed` / `failed`) that are no longer needed.
 2. **`durably_repeat` repetition logs**: one row per scheduled execution. A
-   long-lived periodic workflow never reaches a terminal state, so its
-   repetition logs accumulate indefinitely. Past repetitions (those behind the
-   task's current frontier) are never read again, since each resume recomputes
-   the next execution from the coordination log, so they are safe to prune (see
-   the safety note below).
+   long-lived periodic workflow never reaches a terminal state, so its repetition
+   logs accumulate indefinitely. Past repetitions (behind the task's current
+   frontier) are never read again, since each resume recomputes the next execution
+   from the coordination log, so they are safe to prune.
 
-`ChronoForge::Cleanup` reclaims both. It is **not** run automatically; schedule
-it from your own scheduler so you stay in control of retention:
+`ChronoForge::Cleanup` reclaims both. It is **not** run automatically; schedule it
+so you stay in control of retention:
 
 ```ruby
 ChronoForge::Cleanup.run(
@@ -1056,44 +880,29 @@ ChronoForge::Cleanup.run(
 # => { workflows: 12, execution_logs: 84, error_logs: 3, repetition_logs: 240 }
 ```
 
-Notes:
-
 - `running`, `idle`, and `stalled` workflows are **never** deleted.
-- `completed_older_than` / `failed_older_than` let you keep failed workflows
-  around longer than completed ones; both default to `older_than`.
+- `completed_older_than` / `failed_older_than` let you keep failed workflows around
+  longer than completed ones; both default to `older_than`.
 - `prune_repetition_logs_older_than` is opt-in (defaults to `nil`); when unset,
   repetition logs are only removed as part of deleting their parent workflow.
-  Pruning is deliberately conservative: it only removes terminal repetition logs
+  Pruning is deliberately conservative: it removes only terminal repetition logs
   that are both older than the window **and** scheduled strictly before the
   periodic task's current frontier (the coordination log's `last_execution_at`).
-  Anything at or after the frontier is kept so `durably_repeat`'s catch-up
-  mechanism is never disrupted, so the window is purely a retention preference
-  and is safe even for yearly schedules.
-- Workflow retention is measured from when a workflow became terminal, not when
-  it was created. A long-running workflow that only just finished is kept for
-  the full window. Completed workflows use `completed_at` (immutable); failed
-  workflows use `updated_at` (they have no `completed_at`).
-- The composite `[state, completed_at]` index added in this version keeps these
-  scans efficient; run `chrono_forge:upgrade` if you installed an earlier
-  version.
+  Anything at or after the frontier is kept, so `durably_repeat`'s catch-up
+  mechanism is never disrupted and the window is safe even for yearly schedules.
+- Workflow retention is measured from when a workflow became terminal, not when it
+  was created. Completed workflows use `completed_at` (immutable); failed workflows
+  use `updated_at` (they have no `completed_at`).
+- A composite `[state, completed_at]` index keeps these scans efficient; run
+  `chrono_forge:upgrade` if you installed before it was added.
 
-A ready-made job is bundled so you can schedule it with any recurring-job
-mechanism (Solid Queue recurring tasks, sidekiq-cron, GoodJob cron, the
-`whenever` gem, ...):
-
-```ruby
-ChronoForge::CleanupJob.perform_later(
-  older_than_days: 90,
-  failed_older_than_days: 180,
-  prune_repetition_logs_older_than_days: 30
-)
-```
-
-The job takes plain day counts (not `Duration` objects) so it can be driven from
-a config file. For example, with Solid Queue's recurring tasks
-(`config/recurring.yml`):
+A ready-made job is bundled so any recurring-job mechanism can drive it (Solid
+Queue recurring tasks, sidekiq-cron, GoodJob cron, the `whenever` gem, and so on).
+It takes plain day counts, not `Duration` objects, so it can be driven from a
+config file:
 
 ```yaml
+# config/recurring.yml
 production:
   chrono_forge_cleanup:
     class: ChronoForge::CleanupJob
@@ -1101,69 +910,143 @@ production:
     schedule: every day at 3am
 ```
 
-## 🚀 Development
+## Database schema
 
-After checking out the repo, run:
+ChronoForge creates three tables:
 
-```bash
-$ bin/setup                 # Install dependencies
-$ bundle exec rake test     # Run the tests
-$ bin/appraise              # Run the full suite of appraisals
-$ bin/console               # Start an interactive console
-```
+| Table | Holds |
+|-------|-------|
+| `chrono_forge_workflows` | Workflow state and context |
+| `chrono_forge_execution_logs` | Individual execution steps |
+| `chrono_forge_error_logs` | Detailed error information |
 
-The test suite uses SQLite by default and includes:
-- Unit tests for core functionality
-- Integration tests with ActiveJob
-- Example workflow implementations
+## When to use ChronoForge
 
-## 👥 Contributing
+ChronoForge fits processes that outlive a single job run:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin feature/my-new-feature`)
-5. Create a new Pull Request
+- **Long-running business processes:** order processing, account registration.
+- **Processes that need durability:** financial transactions, data migrations.
+- **Multi-step workflows:** onboarding, approvals, multi-stage jobs.
+- **State machines with time-based transitions:** document approval, subscription
+  lifecycle.
 
-Please include tests for any new features or bug fixes.
+## How it compares
 
-## 📜 License
+There are several ways to run durable or multi-step work from a Rails app.
+ChronoForge aims to be the procedural, no-extra-infrastructure option with a real
+dashboard.
 
-This gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+|                              | ChronoForge          | AJ Continuations           | GenevaDrive        | AcidicJob       | Temporal        |
+| ---------------------------- | -------------------- | -------------------------- | ------------------ | --------------- | --------------- |
+| Programming model            | procedural (plain Ruby) | procedural (`step` blocks) | declarative DSL | declarative DSL | procedural (via SDK) |
+| Built-in periodic tasks      | ✅ `durably_repeat`  | ❌                          | ❌                 | ❌              | ✅              |
+| Parallel sub-workflows       | ✅ `branch` / `spawn`| ❌                          | ❌                 | ❌              | ✅              |
+| Pending-step visibility      | ❌ (procedural)      | ❌ (procedural)             | ✅                 | ✅              | ❌ (procedural) |
+| Web dashboard                | ✅ (free gem)        | job-level (Mission Control)| paid only          | ❌              | ✅              |
+| Extra infrastructure         | none (DB + ActiveJob)| none (built into Rails)    | none               | none            | server required |
+| Rails support                | 7.1+                 | 8.1+                       | 7.2+               | 7.1+            | any (Ruby SDK)  |
+| License                      | MIT                  | MIT                        | LGPL / commercial  | MIT             | MIT             |
 
-## 📚 API Reference
+<sub>Comparison reflects each project's documented features as of mid-2026, to the
+best of our knowledge; corrections welcome via PR.</sub>
 
-### Core Workflow Methods
+A few deliberate choices behind that table:
 
-| Method | Purpose | Key Parameters |
+- **Periodic tasks are built in.** `durably_repeat` runs a step on a schedule until
+  a condition holds, with automatic catch-up for missed runs, so a workflow can be
+  its own recurring job and cron-style monitor. Without built-in support, periodic
+  behavior usually lives in a separate scheduler you reconcile with workflow state
+  by hand.
+- **No extra infrastructure.** ChronoForge is a gem over your existing database and
+  ActiveJob backend. There is no separate server or daemon to operate, unlike
+  Temporal.
+- **Large-scale fan-out is built in.** `branch` with `spawn`/`spawn_each` fans a
+  workflow out into concurrent child workflows that join when their results are
+  needed, streaming ActiveRecord relations in constant memory for large sets. Among
+  the Ruby-native engines here, only ChronoForge offers this without a separate
+  orchestration server (Temporal does, server-side).
+- **Recovery is built into the model.** Steps are append-only history, so a crashed
+  step leaves the workflow `stalled`, recoverable directly with `retry_later`.
+- **A real dashboard, free.** The [mountable dashboard](#dashboard) ships as a
+  separate MIT gem: workflow list, step-replay timeline, per-run definition graph,
+  context inspector, retry/unlock/reap.
+- **MIT licensed.** Permissive and dependency-policy-friendly.
+
+**ActiveJob Continuations solve a narrower problem.** Rails 8.1's built-in
+[continuations](https://api.rubyonrails.org/classes/ActiveJob/Continuation.html)
+make a *single* long job survive interruptions: you wrap work in `step` blocks and
+track a `cursor`, and at each checkpoint the job asks the queue adapter whether
+it's `stopping?`, re-enqueuing to resume from the last completed step. They
+deliberately stop short of being a workflow engine: no durable waiting on time,
+conditions, or external events; no periodic steps; no parallel fan-out; and no
+persisted, queryable history. Reach for continuations to make one big job
+restart-safe; reach for ChronoForge when a process spans steps that wait, recur,
+fan out, and need recovery and visibility. They also compose: a ChronoForge
+workflow *is* ActiveJob work.
+
+## API reference
+
+### Core workflow methods
+
+| Method | Purpose | Key parameters |
 |--------|---------|----------------|
-| `durably_execute` | Execute method with retry logic | `method`, `retry_policy: nil`, `name: nil` |
+| `durably_execute` | Execute a method with retry logic | `method`, `retry_policy: nil`, `name: nil` |
 | `wait` | Time-based pause | `duration`, `name` |
 | `wait_until` | Condition-based waiting | `condition`, `timeout: 1.hour`, `check_interval: 15.minutes`, `retry_policy: nil` |
 | `continue_if` | Manual continuation wait | `condition`, `name: nil` |
-| `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `retry_policy: nil`, `timeout: 1.hour`, `on_error: :continue` |
+| `durably_repeat` | Periodic task execution | `method`, `every:`, `till:`, `start_at: nil`, `retry_policy: nil`, `timeout: 1.hour`, `on_error: :continue`, `name: nil` |
 
-### Branch Methods
+### Branch methods
 
-Fan a workflow out into parallel child sub-workflows (see [Branches](#-branches-parallel-sub-workflows)).
+Fan a workflow out into parallel child sub-workflows (see
+[Branches](#branches-parallel-sub-workflows)).
 
-| Method | Purpose | Key Parameters |
+| Method | Purpose | Key parameters |
 |--------|---------|----------------|
 | `branch` | Open a named branch (takes a block) to dispatch children | `name`, `automerge: false` |
 | `spawn` | Enqueue one child workflow inside a branch | `name`, `workflow_class`, `**kwargs` |
 | `spawn_each` | Enqueue one child per item, streamed (block returns `[WorkflowClass, kwargs]`) | `name`, `source`, `of: 1000` |
 | `merge_branches` | Join named branches; blocks until all complete (alias `merge_branch`) | `*names`, `min_interval: 5.seconds`, `max_interval: 5.minutes` |
 
-### Context Methods
+### Context methods
 
 | Method | Purpose | Example |
 |--------|---------|---------|
-| `context[:key] = value` | Set context value | `context[:user_id] = 123` |
-| `context[:key]` | Get context value | `user_id = context[:user_id]` |
-| `context.set(key, value)` | Set context value (alias) | `context.set(:status, "active")` |
-| `context.set_once(key, value)` | Set only if key doesn't exist | `context.set_once(:created_at, Time.current)` |
-| `context.merge(hash)` | Set multiple values atomically (alias: `set_multiple`) | `context.merge(status: "active", count: 0)` |
-| `context.merge_once(hash)` | Set multiple values, skipping existing keys (alias: `set_multiple_once`) | `context.merge_once(created_at: Time.current, count: 0)` |
-| `context.fetch(key, default)` | Get with default value | `context.fetch(:count, 0)` |
-| `context.key?(key)` | Check if key exists | `context.key?(:user_id)` |
+| `context[:key] = value` | Set value | `context[:user_id] = 123` |
+| `context[:key]` | Get value | `user_id = context[:user_id]` |
+| `context.set(key, value)` | Set value (alias for `[]=`) | `context.set(:status, "active")` |
+| `context.set_once(key, value)` | Set only if key absent | `context.set_once(:created_at, Time.current)` |
+| `context.merge(hash)` | Set multiple (alias: `set_multiple`) | `context.merge(status: "active", count: 0)` |
+| `context.merge_once(hash)` | Set multiple, skip existing keys (alias: `set_multiple_once`) | `context.merge_once(created_at: Time.current, count: 0)` |
+| `context.fetch(key, default)` | Get with default | `context.fetch(:count, 0)` |
+| `context.key?(key)` | Existence check | `context.key?(:user_id)` |
 
+## Development
+
+After checking out the repo:
+
+```bash
+bin/setup                 # install dependencies
+bundle exec rake test     # run the tests
+bin/appraise              # run the full appraisal suite
+bin/console               # start an interactive console
+```
+
+The test suite uses SQLite by default and covers unit tests for core
+functionality, integration tests with ActiveJob, and example workflow
+implementations.
+
+## Contributing
+
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/my-new-feature`).
+3. Commit your changes (`git commit -am 'Add some feature'`).
+4. Push to the branch (`git push origin feature/my-new-feature`).
+5. Open a pull request.
+
+Please include tests for any new features or bug fixes.
+
+## License
+
+ChronoForge is released under the terms of the
+[MIT License](https://opensource.org/licenses/MIT).
