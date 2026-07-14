@@ -331,9 +331,11 @@ nothing).
 - `durably_execute`, `durably_repeat`, and workflow-level errors: per-call
   `retry_policy:`, then the class-level `retry_policy` default, then the built-in
   default.
-- `wait_until`: per-call `retry_policy:`, then the built-in default. It
-  deliberately does **not** inherit the class default, so a class-wide "retry
-  everything" can't silently turn condition-evaluation bugs into retried errors.
+- `wait_until`: per-call `retry_policy:`, then a built-in default that **retries
+  nothing** (not the step default). It deliberately does **not** fall back to the
+  class-level default, so a class-wide "retry everything" can't silently turn a
+  condition-evaluation bug into a retried error. Opt specific errors back in with a
+  per-call `retry_policy:` (`retry_on: [...]`).
 
 **Built-in defaults:**
 
