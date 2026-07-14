@@ -64,7 +64,7 @@ Run it with a unique key that identifies this run for its whole life:
 OnboardingWorkflow.perform_later("onboard-user-42", user_id: 42)
 ```
 
-The two 17-day waits hold no worker: the workflow persists its position and
+The 2-day and 15-day waits hold no worker: the workflow persists its position and
 resumes on schedule. Each `durably_execute` is checkpointed by step name, so a
 crash and resume skip the steps that already completed and pick up at the one
 that didn't. ChronoForge handles the rest: retries with backoff, concurrency
