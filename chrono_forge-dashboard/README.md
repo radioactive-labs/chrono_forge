@@ -8,12 +8,12 @@
 system always raises: what is running, and what is stuck?** It gives ChronoForge
 a triage-first dashboard with the recovery controls to act on what it surfaces.
 
-Because ChronoForge workflows are plain imperative Ruby, a run's future steps
-aren't declared anywhere the way a DSL would declare them. The dashboard
-reconstructs that view: it replays each run's step history, reads the `perform`
-method to draw the steps a run *will* take, flags workflows whose lock went stale
-after a hard-killed worker, and hands you one-click retry and reap so recovery
-doesn't mean a console session.
+It is built on the step history each workflow records as it runs. The dashboard
+replays that history per run (every `durably_execute`, `wait`, `continue_if`, and
+`durably_repeat`, with any error inlined on the step that raised it), rolls it up
+into fleet and per-class views, flags runs whose lock went stale after a
+hard-killed worker, and gives you one-click retry and reap so recovery doesn't
+mean a console session.
 
 > Requires [`chrono_forge`](https://github.com/radioactive-labs/chrono_forge). See
 > the [main README](https://github.com/radioactive-labs/chrono_forge#readme) for
