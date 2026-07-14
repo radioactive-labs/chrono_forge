@@ -19,7 +19,7 @@ mean a console session.
 > the [main README](https://github.com/radioactive-labs/chrono_forge#readme) for
 > workflow documentation.
 
-Version: `0.1.0` (early release). The UI and config API may change before `1.0`.
+Early release: the UI and config API may change before `1.0`.
 
 [![ChronoForge dashboard](docs/screenshots/workflows.png)](docs/screenshots/workflows.png)
 
