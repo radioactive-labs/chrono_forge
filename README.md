@@ -297,6 +297,7 @@ Each call is:
 - **Configurable.** Pass a `retry_policy:` per call, or set a class-wide default
   with the `retry_policy` DSL (see [Retry policies](#retry-policies)).
 
+> [!WARNING]
 > **Write your side effects to be idempotent.** A step short-circuits on replay
 > only once its log row reaches `completed`. If a worker is hard-killed
 > (SIGKILL/OOM/eviction) *after* a step's side effect commits but *before* its log
@@ -938,10 +939,10 @@ dashboard.
 |                              | ChronoForge          | AJ Continuations           | GenevaDrive        | AcidicJob       | Temporal        |
 | ---------------------------- | -------------------- | -------------------------- | ------------------ | --------------- | --------------- |
 | Programming model            | procedural (plain Ruby) | procedural (`step` blocks) | declarative DSL | declarative DSL | procedural (via SDK) |
-| Built-in periodic tasks      | ✓ `durably_repeat`   | ✗                          | ✗                  | ✗               | ✓               |
-| Parallel sub-workflows       | ✓ `branch` / `spawn` | ✗                          | ✗                  | ✗               | ✓               |
-| Pending-step visibility      | ✗ (procedural)       | ✗ (procedural)             | ✓                  | ✓               | ✗ (procedural)  |
-| Web dashboard                | ✓ (free gem)         | job-level (Mission Control)| paid only          | ✗               | ✓               |
+| Built-in periodic tasks      | ✅ `durably_repeat`  | ❌                          | ❌                 | ❌              | ✅              |
+| Parallel sub-workflows       | ✅ `branch` / `spawn`| ❌                          | ❌                 | ❌              | ✅              |
+| Pending-step visibility      | ❌ (procedural)      | ❌ (procedural)             | ✅                 | ✅              | ❌ (procedural) |
+| Web dashboard                | ✅ (free gem)        | job-level (Mission Control)| paid only          | ❌              | ✅              |
 | Extra infrastructure         | none (DB + ActiveJob)| none (built into Rails)    | none               | none            | server required |
 | Rails support                | 7.1+                 | 8.1+                       | 7.2+               | 7.1+            | any (Ruby SDK)  |
 | License                      | MIT                  | MIT                        | LGPL / commercial  | MIT             | MIT             |
