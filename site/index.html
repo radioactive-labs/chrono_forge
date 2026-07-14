@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChronoForge — durable workflows for Rails</title>
-  <meta name="description" content="A Rails engine for durable, resumable workflows in plain Ruby: crash recovery, durable waits, bounded retries, periodic tasks, parallel fan-out, and a free dashboard. Built on ActiveJob, no extra server to run.">
+  <meta name="description" content="A Rails engine for durable, resumable workflows in plain Ruby: crash recovery, durable waits, bounded retries, periodic tasks, parallel fan-out, and a management dashboard. Built on ActiveJob, no extra server to run.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <meta name="theme-color" content="#fdfdfc" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#101317" media="(prefers-color-scheme: dark)">
@@ -16,7 +16,7 @@
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="ChronoForge — durable, resumable workflows in plain Ruby: crash recovery, durable waits, retries, periodic tasks, parallel fan-out, and a free dashboard.">
+  <meta property="og:image:alt" content="ChronoForge — durable, resumable workflows in plain Ruby: crash recovery, durable waits, retries, periodic tasks, parallel fan-out, and a management dashboard.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="ChronoForge — durable workflows for Rails">
   <meta name="twitter:description" content="Your background job works until the process it drives has to survive a crash, wait three days, and resume exactly where it stopped. ChronoForge is the durable-workflow engine you write in plain Ruby.">
@@ -172,7 +172,7 @@
 
     <figure class="hero">
       <img src="screenshots/workflows.png" alt="The ChronoForge dashboard: the workflow list with state badges, filters, and per-run duration meters" loading="lazy">
-      <figcaption>The free dashboard, live over your workflows. <a href="dashboard.html">See the full tour &rarr;</a></figcaption>
+      <figcaption>The management dashboard, live over your workflows. <a href="dashboard.html">See the full tour &rarr;</a></figcaption>
     </figure>
 
     <h2>Install</h2>
@@ -211,7 +211,7 @@ OnboardingWorkflow.perform_later("onboard-user-42", user_id: 42)</code></pre>
       <li><b>Wait states.</b> Fixed delays, condition polling (<code>wait_until</code>), and event-driven waits (<code>continue_if</code>) that all survive restarts.</li>
       <li><b>Periodic tasks.</b> <code>durably_repeat</code> runs a step on a schedule until a condition holds, with catch-up for missed runs.</li>
       <li><b>Parallel sub-workflows.</b> <code>branch</code> / <code>spawn</code> / <code>spawn_each</code> fan out into concurrent children, streaming large sets in constant memory.</li>
-      <li><b>A free dashboard.</b> Workflow list, step-replay timeline, a per-run definition graph, and one-click retry/reap. <a href="dashboard.html">See the tour &rarr;</a></li>
+      <li><b>A management dashboard.</b> Workflow list, step-replay timeline, a per-run definition graph, and one-click retry/reap. <a href="dashboard.html">See the tour &rarr;</a></li>
       <li><b>Recovery built in.</b> Retry stalled or failed runs; reap workflows stranded in <code>running</code> by a hard-killed worker.</li>
     </ul>
 

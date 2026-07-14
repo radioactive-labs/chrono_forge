@@ -173,7 +173,7 @@ installs get everything from `chrono_forge:install` and don't need the upgrade.
 
 ## Dashboard
 
-ChronoForge ships a free, mountable dashboard for visibility and recovery:
+ChronoForge ships a mountable management dashboard for visibility and recovery:
 workflow list, step-replay timeline, a per-run **definition graph** (the durable
 steps a run will take, statically parsed from `perform`, with live status
 overlaid), context inspector, periodic-task health, wait-state age, and
@@ -967,7 +967,7 @@ A few deliberate choices behind that table:
   orchestration server (Temporal does, server-side).
 - **Recovery is built into the model.** Steps are append-only history, so a crashed
   step leaves the workflow `stalled`, recoverable directly with `retry_later`.
-- **A real dashboard, free.** The [mountable dashboard](#dashboard) ships as a
+- **A real management dashboard.** The [mountable dashboard](#dashboard) ships as a
   separate MIT gem: workflow list, step-replay timeline, per-run definition graph,
   context inspector, retry/unlock/reap.
 - **MIT licensed.** Permissive and dependency-policy-friendly.
