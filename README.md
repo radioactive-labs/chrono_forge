@@ -6,7 +6,7 @@
 
 **Your background job works until the process it drives has to survive a crash,
 wait three days, and resume exactly where it stopped.** ChronoForge is the
-durable-workflow engine that makes plain Ruby do that.
+durable-workflow engine you write in plain Ruby.
 
 The moment a job outgrows a single run, the edge cases arrive one at a time: a
 step commits its side effect but the worker is OOM-killed before the next one, so
