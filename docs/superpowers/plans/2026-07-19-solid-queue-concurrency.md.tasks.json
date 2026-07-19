@@ -1,0 +1,19 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-19-solid-queue-concurrency.md",
+  "tasks": [
+    {
+      "id": 7,
+      "subject": "Task 1: Config accessor + automatic limits_concurrency in Executor.prepended",
+      "status": "completed",
+      "description": "**Goal:** `ChronoForge.config.concurrency_control` (default true) gates an automatic `base.limits_concurrency(key: ->(key, **) { key }, duration: max_duration + 5.seconds)` call in `Executor.prepended`.\n\n**Files:**\n- Modify: `lib/chrono_forge/configuration.rb`\n- Modify: `lib/chrono_forge/executor.rb:42`\n- Test: `test/concurrency_control_test.rb` (new)\n\n**Verify:** `bundle exec rake test TEST=test/concurrency_control_test.rb` then `bundle exec rake`\n\n**Steps:** Plan Task 1 (TDD, complete code in plan doc).\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/configuration.rb\", \"lib/chrono_forge/executor.rb\", \"test/concurrency_control_test.rb\"], \"verifyCommand\": \"bundle exec rake\", \"acceptanceCriteria\": [\"config defaults to enabled\", \"limits_concurrency called with key proc + duration only\", \"skipped when disabled or API absent\", \"suite + standard pass\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 2: README documentation for SolidQueue concurrency default",
+      "status": "completed",
+      "blockedBy": [7],
+      "description": "**Goal:** README \"SolidQueue\" section: automatic default, semaphore key shape, duration rationale, :discard warning, override + disable.\n\n**Files:**\n- Modify: `README.md`\n\n**Verify:** `bundle exec rake`\n\n**Steps:** Plan Task 2 (content in plan doc; match README conventions).\n\n```json:metadata\n{\"files\": [\"README.md\"], \"verifyCommand\": \"bundle exec rake\", \"acceptanceCriteria\": [\"section documents default, key shape, duration rationale\", \"discard warning present\", \"override and disable shown\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-07-19"
+}

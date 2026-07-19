@@ -102,8 +102,7 @@ module ChronoForge
     # A node binds to runtime logs by EXACT step_name when known, else by
     # step_name_pattern (a prefix for fan-out/repeat/dynamic).
     Node = Struct.new(
-      :id, :kind, :label, :step_name, :step_name_pattern, :guard, :warnings,
-      keyword_init: true
+      :id, :kind, :label, :step_name, :step_name_pattern, :guard, :warnings
     ) do
       def warnings = super || []
       def dynamic? = kind == :dynamic || step_name.nil?
@@ -111,7 +110,7 @@ module ChronoForge
     end
 
     # kind: :seq :conditional :fanout :join :terminal
-    Edge = Struct.new(:from, :to, :kind, :guard, keyword_init: true)
+    Edge = Struct.new(:from, :to, :kind, :guard)
 
     attr_reader :nodes, :edges, :warnings
 

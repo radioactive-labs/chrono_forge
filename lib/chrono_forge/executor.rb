@@ -40,6 +40,25 @@ module ChronoForge
 
     # Add class methods
     def self.prepended(base)
+      # SolidQueue efficiency layer: serialize same-workflow jobs at dispatch
+      # time, so a concurrent wake-up blocks in the queue instead of burning a
+      # worker slot only to be dropped by LockStrategy (ConcurrentExecutionError).
+      # The semaphore key is "<Class>/<workflow key>": SolidQueue joins its
+      # default concurrency group (self.class.name, instance_exec'd — correct
+      # under subclassing) with this proc's result. to: 1 and on_conflict: :block
+      # defaults are load-bearing (:discard would drop continuations and strand
+      # workflows). duration is sized to outlive the lock-steal threshold (the
+      # buffer absorbs dispatch latency); if a job queues longer than the
+      # buffer the semaphore can lapse early, and LockStrategy remains the
+      # backstop. Inert off SolidQueue; a class's own limits_concurrency call
+      # after the prepend overwrites this default.
+      if ChronoForge.config.concurrency_control && base.respond_to?(:limits_concurrency)
+        base.limits_concurrency(
+          key: ->(key, **) { key },
+          duration: ChronoForge.config.max_duration + 5.seconds
+        )
+      end
+
       # Class-wide default retry policy, inherited by subclasses. Set via the
       # `retry_policy` DSL below; nil means "use the per-site built-in default".
       base.class_attribute :default_retry_policy, instance_accessor: false, default: nil

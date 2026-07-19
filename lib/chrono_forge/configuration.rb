@@ -41,9 +41,17 @@ module ChronoForge
     # Takes precedence over database for the connection.
     attr_accessor :connects_to
 
+    # When true (the default) and a workflow class responds to SolidQueue's
+    # limits_concurrency, Executor.prepended automatically applies a
+    # per-workflow-key concurrency limit (see executor.rb). Read at class-load
+    # time: set this in the ChronoForge.configure initializer — flipping it
+    # after workflow classes are loaded has no effect on them.
+    attr_accessor :concurrency_control
+
     def initialize
       @branch_merge_queue = :default
       @max_duration = 10.minutes
+      @concurrency_control = true
       @reap_stale_after = nil
       @primary_key_type = nil
       @database = nil

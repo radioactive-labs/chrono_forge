@@ -11,6 +11,12 @@ gemspec
 # while the locked local bundle and the rails_7.1 appraisal stay on 1.x.
 gem "sqlite3", ">= 1.4"
 
+# Test-only: exercises the real ActiveJob::ConcurrencyControls semantics behind
+# the automatic limits_concurrency default (see test/solid_queue_integration_test.rb).
+# Required post-boot in that one file, so it never mutates ActiveJob::Base for
+# the rest of the suite.
+gem "solid_queue", require: false
+
 # Only the Postgres CI lane installs this (BUNDLE_WITH=postgres) to run the gem's
 # migrations under strong_migrations on PostgreSQL. Default (SQLite) bundles skip it,
 # so contributors don't need libpq locally.

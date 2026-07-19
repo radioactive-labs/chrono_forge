@@ -897,6 +897,77 @@ end
 > poller was itself hard-killed sits `idle` (not `running`), so the reaper does not
 > sweep it. That is a distinct failure mode.
 
+## Solid Queue
+
+When your app runs on Solid Queue, ChronoForge applies a per-workflow
+concurrency limit automatically (unless disabled — see below). On prepend,
+`ChronoForge::Executor` checks whether the class responds to
+`limits_concurrency` (Solid Queue's ActiveJob concurrency API) and, if so,
+declares one for you:
+
+```ruby
+# applied for you when ChronoForge::Executor is prepended:
+limits_concurrency key: ->(key, **) { key },
+  duration: ChronoForge.config.max_duration + 5.seconds
+```
+
+Solid Queue joins its default concurrency group (the class name) with the key,
+so the semaphore key becomes `"YourWorkflow/<workflow key>"` — one slot per
+workflow run, not one per class. `to: 1` and `on_conflict: :block` fall
+through to Solid Queue's own defaults, so a duplicate wake-up for a run
+already in flight blocks in the queue instead of taking a worker slot only to
+be dropped by [ChronoForge's execution lock](#workflow-states-and-recovery).
+The lock remains the correctness guarantee; this is purely an efficiency layer
+that keeps workers free.
+
+The semaphore's `duration:` is derived from `max_duration` plus a 5-second
+buffer, sized to outlive the [lock-steal threshold](#recovering-stranded-workflows).
+The buffer absorbs dispatch latency; if a job waits in the queue longer than
+that, the semaphore can expire early and admit a duplicate — the execution
+lock remains the backstop in that case.
+
+> [!NOTE]
+> **Set `max_duration` and `concurrency_control` in an initializer, before your
+> workflow classes load.** The semaphore's `duration:` is computed once, when
+> `ChronoForge::Executor` is prepended into a class — it is frozen into that
+> class's `limits_concurrency` declaration, not re-read afterward. The
+> lock-steal threshold, by contrast, reads `config.max_duration` live on every
+> execution. Changing `max_duration` at runtime (in a console, or any time
+> after workflow classes have already loaded) moves the lock-steal threshold
+> immediately but does **not** update the duration already baked into a loaded
+> class's semaphore — the two can silently drift apart, breaking the outlives
+> invariant above.
+
+### Overriding
+
+Declare your own `limits_concurrency` after the prepend to replace the
+default — for example to throttle a class across all keys instead of per-key:
+
+```ruby
+class SyncWorkflow < ApplicationJob
+  prepend ChronoForge::Executor
+
+  limits_concurrency to: 3, key: "sync-api",
+    duration: ChronoForge.config.max_duration + 5.seconds
+end
+```
+
+> [!WARNING]
+> **Never use `on_conflict: :discard` with a ChronoForge workflow.** Workflows
+> resume via re-enqueued continuation jobs; discarding a conflicting
+> continuation silently strands the workflow mid-flight instead of retrying it.
+
+To disable the automatic default entirely:
+
+```ruby
+ChronoForge.configure do |config|
+  config.concurrency_control = false
+end
+```
+
+On adapters without `limits_concurrency` (anything other than Solid Queue),
+ChronoForge detects the API is absent and applies nothing.
+
 ## Cleanup and retention
 
 ChronoForge keeps every workflow and execution-log row indefinitely so replays
