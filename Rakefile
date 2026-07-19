@@ -13,14 +13,16 @@ Rake::TestTask.new do |t|
   t.verbose = true
 end
 
-# The multi-db end-to-end check needs its own TestTask (= its own process): it
-# points ChronoForge at a secondary database before the internal app boots,
-# which would re-route every other test if it ran inside the main suite.
-# Hooked into `test` so CI (appraisal rake test) and the default task run it.
-Rake::TestTask.new("test:multi_db") do |t|
-  t.libs << "test"
-  t.test_files = FileList["test/multi_db/**/*_test.rb"]
-  t.verbose = true
+# The multi-db checks each boot the app with a different ChronoForge database
+# configuration, which ChronoForge::ApplicationRecord reads exactly once at
+# class load — so every file gets its own process (a shared process would
+# re-route the whole suite and the configs would clobber each other). Hooked
+# into `test` so CI (appraisal rake test) and the default task run them.
+desc "Run the multi-database checks, one process per file"
+task "test:multi_db" do
+  FileList["test/multi_db/**/*_test.rb"].each do |file|
+    ruby "-Itest", file
+  end
 end
 task test: "test:multi_db"
 

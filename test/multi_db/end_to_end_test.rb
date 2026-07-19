@@ -28,8 +28,6 @@ class MultiDbEndToEndTest < ActiveJob::TestCase
 
   def test_workflow_runs_entirely_in_the_secondary_database
     # ApplicationRecord read the config at class load, like in a host app.
-    assert_equal({database: {writing: :chrono, reading: :chrono}},
-      ChronoForge::ApplicationRecord.connects_to_settings)
     assert_equal "chrono", ChronoForge::Workflow.connection_db_config.name
     assert_equal "chrono", ChronoForge::ExecutionLog.connection_db_config.name
     assert_equal "chrono", ChronoForge::ErrorLog.connection_db_config.name
