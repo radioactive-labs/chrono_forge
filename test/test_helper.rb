@@ -15,6 +15,9 @@ require "combustion"
 # real, failing the build on any unsafe migration.
 require "strong_migrations"
 StrongMigrations.skip_database(:primary) unless ENV["DB_ADAPTER"] == "postgresql"
+# The secondary `chrono` database is always in-memory SQLite (even in the
+# Postgres CI lane), where strong_migrations is unsupported and only warns.
+StrongMigrations.skip_database(:chrono)
 
 Combustion.path = "test/internal"
 Combustion.initialize! :active_record, :active_job
