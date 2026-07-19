@@ -57,8 +57,14 @@ module ChronoForge
         (db.to_s == "primary") ? nil : db
       end
 
+      # Anchored to `<digits>_name.rb` exactly: a bare `*_name.rb` glob lets `*`
+      # swallow underscores, so any migration merely ENDING in `_name.rb`
+      # (a host's own, or a sibling whose name extends this one) would count as
+      # installed and silently suppress the copy.
       def chrono_forge_migration_exists?(name)
-        Dir.glob(File.join(destination_root, chrono_forge_migrations_dir, "*_#{name}.rb")).any?
+        pattern = /\A\d+_#{Regexp.escape(name)}\.rb\z/
+        Dir.glob(File.join(destination_root, chrono_forge_migrations_dir, "*.rb"))
+          .any? { |file| File.basename(file).match?(pattern) }
       end
     end
   end
