@@ -25,7 +25,7 @@
 #
 
 module ChronoForge
-  class ErrorLog < ApplicationRecord()
+  class ErrorLog < ApplicationRecord
     self.table_name = "chrono_forge_error_logs"
 
     belongs_to :workflow

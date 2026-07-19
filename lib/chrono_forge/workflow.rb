@@ -26,7 +26,7 @@
 #  index_chrono_forge_workflows_on_state_and_completed_at      (state,completed_at)
 #
 module ChronoForge
-  class Workflow < ApplicationRecord()
+  class Workflow < ApplicationRecord
     self.table_name = "chrono_forge_workflows"
 
     has_many :execution_logs, dependent: :destroy

@@ -73,28 +73,9 @@ class InstallChronoForge < ActiveRecord::Migration[7.1]
 
   private
 
+  # Explicit config wins; otherwise the app's config.generators setting;
+  # otherwise :bigint. See ChronoForge.primary_key_type.
   def primary_key_type
-    # Check if the application is configured to use UUIDs
-    if ActiveRecord.respond_to?(:default_id) && ActiveRecord.default_id.respond_to?(:to_s) &&
-        ActiveRecord.default_id.to_s.include?("uuid")
-      return :uuid
-    end
-
-    # Rails 6+ configuration style
-    if ActiveRecord.respond_to?(:primary_key_type) &&
-        ActiveRecord.primary_key_type.to_s == "uuid"
-      return :uuid
-    end
-
-    # Check application config
-    app_config = Rails.application.config.generators
-    if app_config.options.key?(:active_record) &&
-        app_config.options[:active_record].key?(:primary_key_type) &&
-        app_config.options[:active_record][:primary_key_type].to_s == "uuid"
-      return :uuid
-    end
-
-    # Default to traditional integer keys
-    :bigint
+    ChronoForge.primary_key_type
   end
 end
