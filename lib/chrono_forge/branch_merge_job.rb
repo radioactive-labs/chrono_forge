@@ -123,7 +123,8 @@ module ChronoForge
       motion = if rate > 0 then nil
       elsif branch_log_ids.any? { |id| BranchProbe.running?(id) } then :running
       elsif never_started_by_branch.values.any?(&:positive?) then :never_started
-      else :none
+      else
+        :none
       end
 
       delay = reschedule_delay(pending, rate, motion, prev_delay, min_interval, max_interval)
@@ -206,8 +207,8 @@ module ChronoForge
             "spawned" => prev["spawned"] || spawned_by_branch[log.id],  # total spawned; immutable once sealed, so sticky
             "sealed" => sealed_by_branch[log.id],
             "rate" => rate.round(3),                               # children/s (round(3), not (2), so a
-                                                                   # very slow but real drain still reads > 0)
-            "eta_seconds" => (rate > 0 ? (pend / rate).round : nil),
+            # very slow but real drain still reads > 0)
+            "eta_seconds" => ((rate > 0) ? (pend / rate).round : nil),
             "polls" => prev["polls"].to_i + 1,
             "rekicked" => n,
             "rekick_total" => prev["rekick_total"].to_i + n,
