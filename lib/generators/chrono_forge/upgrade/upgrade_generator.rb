@@ -12,6 +12,9 @@ module ChronoForge
   #
   #   rails generate chrono_forge:upgrade
   #   rails db:migrate
+  #
+  # Multi-database aware: with --database (or config.database set in the
+  # initializer), missing migrations are copied into db/NAME_migrate.
   class UpgradeGenerator < Rails::Generators::Base
     include ::ActiveRecord::Generators::Migration
     include ChronoForge::Generators::MigrationActions

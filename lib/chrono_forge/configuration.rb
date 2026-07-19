@@ -24,10 +24,30 @@ module ChronoForge
     # Defaults to 10 minutes.
     attr_accessor :max_duration
 
+    # Primary key type for ChronoForge's own tables, used by the install
+    # migration. nil (default) auto-detects: the app's config.generators
+    # primary_key_type if set, else :bigint. Set :uuid etc. to force.
+    attr_accessor :primary_key_type
+
+    # Multi-database: the database (a key from config/database.yml) that
+    # ChronoForge's tables live in. Drives both the models' connection and
+    # where the generators install migrations (db/<database>_migrate).
+    # nil (default) keeps ChronoForge on the app's primary connection.
+    attr_accessor :database
+
+    # Advanced multi-database: a hash passed straight to Rails' connects_to
+    # for custom roles/shards, e.g.
+    # { database: { writing: :chrono_forge, reading: :chrono_forge } }.
+    # Takes precedence over database for the connection.
+    attr_accessor :connects_to
+
     def initialize
       @branch_merge_queue = :default
       @max_duration = 10.minutes
       @reap_stale_after = nil
+      @primary_key_type = nil
+      @database = nil
+      @connects_to = nil
     end
 
     # Age past which a workflow still in :running is treated as stranded and
@@ -47,5 +67,12 @@ module ChronoForge
     end
 
     attr_writer :reap_stale_after
+
+    # The database ChronoForge's migrations belong in, for the generators.
+    # Prefers the explicit database, else the writing role from a connects_to
+    # hash. nil => the app's primary db/migrate.
+    def migrations_database
+      database || connects_to&.dig(:database, :writing)
+    end
   end
 end

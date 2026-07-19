@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-19-multi-database.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Configuration accessors + ChronoForge.primary_key_type",
+      "status": "completed",
+      "description": "**Goal:** New config surface (primary_key_type, database, connects_to, migrations_database) and the PK resolution helper.\n\n**Files:**\n- Modify: lib/chrono_forge/configuration.rb\n- Modify: lib/chrono_forge.rb\n- Test: test/multi_db_config_test.rb (new)\n\n**Verify:** bundle exec rake test TEST=test/multi_db_config_test.rb\n\nFull code in plan Task 1.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/configuration.rb\", \"lib/chrono_forge.rb\", \"test/multi_db_config_test.rb\"], \"verifyCommand\": \"bundle exec rake test TEST=test/multi_db_config_test.rb\", \"acceptanceCriteria\": [\"primary_key_type precedence config > app generators > :bigint\", \"migrations_database derivation\", \"no railties dependency\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: ChronoForge::ApplicationRecord base class",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Own abstract base class applying connects_to from config; models stop inheriting the host's ::ApplicationRecord.\n\n**Files:**\n- Create: lib/chrono_forge/application_record.rb\n- Modify: lib/chrono_forge/{workflow,execution_log,error_log}.rb, lib/chrono_forge.rb\n- Test: test/application_record_test.rb (new)\n\n**Verify:** bundle exec rake test\n\nFull code in plan Task 2.\n\n```json:metadata\n{\"files\": [\"lib/chrono_forge/application_record.rb\", \"lib/chrono_forge/workflow.rb\", \"lib/chrono_forge/execution_log.rb\", \"lib/chrono_forge/error_log.rb\", \"lib/chrono_forge.rb\", \"test/application_record_test.rb\"], \"verifyCommand\": \"bundle exec rake test\", \"acceptanceCriteria\": [\"models inherit ChronoForge::ApplicationRecord\", \"connects_to_settings derivation with connects_to precedence\", \"full suite green\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Install migration template uses ChronoForge.primary_key_type",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Replace the inline PK detection in the install migration template with the helper.\n\n**Files:**\n- Modify: lib/generators/chrono_forge/templates/install_chrono_forge.rb\n- Test: add case to test/multi_db_config_test.rb\n\n**Verify:** bundle exec rake test\n\nFull code in plan Task 3.\n\n```json:metadata\n{\"files\": [\"lib/generators/chrono_forge/templates/install_chrono_forge.rb\", \"test/multi_db_config_test.rb\"], \"verifyCommand\": \"bundle exec rake test\", \"acceptanceCriteria\": [\"template delegates to ChronoForge.primary_key_type\", \"uuid config resolves :uuid\", \"Combustion boot green\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Generators — --database, db/NAME_migrate, initializer",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Install/upgrade route migrations to db/NAME_migrate when a database is configured (flag or config); install generates a documented initializer recording --database.\n\n**Files:**\n- Modify: lib/generators/chrono_forge/migration_actions.rb, install/install_generator.rb, upgrade/upgrade_generator.rb\n- Create: lib/generators/chrono_forge/templates/initializer.rb\n- Test: test/generators_test.rb\n\n**Verify:** bundle exec rake test TEST=test/generators_test.rb\n\nFull code in plan Task 4.\n\n```json:metadata\n{\"files\": [\"lib/generators/chrono_forge/migration_actions.rb\", \"lib/generators/chrono_forge/install/install_generator.rb\", \"lib/generators/chrono_forge/upgrade/upgrade_generator.rb\", \"lib/generators/chrono_forge/templates/initializer.rb\", \"test/generators_test.rb\"], \"verifyCommand\": \"bundle exec rake test TEST=test/generators_test.rb\", \"acceptanceCriteria\": [\"--database targets db/NAME_migrate\", \"initializer generated and records --database\", \"upgrade falls back to config.database\", \"existing tests pass\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Documentation + final verification",
+      "status": "completed",
+      "blockedBy": [2, 3, 4],
+      "description": "**Goal:** README documents multi-database + PK config; full suite and linter green. Do NOT commit — ask the user.\n\n**Files:**\n- Modify: README.md; Check: site/index.html\n\n**Verify:** bundle exec rake\n\nFull content in plan Task 5.\n\n```json:metadata\n{\"files\": [\"README.md\", \"site/index.html\"], \"verifyCommand\": \"bundle exec rake\", \"acceptanceCriteria\": [\"README multi-database + primary keys sections\", \"full rake green\"], \"requiresUserVerification\": false}\n```"
+    }
+  ],
+  "lastUpdated": "2026-07-19T23:00:00Z"
+}

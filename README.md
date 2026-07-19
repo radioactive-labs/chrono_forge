@@ -158,6 +158,49 @@ rails generate chrono_forge:install
 rails db:migrate
 ```
 
+### Multi-database
+
+ChronoForge can keep its tables in a separate database. Install with:
+
+```bash
+rails generate chrono_forge:install --database=chrono_forge
+```
+
+This sets `config.database = :chrono_forge` in `config/initializers/chrono_forge.rb`
+and installs the migrations into `db/chrono_forge_migrate`. Add the database to
+`config/database.yml` (per environment):
+
+```yaml
+chrono_forge:
+  <<: *default
+  database: myapp_chrono_forge
+  migrations_paths: db/chrono_forge_migrate
+```
+
+then run `bin/rails db:migrate:chrono_forge`. (`--database=primary` means the
+default connection — migrations stay in `db/migrate` and nothing is recorded in
+the initializer.) Later `rails generate chrono_forge:upgrade`
+also reads `config.database`, so new migrations land in the right place automatically.
+
+For custom roles or shards, pass a hash straight to Rails' `connects_to`
+(it wins over `config.database` for the connection):
+
+```ruby
+ChronoForge.configure do |config|
+  config.connects_to = { database: { writing: :chrono_forge, reading: :chrono_forge } }
+end
+```
+
+### Primary keys
+
+ChronoForge's tables use your app's primary key type automatically: if
+`config.generators` sets `primary_key_type: :uuid`, the install migration
+creates UUID keys. Override explicitly with `config.primary_key_type = :uuid`
+(or `:bigint`) in the initializer.
+
+> **Note:** ChronoForge models inherit from `ChronoForge::ApplicationRecord`
+> (their own abstract base class), not from your app's `ApplicationRecord`.
+
 ### Upgrading
 
 When upgrading in an application installed with an earlier version, run the

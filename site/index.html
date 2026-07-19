@@ -181,6 +181,7 @@ gem "chrono_forge"</code></pre>
     <pre><code>bundle install
 rails g chrono_forge:install
 rails db:migrate</code></pre>
+    <p class="sub">Want ChronoForge's tables in their own database? <code>rails g chrono_forge:install --database=chrono_forge</code>.</p>
 
     <h2>The 30-second tour</h2>
     <p>A workflow is an ActiveJob class that prepends the executor. Each durable step is just a method:</p>
