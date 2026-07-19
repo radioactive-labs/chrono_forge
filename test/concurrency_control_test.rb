@@ -43,6 +43,7 @@ class ConcurrencyControlTest < ActiveJob::TestCase
   end
 
   def test_prepend_skips_when_disabled
+    previous = ChronoForge.config.concurrency_control
     ChronoForge.config.concurrency_control = false
     klass = Class.new(WorkflowJob) do
       extend FakeConcurrencyControls
@@ -51,7 +52,7 @@ class ConcurrencyControlTest < ActiveJob::TestCase
 
     assert_nil klass.concurrency_args
   ensure
-    ChronoForge.config.concurrency_control = true
+    ChronoForge.config.concurrency_control = previous
   end
 
   def test_prepend_is_inert_without_the_api
