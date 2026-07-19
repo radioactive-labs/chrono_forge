@@ -570,7 +570,7 @@ end
 module ChronoForge
   module Dashboard
     module StepNameParser
-      Parsed = Struct.new(:kind, :name, :timestamp, :raw, keyword_init: true)
+      Parsed = Struct.new(:kind, :name, :timestamp, :raw)
       DELIM = "$"
 
       def self.parse(step_name)
@@ -995,7 +995,7 @@ end
 module ChronoForge
   module Dashboard
     class TimelinePresenter
-      Entry = Struct.new(:id, :kind, :name, :status, :attempts, :started_at, :completed_at, :error, :runs, keyword_init: true)
+      Entry = Struct.new(:id, :kind, :name, :status, :attempts, :started_at, :completed_at, :error, :runs)
 
       def initialize(workflow) = @workflow = workflow
 
@@ -1307,7 +1307,7 @@ end
 module ChronoForge
   module Dashboard
     class WaitStatePresenter
-      Active = Struct.new(:condition, :waiting_since, :timeout_at, keyword_init: true)
+      Active = Struct.new(:condition, :waiting_since, :timeout_at)
 
       def initialize(workflow) = @workflow = workflow
 
@@ -1333,7 +1333,7 @@ end
 module ChronoForge
   module Dashboard
     class PeriodicHealthPresenter
-      Task = Struct.new(:name, :last_execution_at, :timed_out_count, :latencies, keyword_init: true)
+      Task = Struct.new(:name, :last_execution_at, :timed_out_count, :latencies)
 
       def initialize(workflow) = @workflow = workflow
 
