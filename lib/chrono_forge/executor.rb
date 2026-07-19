@@ -47,10 +47,11 @@ module ChronoForge
       # default concurrency group (self.class.name, instance_exec'd — correct
       # under subclassing) with this proc's result. to: 1 and on_conflict: :block
       # defaults are load-bearing (:discard would drop continuations and strand
-      # workflows). duration strictly outlives the lock-steal threshold so the
-      # semaphore never expires while ChronoForge still considers the lock live.
-      # Inert off SolidQueue; a class's own limits_concurrency call after the
-      # prepend overwrites this default.
+      # workflows). duration is sized to outlive the lock-steal threshold (the
+      # buffer absorbs dispatch latency); if a job queues longer than the
+      # buffer the semaphore can lapse early, and LockStrategy remains the
+      # backstop. Inert off SolidQueue; a class's own limits_concurrency call
+      # after the prepend overwrites this default.
       if ChronoForge.config.concurrency_control && base.respond_to?(:limits_concurrency)
         base.limits_concurrency(
           key: ->(key, **) { key },

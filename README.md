@@ -897,12 +897,13 @@ end
 > poller was itself hard-killed sits `idle` (not `running`), so the reaper does not
 > sweep it. That is a distinct failure mode.
 
-## SolidQueue
+## Solid Queue
 
 When your app runs on Solid Queue, ChronoForge applies a per-workflow
-concurrency limit automatically. On prepend, `ChronoForge::Executor` checks
-whether the class responds to `limits_concurrency` (Solid Queue's ActiveJob
-concurrency API) and, if so, declares one for you:
+concurrency limit automatically (unless disabled — see below). On prepend,
+`ChronoForge::Executor` checks whether the class responds to
+`limits_concurrency` (Solid Queue's ActiveJob concurrency API) and, if so,
+declares one for you:
 
 ```ruby
 # applied for you when ChronoForge::Executor is prepended:
@@ -920,9 +921,10 @@ The lock remains the correctness guarantee; this is purely an efficiency layer
 that keeps workers free.
 
 The semaphore's `duration:` is derived from `max_duration` plus a 5-second
-buffer, so it always outlives the [lock-steal threshold](#recovering-stranded-workflows)
-— the semaphore can never expire and admit a second job while the first still
-legitimately holds the lock.
+buffer, sized to outlive the [lock-steal threshold](#recovering-stranded-workflows).
+The buffer absorbs dispatch latency; if a job waits in the queue longer than
+that, the semaphore can expire early and admit a duplicate — the execution
+lock remains the backstop in that case.
 
 > [!NOTE]
 > **Set `max_duration` and `concurrency_control` in an initializer, before your
