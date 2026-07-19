@@ -388,7 +388,7 @@ class BranchMergeJobTest < ActiveJob::TestCase
   # still rekicked because the never-started count did not fall.
   def test_rekicks_dropped_child_when_only_waits_drain_pending
     @log.update!(metadata: {"poll" => {"pending" => 3, "never_started" => 1,
-      "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 2}})
+                                       "last_polled_at" => 30.seconds.ago.iso8601, "polls" => 2}})
     child!(state: :completed)                        # a wait that resumed + completed
     child!(state: :idle, started_at: 20.minutes.ago) # a child still parked on a wait
     dropped = child!(state: :idle, started_at: nil)  # genuinely dropped, never started

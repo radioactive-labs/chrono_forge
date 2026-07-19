@@ -10,7 +10,9 @@ module ChronoForge
 
     class << self
       def config = (@config ||= Configuration.new)
+
       def configure = yield(config)
+
       def reset_configuration! = @config = Configuration.new
 
       # Short content digest of a shipped asset, used to cache-bust the served

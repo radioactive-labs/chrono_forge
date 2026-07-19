@@ -46,6 +46,7 @@ module ChronoForge
       end
 
       def next_cursor = records.last&.id
+
       def prev_cursor = records.first&.id
 
       private

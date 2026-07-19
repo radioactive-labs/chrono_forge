@@ -149,9 +149,13 @@ class DashboardHelperTest < ActionView::TestCase
   # Minimal stand-in for a Workflow row — only the fields the helper reads.
   WorkflowStub = Struct.new(:state, :started_at, :ended_at) do
     def completed_at = (state == :completed) ? ended_at : nil
+
     def updated_at = ended_at
+
     def running? = state == :running
+
     def failed? = state == :failed
+
     def stalled? = state == :stalled
   end
 end
