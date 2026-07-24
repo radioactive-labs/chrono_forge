@@ -13,6 +13,12 @@ module ChronoForge
   #     prune_repetition_logs_older_than_days: 30
   #   )
   class CleanupJob < ActiveJob::Base
+    # Deferrable housekeeping — placeable on an off-peak queue via config. Read
+    # per-enqueue (see ChronoForge::Configuration#maintenance_queue) so a config change
+    # takes effect without redefining the class. Defaults to :default; unlike the
+    # branch-merge poller, delaying cleanup is harmless, so it is NOT latency-critical.
+    queue_as { ChronoForge.config.maintenance_queue }
+
     def perform(older_than_days: nil, completed_older_than_days: nil, failed_older_than_days: nil,
       prune_repetition_logs_older_than_days: nil, batch_size: nil)
       options = {}

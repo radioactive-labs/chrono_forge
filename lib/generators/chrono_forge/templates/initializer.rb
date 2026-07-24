@@ -4,6 +4,11 @@ ChronoForge.configure do |config|
   # poller is not starved behind the branch's own children.
   # config.branch_merge_queue = :default
 
+  # ActiveJob queue for deferrable housekeeping (CleanupJob). Unlike the poller
+  # above, delaying cleanup is harmless — set this only to push pruning onto an
+  # off-peak queue.
+  # config.maintenance_queue = :default
+
   # How long a single workflow pass may hold its lock before another job may
   # steal it (the assumed maximum duration of one execution pass).
   # config.max_duration = 10.minutes

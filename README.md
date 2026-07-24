@@ -686,6 +686,15 @@ end
 > ```ruby
 > ChronoForge.configure { |c| c.branch_merge_queue = :chrono_forge_pollers } # default: :default
 > ```
+>
+> This is deliberately *not* the same knob as `maintenance_queue` (which places
+> the deferrable `CleanupJob`): the poller wants a responsive, unsaturated queue,
+> while cleanup is safe to starve — opposite requirements, so they stay separate.
+> Set `maintenance_queue` only to push pruning onto an off-peak queue:
+>
+> ```ruby
+> ChronoForge.configure { |c| c.maintenance_queue = :chrono_forge_maintenance } # default: :default
+> ```
 
 > **`spawn_each` sources must re-enumerate deterministically across replays.**
 > ActiveRecord relations are streamed by primary key (children are keyed by record

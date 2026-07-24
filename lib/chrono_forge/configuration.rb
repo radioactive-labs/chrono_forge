@@ -18,6 +18,15 @@ module ChronoForge
     # runs promptly throughout the drain.
     attr_accessor :branch_merge_queue
 
+    # The queue deferrable housekeeping (CleanupJob) runs on. Unlike the branch-merge
+    # poller, cleanup is never latency-critical — starving it only delays pruning — so
+    # it defaults to :default and exists purely so an operator can push pruning onto an
+    # off-peak queue. Kept distinct from branch_merge_queue on purpose: the poller wants
+    # a responsive, unsaturated queue, cleanup wants the opposite, so one knob can't
+    # serve both. Read per-enqueue (a block on the job), so a config change takes effect
+    # without redefining the class.
+    attr_accessor :maintenance_queue
+
     # How long a single workflow pass may hold its lock before another job is
     # allowed to steal it (LockStrategy.acquire_lock treats a lock older than this
     # as stale). It bounds the assumed maximum duration of one execution pass.
@@ -50,6 +59,7 @@ module ChronoForge
 
     def initialize
       @branch_merge_queue = :default
+      @maintenance_queue = :default
       @max_duration = 10.minutes
       @concurrency_control = true
       @reap_stale_after = nil

@@ -38,4 +38,16 @@ class CleanupJobTest < ActiveJob::TestCase
       ChronoForge::CleanupJob.perform_later
     end
   end
+
+  # Cleanup is deferrable housekeeping — read the queue per-enqueue from config so an
+  # operator can push pruning onto an off-peak queue without redefining the class.
+  # Defaults to :default (unlike branch_merge_queue, this job is never latency-critical).
+  def test_cleanup_queue_is_configurable
+    ChronoForge.reset_configuration!
+    assert_equal "default", ChronoForge::CleanupJob.new.queue_name
+    ChronoForge.configure { |c| c.maintenance_queue = :chrono_forge_maintenance }
+    assert_equal "chrono_forge_maintenance", ChronoForge::CleanupJob.new.queue_name
+  ensure
+    ChronoForge.reset_configuration!
+  end
 end
