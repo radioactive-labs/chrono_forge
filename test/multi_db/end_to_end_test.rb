@@ -32,15 +32,7 @@ class MultiDbEndToEndTest < ActiveJob::TestCase
     assert_equal "chrono", ChronoForge::ExecutionLog.connection_db_config.name
     assert_equal "chrono", ChronoForge::ErrorLog.connection_db_config.name
 
-    # Install the schema on the secondary database with the real shipped
-    # migrations (Combustion only migrated the primary at boot).
-    conn = ChronoForge::ApplicationRecord.connection
-    ActiveRecord::Migration.suppress_messages do
-      [InstallChronoForge, AddChronoForgeWorkflowStateIndex,
-        AddChronoForgeErrorLogStepContext, AddChronoForgeParentExecutionLog].each do |migration|
-        migration.new.exec_migration(conn, :up)
-      end
-    end
+    install_chrono_schema
 
     MultiDbEndToEndJob.perform_later("multi-db-e2e")
     perform_all_jobs
@@ -58,5 +50,56 @@ class MultiDbEndToEndTest < ActiveJob::TestCase
       ActiveRecord::Base.connection.select_value("SELECT COUNT(*) FROM chrono_forge_workflows").to_i,
       "primary database must not receive workflow rows"
     assert_equal 1, ChronoForge::Workflow.count
+  end
+
+  # The lock is a read-then-update, and only a transaction on the connection
+  # holding the row makes that atomic. Opening one on ActiveRecord::Base instead
+  # leaves it on the host's primary while the lock! and the UPDATE run
+  # unprotected on chrono, so two workers can each see the workflow as unlocked
+  # and both claim it. Single-database runs cannot catch that: there, the two
+  # constants share a connection and the wrong one still works.
+  def test_the_lock_is_taken_inside_a_transaction_on_the_chrono_connection
+    install_chrono_schema
+
+    observed = []
+    ChronoForge::Workflow.singleton_class.send(:define_method, :__observe) { observed }
+    ChronoForge::Workflow.class_eval do
+      alias_method :__orig_lock!, :lock!
+      def lock!(*args)
+        self.class.__observe << self.class.connection.transaction_open?
+        __orig_lock!(*args)
+      end
+    end
+
+    begin
+      MultiDbEndToEndJob.perform_later("multi-db-lock-connection")
+      perform_all_jobs
+
+      refute_empty observed, "lock! should have been reached"
+      assert observed.all?, "the lock must be held in a transaction on ChronoForge's own connection"
+    ensure
+      ChronoForge::Workflow.class_eval do
+        remove_method :lock!
+        alias_method :lock!, :__orig_lock!
+        remove_method :__orig_lock!
+      end
+    end
+  end
+
+  private
+
+  # Combustion only migrated the primary at boot, so the secondary needs the
+  # real shipped migrations. Guarded because both tests need it and minitest
+  # does not promise an order.
+  def install_chrono_schema
+    conn = ChronoForge::ApplicationRecord.connection
+    return if conn.table_exists?("chrono_forge_workflows")
+
+    ActiveRecord::Migration.suppress_messages do
+      [InstallChronoForge, AddChronoForgeWorkflowStateIndex,
+        AddChronoForgeErrorLogStepContext, AddChronoForgeParentExecutionLog].each do |migration|
+        migration.new.exec_migration(conn, :up)
+      end
+    end
   end
 end

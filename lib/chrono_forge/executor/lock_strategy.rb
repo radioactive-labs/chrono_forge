@@ -7,7 +7,13 @@ module ChronoForge
     class LockStrategy
       class << self
         def acquire_lock(job_id, workflow, max_duration:)
-          ActiveRecord::Base.transaction do
+          # ApplicationRecord, not ActiveRecord::Base: with config.database set,
+          # ChronoForge's models are on their own connection, and a transaction
+          # opened on the host's primary would not enclose the lock! and the
+          # UPDATE below. They would run unprotected on the other connection, so
+          # two workers could each read the workflow as unlocked and both claim
+          # it, which is the one thing this method exists to prevent.
+          ApplicationRecord.transaction do
             # Find the workflow with a lock, considering stale locks
             workflow = workflow.lock!
 

@@ -56,7 +56,9 @@ module ChronoForge
           # and write the marker in its terminal state in a single INSERT.
           execution_log = nil
           begin
-            ActiveRecord::Base.transaction do
+            # ApplicationRecord so the batch commits on ChronoForge's own
+            # connection when config.database routes it elsewhere.
+            ApplicationRecord.transaction do
               workflow.completed_at = Time.current
               workflow.completed!
               execution_log = create_completed_execution_log!("$workflow_completion$")
@@ -154,7 +156,8 @@ module ChronoForge
           # marker is written in its terminal state in a single INSERT.
           execution_log = nil
           begin
-            ActiveRecord::Base.transaction do
+            # ApplicationRecord, as in complete_workflow!.
+            ApplicationRecord.transaction do
               workflow.failed!
               execution_log = create_completed_execution_log!(step_name) do |log|
                 log.metadata = {error_log_id: error_log.id}
