@@ -41,6 +41,18 @@ class GeneratorsTest < ActiveJob::TestCase
     end
   end
 
+  def test_a_migration_whose_name_merely_ends_in_a_gem_migration_name_does_not_suppress_the_copy
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "db", "migrate"))
+      File.write(File.join(dir, "db", "migrate", "20200101000000_my_install_chrono_forge.rb"), "# host decoy")
+
+      run_generator(ChronoForge::InstallGenerator, dir)
+
+      assert_includes migrations_in(dir), "install_chrono_forge.rb",
+        "a host migration ending in a gem migration's name must not count as installed"
+    end
+  end
+
   def test_install_is_idempotent
     Dir.mktmpdir do |dir|
       run_generator(ChronoForge::InstallGenerator, dir)
